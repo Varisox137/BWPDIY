@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+build/
+
+# 用户 DIY 卡牌库（个人创作数据，不入库）
+library/
+
+# 本地笔记
+thoughts.txt
+
+# 系统
+.DS_Store
+Thumbs.db

@@ -9,6 +9,9 @@ build/
 # 用户 DIY 卡牌库（个人创作数据，不入库）
 library/
 
+# 旧版半成品（只读封存参考，不进本仓库；bwpCardDIY 有自己的 git 仓库）
+legacy/
+
 # 本地笔记
 thoughts.txt
 

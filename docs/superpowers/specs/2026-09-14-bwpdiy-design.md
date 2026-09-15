@@ -107,7 +107,7 @@ artwork:
 bwpdiy.render.render_card(card: dict, assets_dir: Path) -> PIL.Image
 ```
 
-输出尺寸沿用资源原生尺寸（307×546），调用方自行缩放。缺资源/缺字段抛明确异常，由调用方兜底（BWPro 侧 try/except 显示占位卡面）。
+合成在资源原生 512×512 画布进行（四周透明），`render_card` 最终按合成图 alpha bbox 裁剪输出卡面有效区（各类型尺寸略有差异，宽高比 ≈0.56–0.61；统一缩放/缩略图由调用方负责）。缺资源/缺字段抛明确异常，由调用方兜底（BWPro 侧 try/except 显示占位卡面）。
 
 ## 5. 编辑器 WebGUI
 

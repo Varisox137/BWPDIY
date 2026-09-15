@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - render 层**只依赖 Pillow**（CLI 用 stdlib json，不用 yaml）；不得 import `bwpdiy.store`/`bwpdiy.web`/fastapi。
-- 卡面画布 **512×512 RGBA**（实测资源尺寸；设计文档 §4 的 307×546 系 legacy README 旧值，Task 1 修正）。
+- 合成画布 **512×512 RGBA**（实测资源尺寸；设计文档 §4 的 307×546 系 legacy README 旧值，Task 1 修正）；`render_card` 最终按**合成图的 alpha bbox 裁剪**输出（牌框外元素如等级标溢出部分自然包含在内），输出为竖版卡面有效区，各类型尺寸略有差异（宽高比 ≈0.56–0.61），统一缩放由调用方负责。
 - 一期固定：牌框版型 `low`、框品 `norm`；等级数字颜色固定 `brown`（对局 4 色二期）。
 - 资源命名（不得硬编码错）：`frames/frame_{zd|fs|xt|hj|xz}_{norm|blue|black|red}_{high|low}.png`、`masks/mask_{type}_low.png`、`levels/base.png|star.png|{blue|brown|cyan|purple|red|yellow}_{1|2|3}.png`、`rarity/{N|R|SR|SSR}.png`、`factions/{red|green|blue|purple}_{1|2|3}.png`、`icons/{fl|hj|ll|nj|nl|pj|sj|sm|zl}_{l|s}.png`、`fonts/田氏颜体大字库（卡牌名字体）.ttf`、`fonts/方正北魏楷书（卡牌描述字体）.ttf`。
 - 蒙版只有 `_low` 变体；`frame_xz` 只有 `norm_low`——一期不涉及缺失组合。
@@ -732,7 +732,7 @@ git push
 **Interfaces:**
 - Consumes: 前 4 个任务全部接口
 - Produces:
-  - `render_card(card: dict, assets_dir: Path) -> Image.Image`（512×512 RGBA）
+  - `render_card(card: dict, assets_dir: Path) -> Image.Image`（合成在 512×512 画布进行，**按合成图 alpha bbox 裁剪后返回**，竖版、RGBA、卡外区域透明）
   - card dict 契约（M1 渲染字段；缺省规则同 Global Constraints）：
     - 必需：`type`（六类型之一）、`name`
     - 可选：`description`、`level`（缺省跳过等级标）、`evolve`（默认 False）、`rarity`、`faction`（中文派系名）、`power`/`health`（式神、形态）、`power+`/`shield+`（战斗加成，键名直接如此）、`durability`（幻境）、`artwork.images[0].{path,offset_x,offset_y,scale}`
@@ -772,14 +772,17 @@ def make_card(fixtures, type_, **kw):
 def test_render_all_types(assets_dir, sample_art, kw):
     card = make_card(sample_art.parent, kw.pop("type"), **kw)
     img = render_card(card, assets_dir)
-    assert img.size == (512, 512) and img.mode == "RGBA"
+    assert img.mode == "RGBA"
+    w, h = img.size
+    assert 0.5 < w / h < 0.7  # 竖版卡比例（裁剪后各类型尺寸略有差异）
 
 
 def test_render_minimal_card(assets_dir, sample_art):
-    # artwork 缺省 path → <name>.png 不存在时应抛 FileNotFoundError 而非其他异常
+    # artwork 缺省 path → <name>.png
     card = {"type": "法术", "name": "sample_art", "_base_dir": str(sample_art.parent)}
     img = render_card(card, assets_dir)
-    assert img.size == (512, 512)
+    w, h = img.size
+    assert 0.5 < w / h < 0.7
 
 
 def test_render_missing_artwork_raises(assets_dir):
@@ -850,7 +853,7 @@ def _artwork_ref(card: dict) -> dict:
 
 
 def render_card(card: dict, assets_dir: Path) -> Image.Image:
-    """渲染单张完整卡面，返回 512×512 RGBA Image。
+    """渲染单张完整卡面：512×512 画布合成后按 alpha bbox 裁剪返回（竖版 RGBA）。
 
     缺资源/缺字段抛明确异常（FileNotFoundError/KeyError/ValueError），调用方兜底。
     """
@@ -887,7 +890,9 @@ def render_card(card: dict, assets_dir: Path) -> Image.Image:
     canvas = draw_name(canvas, lib, card["name"])
     if card.get("description"):
         canvas = draw_description(canvas, lib, card["description"])
-    return canvas
+    # 裁剪掉整画布四周的透明边（bbox 取自合成图 alpha，等级标等溢出元素自然包含）
+    bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
+    return canvas.crop(bbox) if bbox else canvas
 ```
 
 - [ ] **Step 4: 跑测试确认通过**

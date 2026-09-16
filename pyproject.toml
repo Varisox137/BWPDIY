@@ -22,3 +22,4 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bwpdiy"]
+artifacts = ["bwpdiy/render/default_layout.json"]

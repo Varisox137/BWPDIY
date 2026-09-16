@@ -24,7 +24,7 @@
   元素定义按 kind：
   - `{"kind":"level_badge","pos":[x,y],"base_size":72,"star_size":60,"num_size":40}`（card 有 level 才渲染）
   - `{"kind":"rarity_flank","pos":[cx,y],"gap":16,"size":24}`（card 有 rarity 才渲染；**两个稀有度标对称布置于卡名两侧**：x = cx ± (卡名渲染宽度/2 + gap + size/2)，卡名较长时自然外移；pos 的 y 与卡名行中心一致）
-  - `{"kind":"faction","pos":[x,y],"size":44}`（card 有 faction 且派系有对应资源色才渲染）
+  - `{"kind":"faction","pos":[x,y],"size":44,"style":2}`（card 有 faction 且派系有对应资源色才渲染；style 为 factions/{color}_{style}.png 的样式序号，**默认 2**）
   - `{"kind":"stat","field":"power","icon":"ll","pos":[x,y],"icon_size":32,"num_offset":[dx,dy],"font_size":30,"signed":false,"icon_neg":"pj"}`（card 有 field 字段才渲染；signed=true 显示正负号；num_offset 为数字中心相对图标中心的偏移；**icon_neg 可选**：值 < 0 时换用该图标——战斗牌护甲为负即显示破甲贴图）
   区域定义：`{"polygon":[[x,y],...≥3点],"font_range":[max,min],"wrap":true|false,"font":"name"|"desc"}`。
 - 正负号规则：战斗牌与法术觉醒牌的数值 signed=true，其余类型 signed=false。
@@ -145,7 +145,7 @@ Expected: FAIL（layout 模块无 load_layouts）
 {
   "式神": {
     "elements": {
-      "faction": {"kind": "faction", "pos": [256, 318], "size": 44},
+      "faction": {"kind": "faction", "pos": [256, 318], "size": 44, "style": 2},
       "power": {"kind": "stat", "field": "power", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false},
       "health": {"kind": "stat", "field": "health", "icon": "sm", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false}
     },
@@ -795,8 +795,8 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         color = FACTION_COLOR.get(card.get("faction", ""))
         if color is None:
             return canvas
-        return paste_centered(canvas, lib.faction(color), elem["pos"],
-                              (elem["size"], elem["size"]))
+        return paste_centered(canvas, lib.faction(color, elem.get("style", 2)),
+                              elem["pos"], (elem["size"], elem["size"]))
     if kind == "stat":
         field = elem["field"]
         if field not in card:
@@ -852,6 +852,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
       canvas = draw_region(canvas, lib, footer, regions["footer"])
   ```
 - 删除 `_STAT_KEYS` 与旧的 stats 分支、旧的 draw_name/draw_description 调用。
+- 顺带：`assets/layout.json` 与 `bwpdiy/render/default_layout.json` 的式神 faction 元素补上 `"style": 2`（派系标默认样式 2）。
 
 - [ ] **Step 4: 跑测试确认通过**
 
@@ -1281,8 +1282,10 @@ function buildProps() {
       numRow(div, 'gap', e.gap, v => e.gap = v);
       numRow(div, 'size', e.size, v => e.size = v);
     }
-    if (e.kind === 'faction')
+    if (e.kind === 'faction') {
       numRow(div, 'size', e.size, v => e.size = v);
+      numRow(div, 'style', e.style || 2, v => e.style = v);
+    }
     if (e.kind === 'level_badge') {
       numRow(div, 'base_size', e.base_size, v => e.base_size = v);
       numRow(div, 'star_size', e.star_size, v => e.star_size = v);

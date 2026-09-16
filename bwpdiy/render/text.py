@@ -1,70 +1,100 @@
-"""文本层：卡名与描述文本的自动排版（从大到小试字号、自动换行、逐行居中）。"""
+"""文本层：多边形文本区排版（扫描线求宽、行内居中、字号递减适配）。"""
 
 from PIL import Image, ImageDraw, ImageFont
 
-from bwpdiy.render import layout
 from bwpdiy.render.assets import AssetLibrary
+from bwpdiy.render.geometry import (clamp_span_by_obstacles, polygon_x_span,
+                                    polygon_y_range)
+
+TEXT_FILL = (60, 45, 30, 255)
+
+_LINE_GAP = 6
 
 
-def layout_lines(text: str, font: ImageFont.FreeTypeFont,
-                 max_width: int) -> list[str]:
-    """逐字符贪心换行；\\n 强制换行。"""
-    lines: list[str] = []
-    for paragraph in text.split("\n"):
-        current = ""
+def _line_height(font: ImageFont.FreeTypeFont) -> float:
+    box = font.getbbox("国Ag")
+    return box[3] - box[1] + _LINE_GAP
+
+
+def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
+                    polygon: list[list[float]], wrap: bool,
+                    obstacles: list | None = None):
+    """按给定字号在多边形内排版，成功返回 [(行, cx, cy)]，失败返回 None。"""
+    obstacles = obstacles or []
+    y_top, y_bottom = polygon_y_range(polygon)
+    lh = _line_height(font)
+
+    def span_at(y: float):
+        span = polygon_x_span(polygon, y)
+        if span is None:
+            return None
+        if obstacles:
+            span = clamp_span_by_obstacles(span, y, lh / 2, obstacles)
+        return span
+
+    if not wrap:
+        y = (y_top + y_bottom) / 2
+        span = span_at(y)
+        if span is None or font.getlength(text) > span[1] - span[0]:
+            return None
+        return [(text, (span[0] + span[1]) / 2, y)]
+    lines: list[tuple[str, float, float]] = []
+    current = ""
+    y = y_top + lh / 2
+    paragraphs = text.split("\n")
+    for pi, paragraph in enumerate(paragraphs):
         for ch in paragraph:
-            if current and font.getlength(current + ch) > max_width:
-                lines.append(current)
+            trial = current + ch
+            span = span_at(y)
+            width = (span[1] - span[0]) if span else 0.0
+            if current and font.getlength(trial) > width:
+                lines.append((current, (span[0] + span[1]) / 2, y))
+                y += lh
+                if y + lh / 2 > y_bottom:
+                    return None
                 current = ch
             else:
-                current += ch
-        lines.append(current)
-    return lines
+                current = trial
+        if pi < len(paragraphs) - 1 or current:
+            span = span_at(y)
+            if span is None:
+                return None
+            lines.append((current, (span[0] + span[1]) / 2, y))
+            current = ""
+            if pi < len(paragraphs) - 1:
+                y += lh
+                if y + lh / 2 > y_bottom:
+                    return None
+    return lines or None
 
 
-def _fit(box: tuple[int, int, int, int], kind: str,
-         font_range: tuple[int, int], lib: AssetLibrary,
-         wrap: bool, text: str):
-    """从大到小试字号，返回 (font, lines)。wrap=False 时不换行（卡名）。"""
-    x0, y0, x1, y1 = box
-    max_w, max_h = x1 - x0, y1 - y0
-    max_size, min_size = font_range
+def fit_in_region(text: str, region: dict, lib: AssetLibrary,
+                  obstacles: list | None = None):
+    """字号从大到小适配，返回 (font, lines)；最小字号仍排不下时返回 None。"""
+    max_size, min_size = region["font_range"]
     for size in range(max_size, min_size - 1, -1):
-        font = lib.font(kind, size)
-        lines = layout_lines(text, font, max_w) if wrap else [text]
-        line_h = font.getbbox("国Ag")[3] - font.getbbox("国Ag")[1] + 4
-        if wrap and line_h * len(lines) > max_h:
-            continue
-        if not wrap and font.getlength(text) > max_w:
-            continue
-        return font, lines
-    font = lib.font(kind, min_size)
-    lines = layout_lines(text, font, max_w) if wrap else [text]
-    return font, lines
+        font = lib.font(region["font"], size)
+        lines = _layout_at_size(text, font, region["polygon"], region["wrap"], obstacles)
+        if lines is not None:
+            return font, lines
+    return None
 
 
-def _draw_lines(canvas: Image.Image, box, font, lines, fill) -> Image.Image:
+def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
+                region: dict, obstacles: list | None = None,
+                fill=TEXT_FILL) -> Image.Image:
+    fitted = fit_in_region(text, region, lib, obstacles)
+    if fitted is None:
+        font = lib.font(region["font"], region["font_range"][1])
+        lines = _layout_at_size(text, font, region["polygon"], region["wrap"], obstacles)
+        if lines is None:  # 单行 nowrap 超宽：居中强排
+            y0, y1 = polygon_y_range(region["polygon"])
+            cx = sum(p[0] for p in region["polygon"]) / len(region["polygon"])
+            lines = [(text, cx, (y0 + y1) / 2)]
+        fitted = (font, lines)
+    font, lines = fitted
     out = canvas.copy()
     draw = ImageDraw.Draw(out)
-    x0, y0, x1, y1 = box
-    line_h = font.getbbox("国Ag")[3] - font.getbbox("国Ag")[1] + 4
-    total_h = line_h * len(lines)
-    y = y0 + (y1 - y0 - total_h) / 2
-    for line in lines:
-        draw.text(((x0 + x1) / 2, y + line_h / 2), line, font=font,
-                  anchor="mm", fill=fill)
-        y += line_h
+    for line, cx, cy in lines:
+        draw.text((cx, cy), line, font=font, anchor="mm", fill=fill)
     return out
-
-
-def draw_name(canvas: Image.Image, lib: AssetLibrary, name: str) -> Image.Image:
-    font, lines = _fit(layout.NAME_BOX, "name", layout.NAME_FONT_RANGE,
-                       lib, wrap=False, text=name)
-    return _draw_lines(canvas, layout.NAME_BOX, font, lines, layout.TEXT_FILL)
-
-
-def draw_description(canvas: Image.Image, lib: AssetLibrary,
-                     text: str) -> Image.Image:
-    font, lines = _fit(layout.DESC_BOX, "desc", layout.DESC_FONT_RANGE,
-                       lib, wrap=True, text=text)
-    return _draw_lines(canvas, layout.DESC_BOX, font, lines, layout.TEXT_FILL)

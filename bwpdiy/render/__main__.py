@@ -15,13 +15,17 @@ def main() -> int:
     ap.add_argument("--out", default=None, help="输出 png 路径（默认 examples/<name>.png）")
     args = ap.parse_args()
 
-    card_path = Path(args.card)
-    card = json.loads(card_path.read_text(encoding="utf-8"))
-    card.setdefault("_base_dir", str(card_path.parent))
-    base = Path(card["_base_dir"])
-    if not base.is_absolute():
-        card["_base_dir"] = str(card_path.parent / base)
-    out = Path(args.out) if args.out else Path("examples") / f"{card['name']}.png"
+    card_path = Path(args.card).resolve()
+    try:
+        card = json.loads(card_path.read_text(encoding="utf-8"))
+        card.setdefault("_base_dir", str(card_path.parent))
+        base = Path(card["_base_dir"])
+        if not base.is_absolute():
+            card["_base_dir"] = str(card_path.parent / base)
+        out = Path(args.out) if args.out else Path("examples") / f"{card['name']}.png"
+    except (OSError, json.JSONDecodeError, KeyError) as e:
+        print(f"渲染失败: {e}", file=sys.stderr)
+        return 1
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
         img = render_card(card, Path(args.assets))

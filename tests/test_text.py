@@ -53,6 +53,17 @@ def test_draw_region_renders_pixels(assets_dir):
     assert sum(1 for p in img.getdata() if p[3] > 0) > 50
 
 
+def test_obstacles_sealing_line_returns_none(assets_dir):
+    # 双侧障碍把中间行 y 带完全封死（收窄后宽度 ≤0）：fit 返回 None，draw 强排兜底不抛异常
+    lib = AssetLibrary(assets_dir)
+    text = "障碍封死回归测试文本内容需要足够长才能排到被封死的行。" * 4
+    region = rect_region(100, 100, 400, 400)
+    obstacles = [(100.0, 150.0, 260.0, 350.0), (260.0, 150.0, 400.0, 350.0)]
+    assert fit_in_region(text, region, lib, obstacles=obstacles) is None
+    img = draw_region(canvas(), lib, text, region, obstacles=obstacles)
+    assert img is not None
+
+
 def test_obstacles_narrow_bottom_lines(assets_dir):
     # 底部左右有数值标障碍：长描述末尾几行可用宽度应变窄（行数增多或末行更短）
     lib = AssetLibrary(assets_dir)

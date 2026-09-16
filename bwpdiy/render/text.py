@@ -48,6 +48,8 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
             span = span_at(y)
             width = (span[1] - span[0]) if span else 0.0
             if current and font.getlength(trial) > width:
+                if span is None:  # 障碍封死本行：排版失败，交由字号递减/强排兜底
+                    return None
                 lines.append((current, (span[0] + span[1]) / 2, y))
                 y += lh
                 if y + lh / 2 > y_bottom:
@@ -87,7 +89,7 @@ def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
     if fitted is None:
         font = lib.font(region["font"], region["font_range"][1])
         lines = _layout_at_size(text, font, region["polygon"], region["wrap"], obstacles)
-        if lines is None:  # 单行 nowrap 超宽：居中强排
+        if lines is None:  # 强排兜底：nowrap 超宽，或 wrap 最小字号仍排不下（含障碍封死）
             y0, y1 = polygon_y_range(region["polygon"])
             cx = sum(p[0] for p in region["polygon"]) / len(region["polygon"])
             lines = [(text, cx, (y0 + y1) / 2)]

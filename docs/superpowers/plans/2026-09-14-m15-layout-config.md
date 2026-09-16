@@ -23,11 +23,13 @@
   ```
   元素定义按 kind：
   - `{"kind":"level_badge","pos":[x,y],"base_size":72,"star_size":60,"num_size":40}`（card 有 level 才渲染）
-  - `{"kind":"rarity","pos":[x,y],"size":48}`（card 有 rarity 才渲染）
+  - `{"kind":"rarity_flank","pos":[cx,y],"gap":16,"size":24}`（card 有 rarity 才渲染；**两个稀有度标对称布置于卡名两侧**：x = cx ± (卡名渲染宽度/2 + gap + size/2)，卡名较长时自然外移；pos 的 y 与卡名行中心一致）
   - `{"kind":"faction","pos":[x,y],"size":44}`（card 有 faction 且派系有对应资源色才渲染）
-  - `{"kind":"stat","field":"power","icon":"ll","pos":[x,y],"icon_size":32,"num_offset":[dx,dy],"font_size":30,"signed":false}`（card 有 field 字段才渲染；signed=true 显示正负号；num_offset 为数字中心相对图标中心的偏移）
+  - `{"kind":"stat","field":"power","icon":"ll","pos":[x,y],"icon_size":32,"num_offset":[dx,dy],"font_size":30,"signed":false,"icon_neg":"pj"}`（card 有 field 字段才渲染；signed=true 显示正负号；num_offset 为数字中心相对图标中心的偏移；**icon_neg 可选**：值 < 0 时换用该图标——战斗牌护甲为负即显示破甲贴图）
   区域定义：`{"polygon":[[x,y],...≥3点],"font_range":[max,min],"wrap":true|false,"font":"name"|"desc"}`。
-- 文本区渲染映射（pipeline 固定）：`name`←card["name"]；`desc`←card.get("description")；`footer`←card.get("footer") 或 `f"{card.get('shikigami', card['name'])}-{card['type']}"`（footer 区域存在才渲染）。
+- 正负号规则：战斗牌与法术觉醒牌的数值 signed=true，其余类型 signed=false。
+- 文本区渲染映射（pipeline 固定）：`name`←card["name"]；`desc`←card.get("description")；`footer`←card.get("footer") 或 `f"{card.get('shikigami', card['name'])}-{card['type']}"`，card 有 `special_type` 时再追加 `f"/{special_type}"`（footer 区域存在才渲染）。卡名/描述/脚注均居中，描述逐行居中。
+- **文本避让（obstacles）**：wrap 文本区排版时，激活的 stat 元素（field 存在于 card）作为障碍矩形参与逐行求宽——与该行 y 带相交的障碍物从所在侧收窄可用区间（末尾几行自然减少字数，参照官方卡「往昔之日」）。障碍矩形 = `[pos.x-icon_size/2, pos.y-icon_size/2, pos.x+icon_size/2+abs(num_offset.x)+font_size*1.5, pos.y+icon_size/2]`。
 - 多边形排版：字号从 font_range[0] 递减到 [1]；每行中线 y 与多边形求交线区间得可用宽度，贪心填词、行内在交线区间居中；排不下换更小字号；wrap=false 单行收缩字号（宽度=各行 y 处交线最大宽度）。
 - 默认布局初值（512 画布，据官方参考卡 307×546 换算，用户最终用 GUI 定稿）：见 Task 1 的 default_layout.json 完整内容。
 - render_card 签名扩展为 `render_card(card, assets_dir, layout=None)`（第三参可选，布局覆盖，默认 None=按 assets/包内加载）——向后兼容，BWPro 调用不变。
@@ -108,7 +110,7 @@ def test_default_layout_covers_all_types():
 
 def test_assets_layout_takes_precedence(tmp_path):
     custom = {t: {"elements": {}, "text_regions": {}} for t in TYPES}
-    custom["战斗"]["elements"]["rarity"] = {"kind": "rarity", "pos": [1, 2], "size": 48}
+    custom["战斗"]["elements"]["rarity"] = {"kind": "rarity_flank", "pos": [1, 2], "gap": 16, "size": 24}
     (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
     layouts = layout.load_layouts(tmp_path)
     assert layouts["战斗"]["elements"]["rarity"]["pos"] == [1, 2]
@@ -124,7 +126,7 @@ def test_expected_elements_per_type():
     layouts = layout.load_layouts(Path("不存在的目录"))
     assert set(layouts["式神"]["elements"]) == {"faction", "power", "health"}
     assert set(layouts["战斗"]["elements"]) == {"level", "rarity", "power", "shield"}
-    assert set(layouts["法术"]["elements"]) == {"level", "rarity"}
+    assert set(layouts["法术"]["elements"]) == {"level", "rarity", "power", "health"}
     assert set(layouts["形态"]["elements"]) == {"level", "rarity", "power", "health"}
     assert set(layouts["幻境"]["elements"]) == {"level", "rarity", "durability"}
     assert set(layouts["协战"]["elements"]) == {"level", "rarity"}
@@ -156,9 +158,9 @@ Expected: FAIL（layout 模块无 load_layouts）
   "战斗": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48},
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
       "power": {"kind": "stat", "field": "power+", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true},
-      "shield": {"kind": "stat", "field": "shield+", "icon": "hj", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true}
+      "shield": {"kind": "stat", "field": "shield+", "icon": "hj", "icon_neg": "pj", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true}
     },
     "text_regions": {
       "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
@@ -169,7 +171,9 @@ Expected: FAIL（layout 模块无 load_layouts）
   "法术": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48}
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
+      "power": {"kind": "stat", "field": "power+", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true},
+      "health": {"kind": "stat", "field": "health+", "icon": "sm", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true}
     },
     "text_regions": {
       "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
@@ -180,7 +184,7 @@ Expected: FAIL（layout 模块无 load_layouts）
   "形态": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48},
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
       "power": {"kind": "stat", "field": "power", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false},
       "health": {"kind": "stat", "field": "health", "icon": "sm", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false}
     },
@@ -193,7 +197,7 @@ Expected: FAIL（layout 模块无 load_layouts）
   "幻境": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48},
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
       "durability": {"kind": "stat", "field": "durability", "icon": "nj", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false}
     },
     "text_regions": {
@@ -205,7 +209,7 @@ Expected: FAIL（layout 模块无 load_layouts）
   "协战": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48}
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24}
     },
     "text_regions": {
       "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
@@ -257,8 +261,8 @@ artifacts = ["bwpdiy/render/default_layout.json"]
 
 ```markdown
 | 布局配置 | `assets/layout.json`（出厂值入 git）+ 包内 `bwpdiy/render/default_layout.json` 回退；按 6 卡牌类型各一套「元素表 + 命名文本区」 |
-| 元素 | 布局中的可定位渲染单元，kind ∈ level_badge / rarity / faction / stat（图标+数字一组，num_offset 相对偏移，signed 控制正负号） |
-| 文本区 | 命名多边形区域（name/desc/footer），逐行扫描线求宽、行内居中、字号递减适配；footer = “式神名-类型”小字 |
+| 元素 | 布局中的可定位渲染单元，kind ∈ level_badge / rarity_flank（卡名两侧对称双标，随卡名宽度外移）/ faction / stat（图标+数字一组，num_offset 相对偏移，signed 控制正负号，icon_neg 负值换贴图） |
+| 文本区 | 命名多边形区域（name/desc/footer），逐行扫描线求宽、行内居中、字号递减适配；footer = “式神名-类型[/子类型]”小字；激活的 stat 元素作为障碍矩形参与 desc 逐行收窄（文本避让） |
 ```
 
 - [ ] **Step 4: 跑测试确认通过**
@@ -293,8 +297,9 @@ git push
 - Produces:
   - `geometry.polygon_x_span(polygon: list[list[float]], y: float) -> tuple[float, float] | None`：水平扫描线 y 与多边形交点的 x 区间；无交返回 None
   - `geometry.polygon_y_range(polygon) -> tuple[float, float]`
-  - `text.fit_in_region(text: str, region: dict, lib: AssetLibrary) -> tuple[FreeTypeFont, list[tuple[str, float, float]]] | None`：返回 (字体, [(行文本, 行中心x, 行中心y)])；排不下返回 None
-  - `text.draw_region(canvas, lib, text: str, region: dict, fill=TEXT_FILL) -> Image.Image`：fit_in_region 失败时按最小字号强排（截断超出部分不特殊处理）
+  - `geometry.clamp_span_by_obstacles(span: tuple[float, float], y: float, half_h: float, obstacles: list[tuple[float, float, float, float]]) -> tuple[float, float] | None`：障碍矩形 (x0,y0,x1,y1) 与行 y 带 [y-half_h, y+half_h] 相交时，按障碍物中心相对 span 中心的方向收窄 span（左侧障碍抬左界、右侧障碍压右界，留 4px 间隙）；收窄后宽度 ≤ 0 返回 None
+  - `text.fit_in_region(text: str, region: dict, lib: AssetLibrary, obstacles: list | None = None) -> tuple[FreeTypeFont, list[tuple[str, float, float]]] | None`：返回 (字体, [(行文本, 行中心x, 行中心y)])；排不下返回 None
+  - `text.draw_region(canvas, lib, text: str, region: dict, obstacles: list | None = None, fill=TEXT_FILL) -> Image.Image`：fit_in_region 失败时按最小字号强排（截断超出部分不特殊处理）
   - `text.TEXT_FILL = (60, 45, 30, 255)`
 
 - [ ] **Step 1: 写失败测试**
@@ -327,6 +332,22 @@ def test_triangle_span_narrows_upward():
 
 def test_y_range():
     assert polygon_y_range(TRIANGLE) == (100, 200)
+
+
+def test_clamp_span_by_obstacles():
+    from bwpdiy.render.geometry import clamp_span_by_obstacles
+    span = (100.0, 300.0)
+    # 左侧障碍（数值标在左下）：抬左界
+    left_obs = [(110.0, 140.0, 150.0, 170.0)]
+    assert clamp_span_by_obstacles(span, 150, 12, left_obs) == (154.0, 300.0)
+    # 右侧障碍：压右界
+    right_obs = [(250.0, 140.0, 290.0, 170.0)]
+    assert clamp_span_by_obstacles(span, 150, 12, right_obs) == (100.0, 246.0)
+    # y 带不相交：不受影响
+    assert clamp_span_by_obstacles(span, 100, 12, left_obs) == span
+    # 双侧挤压到无宽度：None
+    both = [(110.0, 140.0, 190.0, 170.0), (210.0, 140.0, 290.0, 170.0)]
+    assert clamp_span_by_obstacles((150.0, 200.0), 150, 12, both) is None
 ```
 
 `tests/test_text.py`（整体替换旧文件）：
@@ -385,6 +406,20 @@ def test_draw_region_renders_pixels(assets_dir):
     lib = AssetLibrary(assets_dir)
     img = draw_region(canvas(), lib, "渲染测试", rect_region(100, 100, 400, 200))
     assert sum(1 for p in img.getdata() if p[3] > 0) > 50
+
+
+def test_obstacles_narrow_bottom_lines(assets_dir):
+    # 底部左右有数值标障碍：长描述末尾几行可用宽度应变窄（行数增多或末行更短）
+    lib = AssetLibrary(assets_dir)
+    text = "这是一段用于验证障碍避让的长描述文本，需要排很多行才能放下。" * 2
+    region = rect_region(100, 100, 400, 400)
+    obstacles = [(100.0, 350.0, 160.0, 400.0), (340.0, 350.0, 400.0, 400.0)]
+    font, lines = fit_in_region(text, region, lib, obstacles=obstacles)
+    assert lines is not None
+    bottom = [l for l in lines if l[2] > 350]
+    top = [l for l in lines if l[2] < 300]
+    assert bottom and top
+    assert max(font.getlength(l[0]) for l in bottom) < max(font.getlength(l[0]) for l in top)
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -423,6 +458,24 @@ def polygon_x_span(polygon: list[list[float]], y: float) -> tuple[float, float] 
 def polygon_y_range(polygon: list[list[float]]) -> tuple[float, float]:
     ys = [p[1] for p in polygon]
     return min(ys), max(ys)
+
+
+def clamp_span_by_obstacles(span: tuple[float, float], y: float, half_h: float,
+                            obstacles: list[tuple[float, float, float, float]],
+                            gap: float = 4.0) -> tuple[float, float] | None:
+    """行 y 带 [y-half_h, y+half_h] 与障碍矩形相交时按侧收窄 span；无宽度返回 None。"""
+    left, right = span
+    center = (left + right) / 2
+    for x0, y0, x1, y1 in obstacles:
+        if y1 < y - half_h or y0 > y + half_h:
+            continue
+        if (x0 + x1) / 2 < center:
+            left = max(left, x1 + gap)
+        else:
+            right = min(right, x0 - gap)
+    if right - left <= 0:
+        return None
+    return left, right
 ```
 
 `bwpdiy/render/text.py`（整体替换）：
@@ -433,7 +486,8 @@ def polygon_y_range(polygon: list[list[float]]) -> tuple[float, float]:
 from PIL import Image, ImageDraw, ImageFont
 
 from bwpdiy.render.assets import AssetLibrary
-from bwpdiy.render.geometry import polygon_x_span, polygon_y_range
+from bwpdiy.render.geometry import (clamp_span_by_obstacles, polygon_x_span,
+                                    polygon_y_range)
 
 TEXT_FILL = (60, 45, 30, 255)
 
@@ -446,13 +500,24 @@ def _line_height(font: ImageFont.FreeTypeFont) -> float:
 
 
 def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
-                    polygon: list[list[float]], wrap: bool):
+                    polygon: list[list[float]], wrap: bool,
+                    obstacles: list | None = None):
     """按给定字号在多边形内排版，成功返回 [(行, cx, cy)]，失败返回 None。"""
+    obstacles = obstacles or []
     y_top, y_bottom = polygon_y_range(polygon)
     lh = _line_height(font)
+
+    def span_at(y: float):
+        span = polygon_x_span(polygon, y)
+        if span is None:
+            return None
+        if obstacles:
+            span = clamp_span_by_obstacles(span, y, lh / 2, obstacles)
+        return span
+
     if not wrap:
         y = (y_top + y_bottom) / 2
-        span = polygon_x_span(polygon, y)
+        span = span_at(y)
         if span is None or font.getlength(text) > span[1] - span[0]:
             return None
         return [(text, (span[0] + span[1]) / 2, y)]
@@ -463,7 +528,7 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
     for pi, paragraph in enumerate(paragraphs):
         for ch in paragraph:
             trial = current + ch
-            span = polygon_x_span(polygon, y)
+            span = span_at(y)
             width = (span[1] - span[0]) if span else 0.0
             if current and font.getlength(trial) > width:
                 lines.append((current, (span[0] + span[1]) / 2, y))
@@ -474,7 +539,7 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
             else:
                 current = trial
         if pi < len(paragraphs) - 1 or current:
-            span = polygon_x_span(polygon, y)
+            span = span_at(y)
             if span is None:
                 return None
             lines.append((current, (span[0] + span[1]) / 2, y))
@@ -486,23 +551,25 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
     return lines or None
 
 
-def fit_in_region(text: str, region: dict, lib: AssetLibrary):
+def fit_in_region(text: str, region: dict, lib: AssetLibrary,
+                  obstacles: list | None = None):
     """字号从大到小适配，返回 (font, lines)；最小字号仍排不下时返回 None。"""
     max_size, min_size = region["font_range"]
     for size in range(max_size, min_size - 1, -1):
         font = lib.font(region["font"], size)
-        lines = _layout_at_size(text, font, region["polygon"], region["wrap"])
+        lines = _layout_at_size(text, font, region["polygon"], region["wrap"], obstacles)
         if lines is not None:
             return font, lines
     return None
 
 
 def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
-                region: dict, fill=TEXT_FILL) -> Image.Image:
-    fitted = fit_in_region(text, region, lib)
+                region: dict, obstacles: list | None = None,
+                fill=TEXT_FILL) -> Image.Image:
+    fitted = fit_in_region(text, region, lib, obstacles)
     if fitted is None:
         font = lib.font(region["font"], region["font_range"][1])
-        lines = _layout_at_size(text, font, region["polygon"], region["wrap"])
+        lines = _layout_at_size(text, font, region["polygon"], region["wrap"], obstacles)
         if lines is None:  # 单行 nowrap 超宽：居中强排
             y0, y1 = polygon_y_range(region["polygon"])
             cx = sum(p[0] for p in region["polygon"]) / len(region["polygon"])
@@ -519,7 +586,7 @@ def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_geometry.py tests/test_text.py -q`
-Expected: 4 + 5 passed
+Expected: 5 + 6 passed
 
 - [ ] **Step 5: Commit**
 
@@ -539,11 +606,12 @@ git push
 - Test: `tests/test_badges.py`（整体重写）、`tests/test_pipeline.py`（微调）
 
 **Interfaces:**
-- Consumes: `AssetLibrary`、`common.paste_centered`、`layout.get_type_layout`、`text.draw_region`
+- Consumes: `AssetLibrary`、`common.paste_centered`、`layout.get_type_layout`、`text.draw_region`、`text.fit_in_region`
 - Produces:
-  - `badges.render_element(canvas, lib, name: str, elem: dict, card: dict) -> Image.Image`：按 elem["kind"] 分派；渲染条件不满足（缺 level/rarity/faction/field）时原样返回 canvas
+  - `badges.render_element(canvas, lib, name: str, elem: dict, card: dict, ctx: dict | None = None) -> Image.Image`：按 elem["kind"] 分派；渲染条件不满足（缺 level/rarity/faction/field）时原样返回 canvas。`ctx["name_width"]` 供 rarity_flank 计算外移量（pipeline 用 name 区适配后的字体测得）
+  - `badges.stat_obstacle(elem: dict) -> tuple[float, float, float, float]`：stat 元素的障碍矩形（公式见 Global Constraints）
   - `render_card(card, assets_dir, layout: dict | None = None) -> Image.Image`（第三参为单类型布局覆盖 {"elements","text_regions"}）
-  - 文本区映射：`name`←card["name"]、`desc`←card.get("description")、`footer`←card.get("footer") 或 `f"{card.get('shikigami', card['name'])}-{card['type']}"`
+  - 文本区映射：`name`←card["name"]、`desc`←card.get("description")（排版时传入激活 stat 元素的障碍矩形）、`footer`←card.get("footer") 或 `f"{card.get('shikigami', card['name'])}-{card['type']}"`，有 `special_type` 再追加 `/{special_type}`
 
 - [ ] **Step 1: 写失败测试**
 
@@ -574,11 +642,22 @@ def test_level_badge(assets_dir):
         opaque(render_element(canvas(), lib, "level", elem, {})) == 0
 
 
-def test_rarity_and_faction(assets_dir):
+def test_rarity_flank_symmetric(assets_dir):
     lib = AssetLibrary(assets_dir)
-    img = render_element(canvas(), lib, "rarity",
-                         {"kind": "rarity", "pos": [392, 65], "size": 48}, {"rarity": "SSR"})
-    assert opaque(img) > 0
+    elem = {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24}
+    # 卡名越宽，两标越外移：比较短名/长名 ctx 下右标位置的像素差异
+    narrow = render_element(canvas(), lib, "rarity", elem, {"rarity": "SSR"}, {"name_width": 40})
+    wide = render_element(canvas(), lib, "rarity", elem, {"rarity": "SSR"}, {"name_width": 160})
+    assert opaque(narrow) > 0 and opaque(wide) > 0
+    # 右标中心 x = 256 + name_width/2 + 16 + 12：宽名时右标右侧应有像素而窄名时没有
+    assert wide.getpixel((256 + 80 + 16 + 24, 358))[3] > 0
+    assert narrow.getpixel((256 + 80 + 16 + 24, 358))[3] == 0
+    # 无 rarity：跳过
+    assert opaque(render_element(canvas(), lib, "rarity", elem, {})) == 0
+
+
+def test_faction(assets_dir):
+    lib = AssetLibrary(assets_dir)
     img = render_element(canvas(), lib, "faction",
                          {"kind": "faction", "pos": [256, 318], "size": 44}, {"faction": "红莲"})
     assert opaque(img) > 0
@@ -596,6 +675,21 @@ def test_stat_signed_and_offset(assets_dir):
     assert opaque(img) > 100  # 图标+数字两处像素
     # 缺字段跳过
     assert opaque(render_element(canvas(), lib, "power", elem, {})) == 0
+
+
+def test_stat_icon_neg(assets_dir):
+    from bwpdiy.render.badges import stat_obstacle
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": "shield+", "icon": "hj", "icon_neg": "pj",
+            "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0],
+            "font_size": 30, "signed": True}
+    pos_img = render_element(canvas(), lib, "shield", elem, {"shield+": 1})
+    neg_img = render_element(canvas(), lib, "shield", elem, {"shield+": -1})
+    assert list(pos_img.getdata()) != list(neg_img.getdata())  # 负值换用破甲贴图
+    # stat_obstacle 矩形公式
+    x0, y0, x1, y1 = stat_obstacle(elem)
+    assert x0 == 360 - 16 and y0 == 485 - 16
+    assert x1 > 360 + 16 and y1 == 485 + 16
 ```
 
 `tests/test_pipeline.py` 微调：`make_card` 不变；新增：
@@ -617,6 +711,24 @@ def test_footer_rendered(assets_dir, sample_art):
             "level": 1, "rarity": "N", "_base_dir": str(sample_art.parent)}
     img = render_card(card, assets_dir)  # footer = "测试式神-战斗"，不炸即过
     assert img.mode == "RGBA"
+
+
+def test_footer_with_special_type(assets_dir, sample_art):
+    card = {"type": "法术", "name": "sample_art", "shikigami": "测试式神",
+            "special_type": "惊雷", "level": 1, "rarity": "N",
+            "_base_dir": str(sample_art.parent)}
+    img = render_card(card, assets_dir)  # footer = "测试式神-法术/惊雷"，不炸即过
+    assert img.mode == "RGBA"
+
+
+def test_desc_avoids_stat_obstacles(assets_dir, sample_art):
+    # 左右下有数值贴图的战斗牌 + 长描述：排版须避让（不炸且出图）
+    card = {"type": "战斗", "name": "sample_art", "shikigami": "测试式神",
+            "level": 1, "rarity": "N", "power+": 2, "shield+": -1,
+            "description": "这是一段相当长的描述文本，用来验证末端行避开数值贴图的排版行为是否正常工作。" * 2,
+            "_base_dir": str(sample_art.parent)}
+    img = render_card(card, assets_dir)
+    assert img.mode == "RGBA"
 ```
 
 - [ ] **Step 2: 跑测试确认失败**
@@ -629,7 +741,7 @@ Expected: FAIL（badges 接口已变 / pipeline 未实现 layout 参数）
 `bwpdiy/render/badges.py`（整体替换）：
 
 ```python
-"""元素渲染：按布局元素定义渲染 等级标/稀有度标/派系标/数值标。"""
+"""元素渲染：按布局元素定义渲染 等级标/稀有度双标/派系标/数值标。"""
 
 from PIL import Image, ImageDraw
 
@@ -645,8 +757,17 @@ FACTION_COLOR = {
 }
 
 
+def stat_obstacle(elem: dict) -> tuple[float, float, float, float]:
+    """stat 元素的障碍矩形（文本避让用，公式见 Global Constraints）。"""
+    x, y = elem["pos"]
+    half = elem["icon_size"] / 2
+    return (x - half, y - half,
+            x + half + abs(elem["num_offset"][0]) + elem["font_size"] * 1.5,
+            y + half)
+
+
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
-                   elem: dict, card: dict) -> Image.Image:
+                   elem: dict, card: dict, ctx: dict | None = None) -> Image.Image:
     """渲染单个布局元素；渲染条件不满足时原样返回 canvas。"""
     kind = elem["kind"]
     if kind == "level_badge":
@@ -659,10 +780,16 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                                  (elem["star_size"], elem["star_size"]))
         return paste_centered(out, lib.level_num("brown", card["level"]),
                               elem["pos"], (elem["num_size"], elem["num_size"]))
-    if kind == "rarity":
+    if kind == "rarity_flank":
         if not card.get("rarity"):
             return canvas
-        return paste_centered(canvas, lib.rarity(card["rarity"]), elem["pos"],
+        cx, y = elem["pos"]
+        name_width = (ctx or {}).get("name_width", 0)
+        offset = name_width / 2 + elem["gap"] + elem["size"] / 2
+        mark = lib.rarity(card["rarity"])
+        out = paste_centered(canvas, mark, (cx - offset, y),
+                             (elem["size"], elem["size"]))
+        return paste_centered(out, mark, (cx + offset, y),
                               (elem["size"], elem["size"]))
     if kind == "faction":
         color = FACTION_COLOR.get(card.get("faction", ""))
@@ -674,9 +801,12 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         field = elem["field"]
         if field not in card:
             return canvas
-        out = paste_centered(canvas, lib.icon(elem["icon"], "l"), elem["pos"],
-                             (elem["icon_size"], elem["icon_size"]))
         value = card[field]
+        icon = elem["icon"]
+        if value < 0 and elem.get("icon_neg"):
+            icon = elem["icon_neg"]  # 负值换贴图（护甲→破甲）
+        out = paste_centered(canvas, lib.icon(icon, "l"), elem["pos"],
+                             (elem["icon_size"], elem["icon_size"]))
         text = f"{value:+d}" if elem.get("signed") else str(value)
         pos = elem["pos"]
         num_pos = (pos[0] + elem["num_offset"][0], pos[1] + elem["num_offset"][1])
@@ -693,22 +823,32 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
 
 - 删除 `from bwpdiy.render import layout`（若存在）与对 badges 旧函数（add_level_badge/add_rarity/add_faction/add_stats）的 import，改为：
   ```python
-  from bwpdiy.render.badges import render_element
+  from bwpdiy.render.badges import render_element, stat_obstacle
   from bwpdiy.render.layout import get_type_layout, load_layouts
-  from bwpdiy.render.text import draw_region
+  from bwpdiy.render.text import draw_region, fit_in_region
   ```
 - 签名改 `def render_card(card: dict, assets_dir: Path, layout: dict | None = None) -> Image.Image:`
 - 卡图/牌框/蒙版合成逻辑不变；其后改为：
   ```python
   type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
-  for elem_name, elem in type_layout["elements"].items():
-      canvas = render_element(canvas, lib, elem_name, elem, card)
   regions = type_layout["text_regions"]
+  # 先测卡名宽度（rarity_flank 外移量依据；排不下按 0）
+  name_fit = fit_in_region(card["name"], regions["name"], lib)
+  ctx = {"name_width": name_fit[0].getlength(card["name"]) if name_fit else 0}
+  for elem_name, elem in type_layout["elements"].items():
+      canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
   canvas = draw_region(canvas, lib, card["name"], regions["name"])
   if card.get("description") and "desc" in regions:
-      canvas = draw_region(canvas, lib, card["description"], regions["desc"])
+      obstacles = [stat_obstacle(e) for e in type_layout["elements"].values()
+                   if e["kind"] == "stat" and e["field"] in card]
+      canvas = draw_region(canvas, lib, card["description"], regions["desc"],
+                           obstacles=obstacles)
   if "footer" in regions:
-      footer = card.get("footer") or f"{card.get('shikigami', card['name'])}-{card_type}"
+      footer = card.get("footer")
+      if not footer:
+          footer = f"{card.get('shikigami', card['name'])}-{card_type}"
+          if card.get("special_type"):
+              footer += f"/{card['special_type']}"
       canvas = draw_region(canvas, lib, footer, regions["footer"])
   ```
 - 删除 `_STAT_KEYS` 与旧的 stats 分支、旧的 draw_name/draw_description 调用。
@@ -1134,8 +1274,14 @@ function buildProps() {
       numRow(div, 'font_size', e.font_size, v => e.font_size = v);
       checkRow(div, 'signed', e.signed, v => e.signed = v);
       selRow(div, 'icon', ['ll','sm','hj','nj','pj','zl','fl','sj','nl'], e.icon, v => e.icon = v);
+      selRow(div, 'icon_neg', ['（无）','ll','sm','hj','nj','pj','zl','fl','sj','nl'], e.icon_neg || '（无）',
+             v => { if (v === '（无）') delete e.icon_neg; else e.icon_neg = v; });
     }
-    if (e.kind === 'rarity' || e.kind === 'faction')
+    if (e.kind === 'rarity_flank') {
+      numRow(div, 'gap', e.gap, v => e.gap = v);
+      numRow(div, 'size', e.size, v => e.size = v);
+    }
+    if (e.kind === 'faction')
       numRow(div, 'size', e.size, v => e.size = v);
     if (e.kind === 'level_badge') {
       numRow(div, 'base_size', e.base_size, v => e.base_size = v);

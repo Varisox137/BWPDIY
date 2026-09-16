@@ -158,3 +158,4 @@ pytest 三层：schema 校验单测、渲染 smoke（各类型各出一张图不
 2. **BWPro 侧美术资产目录安排待定**：`artwork.images[].path` 在 BWPro 调用侧的相对基准目录以后确定。
 3. **式神卡资源核实**：式神卡外观形状同形态牌（`xt`），初始化时核实 `assets/` 里式神渲染实际复用哪些资源并在 terminology.md 标注。
 4. 框品资源映射：常规=norm / 琉璃=blue / 墨染=black / 百炼=red（用户已确认，二期开放时按此接线）。
+5. **觉醒星美术资源可能需重制**（用户提醒）：`assets/levels/star.png`（126×127，legacy 程序化生成）在正式使用前需用户确认/替换。

@@ -12,6 +12,9 @@ library/
 # 旧版半成品（只读封存参考，不进本仓库）
 legacy/
 
+# 示例卡渲染输出（仅本地，不入库）
+examples/
+
 # 本地笔记
 thoughts.txt
 

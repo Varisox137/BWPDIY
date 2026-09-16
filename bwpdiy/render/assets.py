@@ -48,8 +48,7 @@ class AssetLibrary:
         return self._img(f"rarity/{rarity}.png")
 
     def faction(self, color: str, style: int = 1) -> Image.Image:
-        suffix = "" if color == "blue" and style == 1 else f"_{style}"
-        return self._img(f"factions/{color}{suffix}.png")
+        return self._img(f"factions/{color}_{style}.png")
 
     def icon(self, name: str, size: str = "l") -> Image.Image:
         return self._img(f"icons/{name}_{size}.png")

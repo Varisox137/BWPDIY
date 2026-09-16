@@ -33,6 +33,7 @@
 - 多边形排版：字号从 font_range[0] 递减到 [1]；每行中线 y 与多边形求交线区间得可用宽度，贪心填词、行内在交线区间居中；排不下换更小字号；wrap=false 单行收缩字号（宽度=各行 y 处交线最大宽度）。
 - 默认布局初值（512 画布，据官方参考卡 307×546 换算，用户最终用 GUI 定稿）：见 Task 1 的 default_layout.json 完整内容。
 - render_card 签名扩展为 `render_card(card, assets_dir, layout=None)`（第三参可选，布局覆盖，默认 None=按 assets/包内加载）——向后兼容，BWPro 调用不变。
+- 一期固定：等级数字颜色 **yellow**（对局 4 色二期）；卡牌缺 `rarity` 字段时**默认按 "R"** 渲染稀有度双标；factions 命名统一 `{color}_{style}.png`（blue 特例已随用户重命名消除，Task 3 顺带简化 `AssetLibrary.faction()`）。
 - 测试命令（Windows Git Bash）：`PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest -q`；迭代期只跑受影响文件。
 - 中文 conventional commit；每次 commit 后 `git push`。
 - 术语同步：新增「布局配置/元素/文本区/多边形排版/footer」条目进 docs/terminology.md（Task 1）；README 进度与 AGENTS.md 随 Task 6 更新。
@@ -652,8 +653,9 @@ def test_rarity_flank_symmetric(assets_dir):
     # 右标中心 x = 256 + name_width/2 + 16 + 12：宽名时右标右侧应有像素而窄名时没有
     assert wide.getpixel((256 + 80 + 16 + 24, 358))[3] > 0
     assert narrow.getpixel((256 + 80 + 16 + 24, 358))[3] == 0
-    # 无 rarity：跳过
-    assert opaque(render_element(canvas(), lib, "rarity", elem, {})) == 0
+    # 无 rarity 字段：按默认 R 渲染
+    default_r = render_element(canvas(), lib, "rarity", elem, {}, {"name_width": 40})
+    assert opaque(default_r) > 0
 
 
 def test_faction(assets_dir):
@@ -778,15 +780,14 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         if card.get("evolve", False):
             out = paste_centered(out, lib.level_star(), elem["pos"],
                                  (elem["star_size"], elem["star_size"]))
-        return paste_centered(out, lib.level_num("brown", card["level"]),
+        return paste_centered(out, lib.level_num("yellow", card["level"]),
                               elem["pos"], (elem["num_size"], elem["num_size"]))
     if kind == "rarity_flank":
-        if not card.get("rarity"):
-            return canvas
+        rarity = card.get("rarity", "R")  # 缺省默认 R
         cx, y = elem["pos"]
         name_width = (ctx or {}).get("name_width", 0)
         offset = name_width / 2 + elem["gap"] + elem["size"] / 2
-        mark = lib.rarity(card["rarity"])
+        mark = lib.rarity(rarity)
         out = paste_centered(canvas, mark, (cx - offset, y),
                              (elem["size"], elem["size"]))
         return paste_centered(out, mark, (cx + offset, y),
@@ -853,6 +854,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
   ```
 - 删除 `_STAT_KEYS` 与旧的 stats 分支、旧的 draw_name/draw_description 调用。
 - 顺带：`assets/layout.json` 与 `bwpdiy/render/default_layout.json` 的式神 faction 元素补上 `"style": 2`（派系标默认样式 2）。
+- 顺带：`AssetLibrary.faction()` 删除 blue 无后缀特例（用户已将 blue.png 重命名为 blue_1.png，命名统一为 `{color}_{style}.png`），简化为 `return self._img(f"factions/{color}_{style}.png")`；提交时带上该重命名（`git add assets/factions/`）。
 
 - [ ] **Step 4: 跑测试确认通过**
 

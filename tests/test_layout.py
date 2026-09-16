@@ -22,7 +22,7 @@ def test_default_layout_covers_all_types():
 
 def test_assets_layout_takes_precedence(tmp_path):
     custom = {t: {"elements": {}, "text_regions": {}} for t in TYPES}
-    custom["战斗"]["elements"]["rarity"] = {"kind": "rarity", "pos": [1, 2], "size": 48}
+    custom["战斗"]["elements"]["rarity"] = {"kind": "rarity_flank", "pos": [1, 2], "gap": 16, "size": 24}
     (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
     layouts = layout.load_layouts(tmp_path)
     assert layouts["战斗"]["elements"]["rarity"]["pos"] == [1, 2]
@@ -38,7 +38,7 @@ def test_expected_elements_per_type():
     layouts = layout.load_layouts(Path("不存在的目录"))
     assert set(layouts["式神"]["elements"]) == {"faction", "power", "health"}
     assert set(layouts["战斗"]["elements"]) == {"level", "rarity", "power", "shield"}
-    assert set(layouts["法术"]["elements"]) == {"level", "rarity"}
+    assert set(layouts["法术"]["elements"]) == {"level", "rarity", "power", "health"}
     assert set(layouts["形态"]["elements"]) == {"level", "rarity", "power", "health"}
     assert set(layouts["幻境"]["elements"]) == {"level", "rarity", "durability"}
     assert set(layouts["协战"]["elements"]) == {"level", "rarity"}

@@ -14,9 +14,9 @@
   "战斗": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48},
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
       "power": {"kind": "stat", "field": "power+", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true},
-      "shield": {"kind": "stat", "field": "shield+", "icon": "hj", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true}
+      "shield": {"kind": "stat", "field": "shield+", "icon": "hj", "icon_neg": "pj", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true}
     },
     "text_regions": {
       "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
@@ -27,7 +27,9 @@
   "法术": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48}
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
+      "power": {"kind": "stat", "field": "power+", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true},
+      "health": {"kind": "stat", "field": "health+", "icon": "sm", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true}
     },
     "text_regions": {
       "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
@@ -38,7 +40,7 @@
   "形态": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48},
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
       "power": {"kind": "stat", "field": "power", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false},
       "health": {"kind": "stat", "field": "health", "icon": "sm", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false}
     },
@@ -51,7 +53,7 @@
   "幻境": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48},
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
       "durability": {"kind": "stat", "field": "durability", "icon": "nj", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false}
     },
     "text_regions": {
@@ -63,7 +65,7 @@
   "协战": {
     "elements": {
       "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity", "pos": [392, 65], "size": 48}
+      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24}
     },
     "text_regions": {
       "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},

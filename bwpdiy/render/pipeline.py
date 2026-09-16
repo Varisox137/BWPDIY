@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image
 
-CARD_SIZE = (307, 546)
+CARD_SIZE = (512, 512)
 
 
 def render_card(card: dict, assets_dir: Path) -> Image.Image:

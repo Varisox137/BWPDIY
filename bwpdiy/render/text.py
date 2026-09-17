@@ -1,10 +1,9 @@
-"""文本层：多边形文本区排版（扫描线求宽、行内居中、字号递减适配）。"""
+"""文本层：矩形文本区排版（自动换行、行内居中、字号递减适配、障碍避让）。"""
 
 from PIL import Image, ImageDraw, ImageFont
 
 from bwpdiy.render.assets import AssetLibrary
-from bwpdiy.render.geometry import (clamp_span_by_obstacles, polygon_x_span,
-                                    polygon_y_range)
+from bwpdiy.render.geometry import clamp_span_by_obstacles
 
 TEXT_FILL = (60, 45, 30, 255)
 
@@ -17,17 +16,17 @@ def _line_height(font: ImageFont.FreeTypeFont) -> float:
 
 
 def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
-                    polygon: list[list[float]], wrap: bool,
+                    region: dict, wrap: bool,
                     obstacles: list | None = None):
-    """按给定字号在多边形内排版，成功返回 [(行, cx, cy)]，失败返回 None。"""
+    """按给定字号在矩形区内排版，成功返回 [(行, cx, cy)]，失败返回 None。"""
     obstacles = obstacles or []
-    y_top, y_bottom = polygon_y_range(polygon)
+    cx, cy = region["center"]
+    half_w, half_h = region["width"] / 2, region["height"] / 2
+    y_top, y_bottom = cy - half_h, cy + half_h
     lh = _line_height(font)
 
     def span_at(y: float):
-        span = polygon_x_span(polygon, y)
-        if span is None:
-            return None
+        span = (cx - half_w, cx + half_w)
         if obstacles:
             span = clamp_span_by_obstacles(span, y, lh / 2, obstacles)
         return span
@@ -76,7 +75,7 @@ def fit_in_region(text: str, region: dict, lib: AssetLibrary,
     max_size, min_size = region["font_range"]
     for size in range(max_size, min_size - 1, -1):
         font = lib.font(region["font"], size)
-        lines = _layout_at_size(text, font, region["polygon"], region["wrap"], obstacles)
+        lines = _layout_at_size(text, font, region, region["wrap"], obstacles)
         if lines is not None:
             return font, lines
     return None
@@ -88,11 +87,9 @@ def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
     fitted = fit_in_region(text, region, lib, obstacles)
     if fitted is None:
         font = lib.font(region["font"], region["font_range"][1])
-        lines = _layout_at_size(text, font, region["polygon"], region["wrap"], obstacles)
+        lines = _layout_at_size(text, font, region, region["wrap"], obstacles)
         if lines is None:  # 强排兜底：nowrap 超宽，或 wrap 最小字号仍排不下（含障碍封死）
-            y0, y1 = polygon_y_range(region["polygon"])
-            cx = sum(p[0] for p in region["polygon"]) / len(region["polygon"])
-            lines = [(text, cx, (y0 + y1) / 2)]
+            lines = [(text, region["center"][0], region["center"][1])]
         fitted = (font, lines)
     font, lines = fitted
     out = canvas.copy()

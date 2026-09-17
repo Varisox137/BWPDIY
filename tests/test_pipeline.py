@@ -75,6 +75,18 @@ def test_footer_with_special_type(assets_dir, sample_art):
     assert img.mode == "RGBA"
 
 
+def test_crop_symmetric_around_frame_center(assets_dir, sample_art):
+    """合成输出以牌框中心 x=256 为基准水平对称裁剪/补边（元素探出牌框不再导致内容偏移）。"""
+    card = make_card(sample_art.parent, "战斗", **{"level": 1, "rarity": "R", "power+": 1, "shield+": 1})
+    full = render_card(card, assets_dir, crop=False)
+    bbox = full.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
+    half = max(256 - bbox[0], bbox[2] - 256)
+    expected = full.crop((256 - half, bbox[1], 256 + half, bbox[3]))
+    out = render_card(card, assets_dir, crop=True)
+    assert out.size == expected.size
+    assert list(out.getdata()) == list(expected.getdata())
+
+
 def test_desc_avoids_stat_obstacles(assets_dir, sample_art):
     # 左右下有数值贴图的战斗牌 + 长描述：排版须避让（不炸且出图）
     card = {"type": "战斗", "name": "sample_art", "shikigami": "测试式神",

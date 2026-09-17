@@ -9,7 +9,8 @@ def canvas():
 
 
 def rect_region(x0, y0, x1, y1, **kw):
-    region = {"polygon": [[x0, y0], [x1, y0], [x1, y1], [x0, y1]],
+    region = {"center": [(x0 + x1) / 2, (y0 + y1) / 2],
+              "width": x1 - x0, "height": y1 - y0,
               "font_range": [36, 12], "wrap": True, "font": "desc"}
     region.update(kw)
     return region
@@ -35,16 +36,6 @@ def test_fit_nowrap_single_line(assets_dir):
     region = rect_region(100, 100, 400, 160, wrap=False, font="name")
     font, lines = fit_in_region("卡牌名", region, lib)
     assert len(lines) == 1
-
-
-def test_fit_triangle_centers_per_line(assets_dir):
-    lib = AssetLibrary(assets_dir)
-    region = {"polygon": [[100, 300], [400, 300], [250, 100]],
-              "font_range": [24, 12], "wrap": True, "font": "desc"}
-    font, lines = fit_in_region("三角区域排版测试文本内容", region, lib)
-    assert len(lines) >= 1
-    for _, cx, _ in lines:
-        assert abs(cx - 250) < 1e-6  # 对称三角，每行中心都在 x=250
 
 
 def test_draw_region_renders_pixels(assets_dir):

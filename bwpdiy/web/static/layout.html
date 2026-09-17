@@ -41,7 +41,7 @@ const ICONS = ['ll', 'sm', 'hj', 'nj', 'pj', 'zl', 'fl', 'nl'];
 const FONTS = ['name', 'desc'];
 let layouts = null;          // 完整布局 dict（/api/layout）
 let curType = "战斗";
-let sel = null;              // {kind:'element'|'region'|'vertex', name, vi?}
+let sel = null;              // {kind:'element'|'region', name}
 let dirty = false;
 const canvas = document.getElementById('preview');
 const ctx = canvas.getContext('2d');
@@ -167,12 +167,10 @@ function draw() {
     }
   }
   for (const [name, r] of Object.entries(tl.text_regions)) {
-    ctx.strokeStyle = sel && sel.name === name ? '#ff4' : '#4f4';
-    ctx.beginPath();
-    r.polygon.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
-    ctx.closePath(); ctx.stroke();
-    r.polygon.forEach(([x, y], vi) =>
-      handle([x, y], sel && sel.kind === 'vertex' && sel.name === name && sel.vi === vi ? '#ff4' : '#4f4', 5, true));
+    const active = sel && sel.name === name;
+    ctx.strokeStyle = active ? '#ff4' : '#4f4';
+    ctx.strokeRect(r.center[0] - r.width / 2, r.center[1] - r.height / 2, r.width, r.height);
+    handle(r.center, active ? '#ff4' : '#4f4', 5, true);
   }
 }
 function handle([x, y], color, s = 6, square = false) {
@@ -214,10 +212,8 @@ function pick(mx, my) {
     if (near(...e.pos)) return { sel: {kind: 'element', name}, set: (x, y) => { e.pos = [x, y]; } };
   }
   for (const [name, r] of Object.entries(tl.text_regions)) {
-    for (let vi = 0; vi < r.polygon.length; vi++) {
-      if (near(...r.polygon[vi])) return { sel: {kind: 'vertex', name, vi},
-        set: (x, y) => { r.polygon[vi] = [x, y]; } };
-    }
+    if (near(...r.center)) return { sel: {kind: 'region', name},
+      set: (x, y) => { r.center = [x, y]; } };
   }
   return null;
 }
@@ -226,7 +222,7 @@ function pick(mx, my) {
 function buildProps() {
   const div = document.getElementById('props');
   div.innerHTML = '';
-  if (!sel) { div.textContent = '点击元素/文本区/顶点以编辑'; return; }
+  if (!sel) { div.textContent = '点击元素/文本区以编辑'; return; }
   const tl = typeLayout();
   if (sel.kind === 'element') {
     const e = tl.elements[sel.name];
@@ -252,6 +248,8 @@ function buildProps() {
       selRow(div, 'style', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
     }
     if (e.kind === 'level_badge') {
+      // per-type 开关，不跨类型同步；协战按需求不提供开关（等价始终启用）
+      if (curType !== '协战') checkRow(div, 'enabled', e.enabled !== false, v => e.enabled = v);
       numRow(div, 'base_size', e.base_size, v => { e.base_size = v; syncElemField(sel.name, 'base_size', v); });
       numRow(div, 'star_size', e.star_size, v => { e.star_size = v; syncElemField(sel.name, 'star_size', v); });
       numRow(div, 'num_size', e.num_size, v => { e.num_size = v; syncElemField(sel.name, 'num_size', v); });
@@ -263,30 +261,14 @@ function buildProps() {
   } else {
     const r = tl.text_regions[sel.name];
     div.appendChild(title(`${sel.name} 文本区`));
-    if (sel.kind === 'vertex') {
-      numRow(div, 'x', r.polygon[sel.vi][0], v => { r.polygon[sel.vi][0] = v; draw(); });
-      numRow(div, 'y', r.polygon[sel.vi][1], v => { r.polygon[sel.vi][1] = v; draw(); });
-    }
+    numRow(div, 'cx', r.center[0], v => { r.center[0] = v; draw(); });
+    numRow(div, 'cy', r.center[1], v => { r.center[1] = v; draw(); });
+    numRow(div, 'width', r.width, v => { r.width = v; syncRegionField(sel.name, 'width', v); draw(); });
+    numRow(div, 'height', r.height, v => { r.height = v; syncRegionField(sel.name, 'height', v); draw(); });
     numRow(div, 'font_max', r.font_range[0], v => { r.font_range[0] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
     numRow(div, 'font_min', r.font_range[1], v => { r.font_range[1] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
     checkRow(div, 'wrap', r.wrap, v => r.wrap = v);
     selRow(div, 'font', FONTS, r.font, v => r.font = v);
-    const add = document.createElement('button');
-    add.textContent = '添加顶点';
-    add.onclick = () => {
-      const c = centroid(r.polygon);
-      r.polygon.push([Math.round(c[0] + 10), Math.round(c[1] + 10)]);
-      markDirty(); draw(); schedulePreview();
-    };
-    const del = document.createElement('button');
-    del.textContent = '删除选中顶点';
-    del.onclick = () => {
-      if (sel.kind === 'vertex' && r.polygon.length > 3) {
-        r.polygon.splice(sel.vi, 1); sel = {kind: 'region', name: sel.name};
-        markDirty(); refreshSel(); schedulePreview();
-      }
-    };
-    div.appendChild(add); div.appendChild(del);
   }
 }
 function title(t) { const h = document.createElement('h4'); h.textContent = t; return h; }
@@ -318,10 +300,6 @@ function selRow(div, label, opts, val, set) {
   }
   s.onchange = () => { markDirty(); set(s.value); schedulePreview(); };
   l.appendChild(s); div.appendChild(l);
-}
-function centroid(poly) {
-  return [poly.reduce((a, p) => a + p[0], 0) / poly.length,
-          poly.reduce((a, p) => a + p[1], 0) / poly.length];
 }
 
 // 保存

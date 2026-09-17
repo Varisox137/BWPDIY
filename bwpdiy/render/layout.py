@@ -11,8 +11,8 @@ from pathlib import Path
 _DEFAULT = Path(__file__).with_name("default_layout.json")
 
 # 可按类型不同的键（位置/内容类）；其余数值字段为尺寸类，跨类型必须一致
-_PER_TYPE_KEYS = {"pos", "kind", "field", "icon", "icon_neg", "signed", "style",
-                  "font", "wrap", "polygon"}
+_PER_TYPE_KEYS = {"pos", "center", "kind", "field", "icon", "icon_neg", "signed",
+                  "style", "font", "wrap"}
 
 
 def _freeze(value):

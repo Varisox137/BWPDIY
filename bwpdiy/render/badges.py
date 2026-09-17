@@ -36,8 +36,8 @@ def _paste_element(canvas: Image.Image, img: Image.Image,
     return paste_centered(canvas, img, pos, fit)
 
 
-def _true_ink_bbox(text: str, font, stroke_width: int = 2):
-    """离屏渲染取真实墨迹 bbox（相对 mm 锚点），含描边。
+def _render_ink(text: str, font, stroke_width: int = 2):
+    """离屏渲染文本（白字黑描边），返回 (裁到墨迹的 RGBA 图, 相对 mm 锚点的真墨迹 bbox)。
 
     不能用 textbbox 的预测口径：田氏颜体 `-` 字形轮廓含不产墨的延伸点，
     预测 bbox 底边虚报（报 y20..36 实际墨迹 y20..24），按预测中心对齐必错位。
@@ -57,13 +57,19 @@ def _true_ink_bbox(text: str, font, stroke_width: int = 2):
     bbox = img.getchannel("A").getbbox()
     if bbox is None:
         return None
-    return (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
+    return img.crop(bbox), (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
+
+
+# 官方卡图正负号明显窄于数字（约半宽）；田氏颜体 +/- 是全宽字形，水平压缩补偿
+_SIGN_X_SCALE = 0.55
 
 
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                    elem: dict, card: dict, ctx: dict | None = None) -> Image.Image:
     """渲染单个布局元素；渲染条件不满足时原样返回 canvas。"""
     kind = elem["kind"]
+    if not elem.get("enabled", True):
+        return canvas  # per-type 开关（当前用于 level_badge 整体停用）
     if kind == "level_badge":
         if card.get("level") is None:
             return canvas
@@ -110,19 +116,22 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         if elem.get("signed"):
             # 符号与数字分别绘制：同一字体中 +/- 墨迹中心与数字不一致，
             # 整串 mm 锚点会导致视觉错位；数字锚定 num_pos（与不带号逐像素一致），
-            # 符号按真墨迹中心对齐（两侧均离屏实测，textbbox 对 `-` 虚报底边）
+            # 符号离屏渲染取真墨迹、水平压至半宽后按墨迹中心对齐贴入
             sign, digits = text[0], text[1:]
             draw.text(num_pos, digits, font=font, anchor="mm",
                       fill=(255, 255, 255, 255),
                       stroke_width=2, stroke_fill=(0, 0, 0, 220))
-            db = _true_ink_bbox(digits, font)
-            sb = _true_ink_bbox(sign, font)
-            if db is not None and sb is not None:
-                sign_pos = (num_pos[0] + db[0] - 2 - sb[2],
-                            num_pos[1] + (db[1] + db[3]) / 2 - (sb[1] + sb[3]) / 2)
-                draw.text(sign_pos, sign, font=font, anchor="mm",
-                          fill=(255, 255, 255, 255),
-                          stroke_width=2, stroke_fill=(0, 0, 0, 220))
+            digit_ink = _render_ink(digits, font)
+            sign_ink = _render_ink(sign, font)
+            if digit_ink is not None and sign_ink is not None:
+                db = digit_ink[1]
+                sign_img = sign_ink[0]
+                sign_img = sign_img.resize(
+                    (max(1, round(sign_img.width * _SIGN_X_SCALE)), sign_img.height),
+                    Image.LANCZOS)
+                sx = round(num_pos[0] + db[0] - 2 - sign_img.width)
+                sy = round(num_pos[1] + (db[1] + db[3]) / 2 - sign_img.height / 2)
+                out.alpha_composite(sign_img, (sx, sy))
             return out
         draw.text(num_pos, text, font=font, anchor="mm",
                   fill=(255, 255, 255, 255),

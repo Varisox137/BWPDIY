@@ -90,4 +90,8 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
-    return canvas.crop(bbox) if bbox else canvas
+    if not bbox:
+        return canvas
+    # 水平以牌框中心 x=256 为基准对称裁剪/补边：元素单侧探出（如等级标）不再带偏内容
+    half = max(256 - bbox[0], bbox[2] - 256)
+    return canvas.crop((256 - half, bbox[1], 256 + half, bbox[3]))

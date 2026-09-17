@@ -14,10 +14,11 @@ def test_default_layout_covers_all_types():
     for t in TYPES:
         tl = layout.get_type_layout(layouts, t)
         assert "elements" in tl and "text_regions" in tl
-        # name/footer 是 kind=text 点元素；text_regions 只剩 desc
+        # name/footer 是 kind=text 点元素；text_regions 只剩 desc（矩形：center+width+height）
         assert set(tl["text_regions"]) == {"desc"}
-        assert tl["text_regions"]["desc"]["wrap"] is True
-        assert len(tl["text_regions"]["desc"]["polygon"]) >= 3
+        desc = tl["text_regions"]["desc"]
+        assert desc["wrap"] is True
+        assert len(desc["center"]) == 2 and desc["width"] > 0 and desc["height"] > 0
         for key in ("name", "footer"):
             elem = tl["elements"][key]
             assert elem["kind"] == "text"
@@ -82,7 +83,7 @@ def test_normalize_size_fields_tie_takes_first(tmp_path):
 def test_normalize_list_fields(tmp_path):
     """num_offset/font_range 等列表型尺寸字段同样归一。"""
     custom = {t: {"elements": {"power": _stat(30)},
-                  "text_regions": {"desc": {"polygon": [[0, 0], [1, 0], [1, 1]],
+                  "text_regions": {"desc": {"center": [256, 426], "width": 252, "height": 80,
                                             "font_range": [22, 12], "wrap": True, "font": "desc"}}}
               for t in TYPES}
     custom["幻境"]["elements"]["power"]["num_offset"] = [30, 0]

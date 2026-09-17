@@ -146,6 +146,20 @@ def test_level_badge_star_layer_only_on_evolve():
     assert ring_ink(ev) > 0
 
 
+@pytest.mark.parametrize("card_type", ["战斗", "形态", "幻境"])
+def test_level_badge_star_on_evolve_fight_form_field(card_type):
+    """战斗/形态/幻境同样可觉醒：evolve=true 时星标环墨迹探出底座框，缺省不绘。"""
+    e = elem(card_type, "level")
+    x, y = e["pos"]
+    ev = render_one(card_type, "level", sample(card_type, evolve=True))
+    ne = render_one(card_type, "level")
+
+    def ring_ink(img):
+        return total_ink(img) - ink(img, x, y, e["base_size"] / 2 + 1, e["base_size"] / 2 + 1)
+    assert ring_ink(ne) == 0
+    assert ring_ink(ev) > 0
+
+
 def test_level_badge_suppressed_when_disabled_or_no_level():
     e = elem("战斗", "level")
     assert total_ink(render_one("战斗", "level", {k: v for k, v in sample("战斗").items()

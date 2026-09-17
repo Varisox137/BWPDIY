@@ -14,7 +14,9 @@ LEVELS = (1, 2, 3)
 
 _COMMON_FIELDS = ("type", "name", "description")
 _SHIKIGAMI_ONLY = ("faction",)
-_NON_SHIKIGAMI_FIELDS = ("level", "evolve", "rarity", "shikigami", "special_type")
+_NON_SHIKIGAMI_FIELDS = ("level", "rarity", "shikigami", "special_type")
+# 觉醒（evolve）仅战斗/法术/形态/幻境可携带；式神/协战不可
+_EVOLVE_TYPES = ("战斗", "法术", "形态", "幻境")
 
 _STATS_BY_TYPE = {
     "式神": ("power", "health"),
@@ -49,6 +51,8 @@ def _allowed_fields(ctype: str) -> set[str]:
         allowed |= set(_SHIKIGAMI_ONLY) | set(_STATS_BY_TYPE["式神"])
     else:
         allowed |= set(_NON_SHIKIGAMI_FIELDS) | set(_STATS_BY_TYPE[ctype])
+        if ctype in _EVOLVE_TYPES:
+            allowed.add("evolve")
     return allowed
 
 

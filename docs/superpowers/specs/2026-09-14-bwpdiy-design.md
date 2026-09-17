@@ -77,7 +77,7 @@ artwork:
 按类型字段（沿用 legacy `config_parser.py` 字段表）：
 
 - 式神：faction（红莲/苍叶/青岚/紫岩/无相）、power、health
-- 非式神通用：level、evolve（觉醒）、rarity、shikigami、special_type
+- 非式神通用：level、rarity、shikigami、special_type；evolve（觉醒）仅战斗/法术/形态/幻境（式神/协战不可）
 - 战斗：power/shield 加成；法术觉醒：power/health；形态：power/health；幻境：durability
 
 ### 异画定位

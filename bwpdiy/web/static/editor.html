@@ -127,6 +127,8 @@ const STAT_MATRIX = {
   "幻境": {"durability": "耐久"},
 };
 const NONNEG_TYPES = new Set(["式神", "形态", "幻境"]);
+// 觉醒（evolve）仅战斗/法术/形态/幻境；式神/协战不提供勾选框（与 store schema 同口径）
+const EVOLVE_TYPES = new Set(["战斗", "法术", "形态", "幻境"]);
 
 let layouts = null;          // 完整布局 dict（/api/layout），两 tab 共享
 let samples = null;          // 六类型样卡字段（/api/samples），布局 tab 用
@@ -466,10 +468,10 @@ function buildForm() {
   } else {
     selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
     selRowC(div, '稀有度', RARITIES, formData.rarity ?? 'R', v => setField('rarity', v));
-    if (t === '法术') {
+    if (EVOLVE_TYPES.has(t)) {
       checkRowC(div, '觉醒', !!formData.evolve, v => {
         formData.evolve = v;
-        if (!v) { delete formData['power+']; delete formData['health+']; }  // 非觉醒法术不可携带数值
+        if (t === '法术' && !v) { delete formData['power+']; delete formData['health+']; }  // 非觉醒法术不可携带数值
         afterEdit(true);
       });
     }
@@ -587,7 +589,10 @@ function validateCardJS(d) {
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   const allowed = new Set(['type', 'name', 'description', 'artwork']);
   if (t === '式神') ['faction', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
-  else ['level', 'evolve', 'rarity', 'shikigami', 'special_type', ...STATS_BY_TYPE[t]].forEach(f => allowed.add(f));
+  else {
+    ['level', 'rarity', 'shikigami', 'special_type', ...STATS_BY_TYPE[t]].forEach(f => allowed.add(f));
+    if (EVOLVE_TYPES.has(t)) allowed.add('evolve');
+  }
   for (const k of Object.keys(d)) {
     if (!allowed.has(k)) errors.push(`字段 ${k}：类型「${t}」白名单之外的字段`);
   }
@@ -770,6 +775,14 @@ function buildCardProps() {
       i.value = (parseInt(i.value, 10) || 0) + (ev.deltaY < 0 ? 1 : -1);
       commit();
     };
+    l.appendChild(i); div.appendChild(l);
+  }
+  if (EVOLVE_TYPES.has(curType)) {
+    const l = document.createElement('label');
+    l.textContent = '觉醒 ';
+    const i = document.createElement('input');
+    i.type = 'checkbox'; i.checked = !!cardField('evolve');
+    i.onchange = () => { setCardField('evolve', i.checked); buildCardProps(); };  // 法术 stat 输入随觉醒显隐
     l.appendChild(i); div.appendChild(l);
   }
   if ('shikigami' in samples[curType]) {

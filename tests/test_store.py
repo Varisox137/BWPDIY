@@ -266,6 +266,9 @@ def test_save_card_validates_schema(lib):
     FIGHT,
     SPELL,
     {**SPELL, "evolve": True, "power+": 1, "health+": -1},
+    {**FIGHT, "evolve": True},                          # 战斗可觉醒
+    {**FORM, "evolve": True},                           # 形态可觉醒
+    {**FIELD, "evolve": True},                          # 幻境可觉醒
     {**SPELL, "special_type": "衍生"},
     FORM,
     FIELD,
@@ -292,6 +295,8 @@ def test_validate_ok(card):
     ({**FIGHT, "level": 4}, "level"),
     ({**FIGHT, "level": "1"}, "level"),
     ({**FIGHT, "evolve": "是"}, "evolve"),
+    ({**ASSIST, "evolve": True}, "evolve"),             # 协战不可觉醒（白名单之外）
+    ({**SHIKIGAMI, "evolve": True}, "evolve"),          # 式神不可觉醒
     ({**SHIKIGAMI, "power": True}, "power"),          # bool 不算 int
     ({**SHIKIGAMI, "health": -1}, "health"),          # 非负
     ({**FIGHT, "power+": "1"}, "power+"),

@@ -83,7 +83,8 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     regions = type_layout["text_regions"]
     if card.get("description") and "desc" in regions:
         obstacles = [stat_obstacle(e) for e in elements.values()
-                     if e["kind"] == "stat" and e["field"] in card]
+                     if e["kind"] == "stat" and e.get("enabled", True)
+                     and e["field"] in card]
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
                              obstacles=obstacles)
     # 裁剪掉整画布四周的透明边（bbox 取自合成图 alpha，等级标等溢出元素自然包含）

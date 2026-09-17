@@ -302,8 +302,28 @@ function selRow(div, label, opts, val, set) {
   l.appendChild(s); div.appendChild(l);
 }
 
+// 保存时以当前类型为准传播：同名元素除 pos/enabled 外的全部字段镜像到所有类型
+// （缺键补齐、多键删除；pos 按类型独立，enabled 是按类型开关不同步）
+function propagateFromCurrentType() {
+  const cur = typeLayout().elements || {};
+  for (const [name, el] of Object.entries(cur)) {
+    for (const t of TYPES) {
+      if (t === curType) continue;
+      const other = layouts[t] && layouts[t].elements && layouts[t].elements[name];
+      if (!other) continue;
+      for (const k of Object.keys(other)) {
+        if (k !== 'pos' && k !== 'enabled' && !(k in el)) delete other[k];
+      }
+      for (const [k, v] of Object.entries(el)) {
+        if (k !== 'pos' && k !== 'enabled') other[k] = JSON.parse(JSON.stringify(v));
+      }
+    }
+  }
+}
+
 // 保存
 document.getElementById('btn-save').onclick = async () => {
+  propagateFromCurrentType();
   let r;
   try {
     r = await fetch('/api/layout', {method: 'PUT',

@@ -111,8 +111,8 @@ def test_stat_signed_vertical_alignment(assets_dir, value):
     assert s_digits == u_digits
     # 符号中心与数字中心竖直对齐（容差 1px）
     assert abs(_cy(s_sign) - _cy(s_digits)) <= 1
-    # 符号半宽化：官方卡图符号明显窄于数字（田氏颜体 +/- 为全宽字形，须水平压缩）
-    assert (s_sign[2] - s_sign[0]) < (s_digits[2] - s_digits[0]) * 0.75
+    # 符号半宽化：符号明显窄于数字（田氏颜体 +/- 为全宽字形，须水平压缩；用户裁定 0.65）
+    assert (s_sign[2] - s_sign[0]) < (s_digits[2] - s_digits[0])
 
 
 def test_level_badge_disabled(assets_dir):

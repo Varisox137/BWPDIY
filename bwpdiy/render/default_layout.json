@@ -1,6 +1,17 @@
 {
   "式神": {
     "elements": {
+      "level": {
+        "kind": "level_badge",
+        "pos": [
+          120,
+          65
+        ],
+        "base_size": 50,
+        "star_size": 68,
+        "num_size": 40,
+        "enabled": false
+      },
       "faction": {
         "kind": "faction",
         "pos": [
@@ -86,8 +97,8 @@
           120,
           65
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {
@@ -176,8 +187,8 @@
           120,
           65
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {
@@ -265,8 +276,8 @@
           120,
           65
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {
@@ -354,8 +365,8 @@
           120,
           65
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {
@@ -427,8 +438,8 @@
           120,
           65
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {

@@ -10,8 +10,8 @@ from pathlib import Path
 _ART = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "sample_art.png"
 
 SAMPLE_CARDS: dict[str, dict] = {
-    # 100307 山风 苍叶 3/4（20200624）
-    "式神": {"type": "式神", "name": "山风", "faction": "苍叶", "power": 3, "health": 4,
+    # 100307 山风 苍叶 3/4（20200624）；level=1 仅供预览等级组件（式神布局默认停用）
+    "式神": {"type": "式神", "name": "山风", "faction": "苍叶", "power": 3, "health": 4, "level": 1,
             "description": "倒计时3：发起一次攻击，本次战斗获得不屈。"},
     # 铃鹿御前 08 义道 SSR 3 战斗 -1/+2（20200520）
     "战斗": {"type": "战斗", "name": "义道", "level": 3, "rarity": "SSR", "shikigami": "铃鹿御前",

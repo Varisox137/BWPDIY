@@ -1,6 +1,17 @@
 {
   "式神": {
     "elements": {
+      "level": {
+        "kind": "level_badge",
+        "pos": [
+          120,
+          65
+        ],
+        "base_size": 50,
+        "star_size": 68,
+        "num_size": 40,
+        "enabled": false
+      },
       "faction": {
         "kind": "faction",
         "pos": [
@@ -18,12 +29,12 @@
           160,
           485
         ],
-        "icon_size": 32,
+        "icon_size": 64,
         "num_offset": [
-          22,
+          10,
           0
         ],
-        "font_size": 30,
+        "font_size": 52,
         "signed": false
       },
       "health": {
@@ -57,7 +68,7 @@
           256,
           484
         ],
-        "font_size": 12,
+        "font_size": 14,
         "font": "desc"
       }
     },
@@ -84,35 +95,35 @@
         "kind": "level_badge",
         "pos": [
           120,
-          65
+          60
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
           256,
-          358
+          345
         ],
-        "gap": 16,
-        "size": 24
+        "gap": 20,
+        "size": 22
       },
       "power": {
         "kind": "stat",
         "field": "power+",
         "icon": "ll",
         "pos": [
-          160,
+          137,
           485
         ],
-        "icon_size": 32,
+        "icon_size": 64,
         "num_offset": [
-          22,
+          10,
           0
         ],
-        "font_size": 30,
+        "font_size": 52,
         "signed": true
       },
       "shield": {
@@ -121,22 +132,22 @@
         "icon": "hj",
         "icon_neg": "pj",
         "pos": [
-          360,
+          375,
           485
         ],
-        "icon_size": 32,
+        "icon_size": 56,
         "num_offset": [
-          22,
-          0
+          15,
+          -3
         ],
-        "font_size": 30,
+        "font_size": 52,
         "signed": true
       },
       "name": {
         "kind": "text",
         "pos": [
           256,
-          358
+          342
         ],
         "font_size": 30,
         "font": "name"
@@ -145,9 +156,9 @@
         "kind": "text",
         "pos": [
           256,
-          484
+          499
         ],
-        "font_size": 12,
+        "font_size": 14,
         "font": "desc"
       }
     },
@@ -176,8 +187,8 @@
           120,
           65
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {
@@ -186,8 +197,8 @@
           256,
           358
         ],
-        "gap": 16,
-        "size": 24
+        "gap": 20,
+        "size": 22
       },
       "power": {
         "kind": "stat",
@@ -197,12 +208,12 @@
           160,
           485
         ],
-        "icon_size": 32,
+        "icon_size": 64,
         "num_offset": [
-          22,
+          10,
           0
         ],
-        "font_size": 30,
+        "font_size": 52,
         "signed": true
       },
       "health": {
@@ -236,7 +247,7 @@
           256,
           484
         ],
-        "font_size": 12,
+        "font_size": 14,
         "font": "desc"
       }
     },
@@ -265,8 +276,8 @@
           120,
           65
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {
@@ -275,8 +286,8 @@
           256,
           358
         ],
-        "gap": 16,
-        "size": 24
+        "gap": 20,
+        "size": 22
       },
       "power": {
         "kind": "stat",
@@ -286,12 +297,12 @@
           160,
           485
         ],
-        "icon_size": 32,
+        "icon_size": 64,
         "num_offset": [
-          22,
+          10,
           0
         ],
-        "font_size": 30,
+        "font_size": 52,
         "signed": false
       },
       "health": {
@@ -325,7 +336,7 @@
           256,
           484
         ],
-        "font_size": 12,
+        "font_size": 14,
         "font": "desc"
       }
     },
@@ -354,8 +365,8 @@
           120,
           65
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {
@@ -364,8 +375,8 @@
           256,
           358
         ],
-        "gap": 16,
-        "size": 24
+        "gap": 20,
+        "size": 22
       },
       "durability": {
         "kind": "stat",
@@ -398,7 +409,7 @@
           256,
           484
         ],
-        "font_size": 12,
+        "font_size": 14,
         "font": "desc"
       }
     },
@@ -427,8 +438,8 @@
           120,
           65
         ],
-        "base_size": 72,
-        "star_size": 60,
+        "base_size": 50,
+        "star_size": 68,
         "num_size": 40
       },
       "rarity": {
@@ -437,8 +448,8 @@
           256,
           358
         ],
-        "gap": 16,
-        "size": 24
+        "gap": 20,
+        "size": 22
       },
       "name": {
         "kind": "text",
@@ -455,7 +466,7 @@
           256,
           484
         ],
-        "font_size": 12,
+        "font_size": 14,
         "font": "desc"
       }
     },

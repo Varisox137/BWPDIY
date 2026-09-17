@@ -60,8 +60,9 @@ def _render_ink(text: str, font, stroke_width: int = 2):
     return img.crop(bbox), (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
 
 
-# 官方卡图正负号明显窄于数字（约半宽）；田氏颜体 +/- 是全宽字形，水平压缩补偿
-_SIGN_X_SCALE = 0.55
+# 官方卡图正负号明显窄于数字（约半宽 0.55）；田氏颜体 +/- 是全宽字形，水平压缩补偿。
+# 用户裁定比官方口径稍大一点
+_SIGN_X_SCALE = 0.65
 
 
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,

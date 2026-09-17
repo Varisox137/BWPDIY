@@ -43,7 +43,7 @@ def test_unknown_type_raises():
 def test_expected_elements_per_type():
     layouts = layout.load_layouts(Path("不存在的目录"))
     base = {"name", "footer"}
-    assert set(layouts["式神"]["elements"]) == {"faction", "power", "health"} | base
+    assert set(layouts["式神"]["elements"]) == {"level", "faction", "power", "health"} | base
     assert set(layouts["战斗"]["elements"]) == {"level", "rarity", "power", "shield"} | base
     assert set(layouts["法术"]["elements"]) == {"level", "rarity", "power", "health"} | base
     assert set(layouts["形态"]["elements"]) == {"level", "rarity", "power", "health"} | base

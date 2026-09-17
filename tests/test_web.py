@@ -98,3 +98,47 @@ def test_preview_all_types(client, card_type):
 def test_preview_bad_type(client):
     r = client.post("/api/preview", json={"type": "不存在", "layout": {"elements": {}, "text_regions": {}}})
     assert r.status_code == 400
+
+
+def _battle_layout(client):
+    from bwpdiy.render.layout import load_layouts, get_type_layout
+    return get_type_layout(load_layouts(client.app.state.assets_dir), "战斗")
+
+
+def test_preview_card_override(client):
+    """body.card 覆盖样卡指定字段：嵌套 artwork 不丢、样卡全局不被污染。"""
+    tl = _battle_layout(client)
+    base = client.post("/api/preview", json={"type": "战斗", "layout": tl})
+    assert base.status_code == 200
+    r = client.post("/api/preview", json={
+        "type": "战斗", "layout": tl,
+        "card": {"name": "测试异名", "shield+": -2, "description": "改后的描述文本。"}})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert r.content != base.content  # 覆盖生效
+    again = client.post("/api/preview", json={"type": "战斗", "layout": tl})
+    assert again.content == base.content  # SAMPLE_CARDS 未被污染（artwork 深拷贝）
+
+
+def test_preview_card_override_artwork_merge(client):
+    """覆盖 artwork 子键时与其余 artwork 键合并而非整体替换。"""
+    tl = _battle_layout(client)
+    r = client.post("/api/preview", json={
+        "type": "战斗", "layout": tl, "card": {"artwork": {"offset_x": 20}}})
+    assert r.status_code == 200  # images 列表仍在，渲染不丢卡图
+
+
+def test_preview_card_override_invalid(client):
+    tl = _battle_layout(client)
+    r = client.post("/api/preview", json={"type": "战斗", "layout": tl, "card": "不是对象"})
+    assert r.status_code == 400
+
+
+def test_samples_api(client):
+    """GET /api/samples：六类型样卡字段（剥内部键），供 GUI 内容输入框预填。"""
+    r = client.get("/api/samples")
+    assert r.status_code == 200
+    samples = r.json()
+    assert set(samples) == {"式神", "战斗", "法术", "形态", "幻境", "协战"}
+    battle = samples["战斗"]
+    assert battle["name"] == "义道" and battle["shield+"] == 2
+    assert "_base_dir" not in battle and "artwork" not in battle

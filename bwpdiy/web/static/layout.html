@@ -14,6 +14,10 @@
   .item.active { background: #d9b96a; }
   #props label { display: block; font-size: 12px; margin-top: 6px; }
   #props input, #props select { width: 90px; }
+  #cardprops label { display: block; font-size: 12px; margin-top: 4px; }
+  #cardprops input { width: 100px; }
+  #cardprops textarea { width: 195px; height: 64px; font-size: 12px; }
+  .note { font-size: 11px; color: #777; }
   button { margin: 4px; }
   #status { color: #ffd77a; margin-left: 8px; }
 </style>
@@ -21,6 +25,7 @@
 <body>
 <div id="sidebar">
   <div id="types"></div>
+  <h4>卡牌内容</h4><div id="cardprops"></div>
   <h4>元素</h4><div id="elems"></div>
   <h4>文本区</h4><div id="regions"></div>
 </div>
@@ -39,7 +44,19 @@ const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
 // stat 图标仅限存在 _l 大图变体的资源（sj 只有 _s，渲染 stat 用 _l，选 sj 会预览失败）
 const ICONS = ['ll', 'sm', 'hj', 'nj', 'pj', 'zl', 'fl', 'nl'];
 const FONTS = ['name', 'desc'];
+// 卡牌内容输入：各类型可编辑的 stat 字段（[字段, 标签]）；式神/形态/幻境强制非负
+const STAT_INPUTS = {
+  "式神": [["power", "力量"], ["health", "生命"]],
+  "战斗": [["power+", "力量+"], ["shield+", "护甲+"]],
+  "法术": [["power+", "力量+"], ["health+", "生命+"]],
+  "形态": [["power", "力量"], ["health", "生命"]],
+  "幻境": [["durability", "耐久"]],
+  "协战": [],
+};
+const NONNEG_TYPES = new Set(["式神", "形态", "幻境"]);
 let layouts = null;          // 完整布局 dict（/api/layout）
+let samples = null;          // 六类型样卡字段（/api/samples）
+let cardOverrides = {};      // type -> {field: value} 卡牌内容覆盖（POST /api/preview 的 card）
 let curType = "战斗";
 let sel = null;              // {kind:'element'|'region', name}
 let dirty = false;
@@ -52,6 +69,7 @@ let previewImg = null;     // 预览图（/api/preview 传 crop=False，恒为�
 async function boot() {
   try {
     layouts = await (await fetch('/api/layout')).json();
+    samples = await (await fetch('/api/samples')).json();
   } catch (e) {
     statusEl.textContent = '布局加载失败: ' + e;
     return;
@@ -60,6 +78,15 @@ async function boot() {
 }
 function typeLayout() { return layouts[curType]; }
 function markDirty() { dirty = true; }
+// 当前类型卡牌内容：样卡字段 + 用户覆盖（覆盖优先；不改的不传，后端深拷贝合并）
+function cardField(name) {
+  const ov = cardOverrides[curType] || {};
+  return name in ov ? ov[name] : (samples[curType] || {})[name];
+}
+function setCardField(name, value) {
+  (cardOverrides[curType] = cardOverrides[curType] || {})[name] = value;
+  schedulePreview();
+}
 
 // 实时预览：任何调整后防抖 300ms 自动刷新（拖拽 mousemove 不走这里，mouseup 直接刷）
 let previewTimer = null;
@@ -98,7 +125,56 @@ function selectType(t) {
   curType = t; sel = null; previewImg = null;  // 清旧图，避免与新类型覆盖层短暂共存
   document.querySelectorAll('.tab').forEach(b =>
     b.classList.toggle('active', b.textContent === t));
-  buildLists(); buildProps(); refreshPreview();
+  buildLists(); buildCardProps(); buildProps(); refreshPreview();
+}
+
+// 卡牌内容输入（预览数据可编辑；改动走防抖实时预览，不涉及布局保存）
+function buildCardProps() {
+  const div = document.getElementById('cardprops');
+  div.innerHTML = '';
+  if (!samples || !samples[curType]) return;
+  const nonneg = NONNEG_TYPES.has(curType);  // 式神/形态/幻境 stat 强制非负
+  for (const [field, label] of STAT_INPUTS[curType] || []) {
+    const l = document.createElement('label');
+    l.textContent = label + ' ';
+    const i = document.createElement('input');
+    i.type = 'number'; i.value = cardField(field) ?? 0;
+    if (nonneg) i.min = 0;
+    const commit = () => {
+      let v = parseInt(i.value, 10);
+      if (isNaN(v)) { i.value = cardField(field) ?? 0; return; }
+      if (nonneg) v = Math.max(0, v);
+      i.value = v; setCardField(field, v);
+    };
+    i.onchange = commit;
+    i.onwheel = ev => {  // 滚轮微调
+      ev.preventDefault();
+      i.value = (parseInt(i.value, 10) || 0) + (ev.deltaY < 0 ? 1 : -1);
+      commit();
+    };
+    l.appendChild(i); div.appendChild(l);
+  }
+  if ('shikigami' in samples[curType]) {
+    textRow(div, '式神名', cardField('shikigami') || '', v => setCardField('shikigami', v));
+  }
+  textRow(div, '子类型', cardField('special_type') || '', v => setCardField('special_type', v));
+  const l = document.createElement('label');
+  l.textContent = '描述 ';
+  const ta = document.createElement('textarea');
+  ta.value = cardField('description') || '';
+  ta.onchange = () => {
+    ta.value = ta.value.replace(/\n+/g, '\n').replace(/^\n|\n$/g, '');  // 连续换行合并为一个
+    setCardField('description', ta.value);
+  };
+  l.appendChild(ta); div.appendChild(l);
+}
+function textRow(div, label, val, set) {
+  const l = document.createElement('label');
+  l.textContent = label + ' ';
+  const i = document.createElement('input');
+  i.type = 'text'; i.value = val;
+  i.onchange = () => set(i.value);
+  l.appendChild(i); div.appendChild(l);
 }
 
 // 左栏列表
@@ -130,9 +206,12 @@ async function refreshPreview() {
   const seq = ++previewSeq;
   let r;
   try {
+    const body = {type: curType, layout: typeLayout()};
+    if (cardOverrides[curType] && Object.keys(cardOverrides[curType]).length)
+      body.card = cardOverrides[curType];
     r = await fetch('/api/preview', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({type: curType, layout: typeLayout()}),
+      body: JSON.stringify(body),
     });
   } catch (e) {
     if (seq !== previewSeq) return;  // 过期请求的失败文案不得覆盖新状态
@@ -234,13 +313,19 @@ function buildProps() {
       numRow(div, 'num_dx', e.num_offset[0], v => { e.num_offset[0] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
       numRow(div, 'num_dy', e.num_offset[1], v => { e.num_offset[1] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
       numRow(div, 'font_size', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
-      checkRow(div, 'signed', e.signed, v => e.signed = v);
-      selRow(div, 'icon', ICONS, e.icon, v => e.icon = v);
-      selRow(div, 'icon_neg', ['（无）'].concat(ICONS), e.icon_neg || '（无）',
-             v => { if (v === '（无）') delete e.icon_neg; else e.icon_neg = v; });
+      if (e.icon_neg) {
+        // 战斗护甲：按当前值自动选贴图（值<0 用破甲 pj，否则护甲 hj），不提供手动选择
+        const n = document.createElement('div');
+        n.className = 'note';
+        n.textContent = `图标按数值自动选择: ${e.icon}/${e.icon_neg}`;
+        div.appendChild(n);
+      } else {
+        selRow(div, 'icon', ICONS, e.icon, v => e.icon = v);
+      }
     }
     if (e.kind === 'rarity_flank') {
       numRow(div, 'gap', e.gap, v => { e.gap = v; syncElemField(sel.name, 'gap', v); });
+      numRow(div, 'margin', e.margin ?? 8, v => { e.margin = v; syncElemField(sel.name, 'margin', v); });
       numRow(div, 'size', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
     }
     if (e.kind === 'faction') {

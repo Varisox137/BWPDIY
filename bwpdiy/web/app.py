@@ -1,4 +1,4 @@
-"""FastAPI 编辑器服务（当前含布局配置工具 API）。"""
+"""FastAPI 编辑器服务（布局配置工具 + 项目/卡牌 REST API）。"""
 
 import copy
 import json
@@ -7,23 +7,54 @@ import shutil
 from io import BytesIO
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from bwpdiy.render.layout import load_layouts
 from bwpdiy.render.pipeline import TYPE_FRAME_CODE, render_card
+from bwpdiy.store import (
+    SchemaError,
+    StoreError,
+    create_project,
+    delete_card,
+    delete_project,
+    list_cards,
+    list_projects,
+    load_card,
+    rename_project,
+    save_card,
+)
 from bwpdiy.web.sample_cards import SAMPLE_CARDS
 
 _STATIC = Path(__file__).parent / "static"
+_ROOT = Path(__file__).resolve().parent.parent.parent
+_SAMPLE_ART = _ROOT / "tests" / "fixtures" / "sample_art.png"  # 缺图占位（与样卡机制一致）
 
 
-def create_app(assets_dir: Path, static_dir: Path | None = None) -> FastAPI:
+def create_app(assets_dir: Path, static_dir: Path | None = None,
+               library_dir: Path | None = None) -> FastAPI:
     assets_dir = Path(assets_dir)
     static_dir = Path(static_dir) if static_dir else _STATIC
+    library_dir = Path(library_dir) if library_dir else _ROOT / "library"
     app = FastAPI(title="BWPDIY")
     app.state.assets_dir = assets_dir
+    app.state.library_dir = library_dir
+
+    # store 异常 → HTTP 状态码：不存在 404、已存在 409、其余（非法名/保留名/不可删除）422
+    @app.exception_handler(StoreError)
+    def _store_error(request, exc: StoreError):
+        msg = str(exc)
+        status = 404 if "不存在" in msg else 409 if "已存在" in msg else 422
+        return JSONResponse(status_code=status, content={"detail": msg})
+
+    @app.exception_handler(SchemaError)
+    def _schema_error(request, exc: SchemaError):
+        return JSONResponse(status_code=422, content={"detail": exc.errors})
 
     @app.get("/")
+    def editor_page():
+        return FileResponse(static_dir / "editor.html")
+
     @app.get("/layout")
     def layout_page():
         return FileResponse(static_dir / "layout.html")
@@ -89,4 +120,75 @@ def create_app(assets_dir: Path, static_dir: Path | None = None) -> FastAPI:
         img.save(buf, "PNG")
         return Response(buf.getvalue(), media_type="image/png")
 
+    # ---------- 项目/卡牌 REST ----------
+
+    @app.get("/api/projects")
+    def get_projects():
+        return JSONResponse(list_projects(library_dir))
+
+    @app.post("/api/projects")
+    async def post_project(request: dict):
+        create_project(library_dir, request.get("name"))
+        return {"ok": True}
+
+    @app.put("/api/projects/{name}")
+    async def put_project(name: str, request: dict):
+        rename_project(library_dir, name, request.get("new_name"))
+        return {"ok": True}
+
+    @app.delete("/api/projects/{name}")
+    def remove_project(name: str):
+        delete_project(library_dir, name)
+        return {"ok": True}
+
+    @app.get("/api/projects/{project}/cards")
+    def get_cards(project: str):
+        return JSONResponse(list_cards(library_dir, project))
+
+    @app.get("/api/projects/{project}/cards/{card}")
+    def get_card(project: str, card: str):
+        return JSONResponse(load_card(library_dir, project, card))
+
+    @app.put("/api/projects/{project}/cards/{card}")
+    async def put_card(project: str, card: str, request: dict):
+        save_card(library_dir, project, card, request)
+        return {"ok": True}
+
+    @app.delete("/api/projects/{project}/cards/{card}")
+    def remove_card(project: str, card: str):
+        delete_card(library_dir, project, card)
+        return {"ok": True}
+
+    @app.post("/api/projects/{project}/cards/{card}/preview")
+    async def preview_project_card(project: str, card: str, request: dict = Body(None)):
+        card_data = load_card(library_dir, project, card)  # 卡牌不存在 → StoreError → 404
+        card_data = _with_artwork_fallback(card_data, library_dir / project / "images")
+        try:
+            img = render_card(card_data, assets_dir,
+                              layout=(request or {}).get("layout"), crop=False)
+        except Exception as e:
+            raise HTTPException(422, f"渲染失败: {e}") from e
+        buf = BytesIO()
+        img.save(buf, "PNG")
+        return Response(buf.getvalue(), media_type="image/png")
+
     return app
+
+
+def _with_artwork_fallback(card: dict, images_dir: Path) -> dict:
+    """artwork 基准目录设为项目 images/；无 images 或首图文件缺失时回退占位图（与样卡一致）。"""
+    card = dict(card)
+    card["_base_dir"] = str(images_dir)
+    artwork = dict(card.get("artwork") or {})
+    images = artwork.get("images")
+    first = images[0] if images else None
+    ref = dict(first) if isinstance(first, dict) else {}
+    art_path = Path(ref.get("path") or f"{card.get('name', '')}.png")
+    if not art_path.is_absolute():
+        art_path = images_dir / art_path
+    if not art_path.is_file():
+        ref = {k: ref[k] for k in ("offset_x", "offset_y", "scale") if k in ref}
+        ref["path"] = str(_SAMPLE_ART)
+        artwork["images"] = [ref]
+    card["artwork"] = artwork
+    return card

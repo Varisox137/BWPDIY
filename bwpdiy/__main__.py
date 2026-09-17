@@ -9,7 +9,8 @@ def main() -> int:
 
     from bwpdiy.web.app import create_app
 
-    app = create_app(Path(__file__).resolve().parent.parent / "assets")
+    root = Path(__file__).resolve().parent.parent
+    app = create_app(root / "assets", library_dir=root / "library")
     uvicorn.run(app, host="127.0.0.1", port=8630)
     return 0
 

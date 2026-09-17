@@ -1,16 +1,348 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>BWPDIY 布局配置工具</title>
+<title>BWPDIY 布局配置</title>
+<style>
+  body { font-family: sans-serif; margin: 0; display: flex; height: 100vh; }
+  #sidebar, #props { width: 220px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
+  #main { flex: 1; display: flex; flex-direction: column; align-items: center; background: #3a3a3a; }
+  #preview { margin-top: 12px; cursor: crosshair; background: #222; }
+  .tab { padding: 4px 10px; margin: 2px; cursor: pointer; border: 1px solid #999; background: #fff; }
+  .tab.active { background: #d9b96a; }
+  .item { padding: 3px 6px; cursor: pointer; }
+  .item.active { background: #d9b96a; }
+  #props label { display: block; font-size: 12px; margin-top: 6px; }
+  #props input, #props select { width: 90px; }
+  button { margin: 4px; }
+  #status { color: #ffd77a; margin-left: 8px; }
+</style>
 </head>
 <body>
-<h1>BWPDIY 布局配置工具</h1>
-<p>前端界面待后续里程碑实现。当前可用 API：</p>
-<ul>
-  <li><code>GET /api/layout</code> — 读取当前布局配置</li>
-  <li><code>PUT /api/layout</code> — 写回布局配置</li>
-  <li><code>POST /api/preview</code> — 按提交布局渲染样卡预览（PNG）</li>
-</ul>
+<div id="sidebar">
+  <div id="types"></div>
+  <h4>元素</h4><div id="elems"></div>
+  <h4>文本区</h4><div id="regions"></div>
+</div>
+<div id="main">
+  <div>
+    <button id="btn-preview">预览</button>
+    <button id="btn-save">保存</button>
+    <span id="status"></span>
+  </div>
+  <canvas id="preview" width="512" height="512"></canvas>
+</div>
+<div id="props"></div>
+<script>
+// 状态
+const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
+// stat 图标仅限存在 _l 大图变体的资源（sj 只有 _s，渲染 stat 用 _l，选 sj 会预览失败）
+const ICONS = ['ll', 'sm', 'hj', 'nj', 'pj', 'zl', 'fl', 'nl'];
+const FONTS = ['name', 'desc'];
+let layouts = null;          // 完整布局 dict（/api/layout）
+let curType = "战斗";
+let sel = null;              // {kind:'element'|'region'|'vertex', name, vi?}
+let dirty = false;
+const canvas = document.getElementById('preview');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+let previewImg = null;
+// 布局坐标（渲染前 512×512 空间）→ 画布坐标 的映射。
+// /api/preview 返回的是按 alpha bbox 裁剪后的图，须先反求 bbox 才能对齐覆盖层。
+let view = { x0: 0, y0: 0, s: 1, ox: 0, oy: 0 };
+
+// 初始化
+async function boot() {
+  try {
+    layouts = await (await fetch('/api/layout')).json();
+  } catch (e) {
+    statusEl.textContent = '布局加载失败: ' + e;
+    return;
+  }
+  buildTypes(); selectType('战斗');
+}
+function typeLayout() { return layouts[curType]; }
+function markDirty() { dirty = true; }
+function toC(x, y) { return [view.ox + (x - view.x0) * view.s, view.oy + (y - view.y0) * view.s]; }
+function toL(mx, my) { return [(mx - view.ox) / view.s + view.x0, (my - view.oy) / view.s + view.y0]; }
+
+// 顶部类型 tab
+function buildTypes() {
+  const div = document.getElementById('types');
+  div.innerHTML = '';
+  for (const t of TYPES) {
+    const b = document.createElement('button');
+    b.textContent = t; b.className = 'tab';
+    b.onclick = () => selectType(t);
+    div.appendChild(b);
+  }
+}
+function selectType(t) {
+  curType = t; sel = null;
+  document.querySelectorAll('.tab').forEach(b =>
+    b.classList.toggle('active', b.textContent === t));
+  buildLists(); buildProps(); refreshPreview();
+}
+
+// 左栏列表
+function buildLists() {
+  const tl = typeLayout();
+  const ed = document.getElementById('elems'); ed.innerHTML = '';
+  for (const name of Object.keys(tl.elements)) {
+    const d = document.createElement('div');
+    d.textContent = name; d.className = 'item';
+    d.onclick = () => { sel = {kind: 'element', name}; refreshSel(); };
+    ed.appendChild(d);
+  }
+  const rd = document.getElementById('regions'); rd.innerHTML = '';
+  for (const name of Object.keys(tl.text_regions)) {
+    const d = document.createElement('div');
+    d.textContent = name; d.className = 'item';
+    d.onclick = () => { sel = {kind: 'region', name}; refreshSel(); };
+    rd.appendChild(d);
+  }
+}
+function refreshSel() {
+  document.querySelectorAll('.item').forEach(d =>
+    d.classList.toggle('active', sel && d.textContent === sel.name));
+  buildProps(); draw();
+}
+
+// 预览
+async function refreshPreview() {
+  let r;
+  try {
+    r = await fetch('/api/preview', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({type: curType, layout: typeLayout()}),
+    });
+  } catch (e) {
+    statusEl.textContent = '预览请求失败: ' + e;
+    return;
+  }
+  if (!r.ok) {
+    statusEl.textContent = '预览失败: ' + (await r.json()).detail;
+    return;
+  }
+  statusEl.textContent = dirty ? '● 未保存' : '';
+  const blob = await r.blob();
+  const img = new Image();
+  img.onload = () => { previewImg = img; computeView(img); draw(); URL.revokeObjectURL(img.src); };
+  img.src = URL.createObjectURL(blob);
+}
+
+// 反求预览图 alpha bbox（与 render.pipeline 裁剪阈值一致：alpha > 10），
+// 并计算"等比缩放居中"的显示映射。
+function computeView(img) {
+  const off = document.createElement('canvas');
+  const w = off.width = img.naturalWidth, h = off.height = img.naturalHeight;
+  const octx = off.getContext('2d', {willReadFrequently: true});
+  octx.drawImage(img, 0, 0);
+  const data = octx.getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (data[(y * w + x) * 4 + 3] > 10) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) { view = {x0: 0, y0: 0, s: 1, ox: 0, oy: 0}; return; }  // 全透明兜底
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+  const s = Math.min(canvas.width / bw, canvas.height / bh);
+  view = {x0, y0, s, ox: (canvas.width - bw * s) / 2, oy: (canvas.height - bh * s) / 2};
+}
+
+// 画布绘制：预览图按 view 等比显示 + 覆盖层
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (previewImg) {
+    const bw = (previewImg.naturalWidth), bh = (previewImg.naturalHeight);
+    ctx.drawImage(previewImg, view.ox - view.x0 * view.s, view.oy - view.y0 * view.s,
+                  bw * view.s, bh * view.s);
+  }
+  const tl = typeLayout();
+  for (const [name, e] of Object.entries(tl.elements)) {
+    handle(e.pos, sel && sel.name === name ? '#ff4' : '#0ff');
+    if (e.kind === 'stat') {
+      const np = [e.pos[0] + e.num_offset[0], e.pos[1] + e.num_offset[1]];
+      handle(np, sel && sel.name === name ? '#ff4' : '#f8f', 5, true);
+    }
+  }
+  for (const [name, r] of Object.entries(tl.text_regions)) {
+    ctx.strokeStyle = sel && sel.name === name ? '#ff4' : '#4f4';
+    ctx.beginPath();
+    r.polygon.forEach(([x, y], i) => {
+      const [cx, cy] = toC(x, y);
+      if (i) ctx.lineTo(cx, cy); else ctx.moveTo(cx, cy);
+    });
+    ctx.closePath(); ctx.stroke();
+    r.polygon.forEach(([x, y], vi) =>
+      handle([x, y], sel && sel.kind === 'vertex' && sel.name === name && sel.vi === vi ? '#ff4' : '#4f4', 5, true));
+  }
+}
+function handle([x, y], color, s = 6, square = false) {
+  const [cx, cy] = toC(x, y);
+  ctx.fillStyle = color;
+  if (square) ctx.fillRect(cx - s / 2, cy - s / 2, s, s);
+  else { ctx.beginPath(); ctx.arc(cx, cy, s, 0, 7); ctx.fill(); }
+}
+
+// 拖拽（mouseup/mousemove 挂 window，拖出画布不丢）
+let drag = null;
+canvas.addEventListener('mousedown', ev => {
+  const [mx, my] = mousePos(ev);
+  drag = pick(mx, my);
+  if (drag) { sel = drag.sel; refreshSel(); }
+});
+window.addEventListener('mousemove', ev => {
+  if (!drag) return;
+  const [mx, my] = mousePos(ev);
+  const [lx, ly] = toL(mx, my);
+  drag.set(Math.round(lx), Math.round(ly));
+  markDirty(); buildProps(); draw();
+});
+window.addEventListener('mouseup', () => { if (drag) { drag = null; refreshPreview(); } });
+function mousePos(ev) {
+  const r = canvas.getBoundingClientRect();
+  return [ev.clientX - r.left, ev.clientY - r.top];
+}
+function pick(mx, my) {
+  const tl = typeLayout();
+  const near = (x, y) => { const [cx, cy] = toC(x, y); return Math.hypot(mx - cx, my - cy) < 8; };
+  for (const [name, e] of Object.entries(tl.elements)) {
+    if (e.kind === 'stat') {
+      const np = [e.pos[0] + e.num_offset[0], e.pos[1] + e.num_offset[1]];
+      if (near(...np)) return { sel: {kind: 'element', name},
+        set: (x, y) => { e.num_offset = [x - e.pos[0], y - e.pos[1]]; } };
+    }
+    if (near(...e.pos)) return { sel: {kind: 'element', name}, set: (x, y) => { e.pos = [x, y]; } };
+  }
+  for (const [name, r] of Object.entries(tl.text_regions)) {
+    for (let vi = 0; vi < r.polygon.length; vi++) {
+      if (near(...r.polygon[vi])) return { sel: {kind: 'vertex', name, vi},
+        set: (x, y) => { r.polygon[vi] = [x, y]; } };
+    }
+  }
+  return null;
+}
+
+// 右栏属性面板
+function buildProps() {
+  const div = document.getElementById('props');
+  div.innerHTML = '';
+  if (!sel) { div.textContent = '点击元素/文本区/顶点以编辑'; return; }
+  const tl = typeLayout();
+  if (sel.kind === 'element') {
+    const e = tl.elements[sel.name];
+    div.appendChild(title(e.kind === 'stat' ? `${sel.name} (stat: ${e.field})` : `${sel.name} (${e.kind})`));
+    numRow(div, 'x', e.pos[0], v => { e.pos[0] = v; draw(); });
+    numRow(div, 'y', e.pos[1], v => { e.pos[1] = v; draw(); });
+    if (e.kind === 'stat') {
+      numRow(div, 'icon_size', e.icon_size, v => e.icon_size = v);
+      numRow(div, 'num_dx', e.num_offset[0], v => { e.num_offset[0] = v; draw(); });
+      numRow(div, 'num_dy', e.num_offset[1], v => { e.num_offset[1] = v; draw(); });
+      numRow(div, 'font_size', e.font_size, v => e.font_size = v);
+      checkRow(div, 'signed', e.signed, v => e.signed = v);
+      selRow(div, 'icon', ICONS, e.icon, v => e.icon = v);
+      selRow(div, 'icon_neg', ['（无）'].concat(ICONS), e.icon_neg || '（无）',
+             v => { if (v === '（无）') delete e.icon_neg; else e.icon_neg = v; });
+    }
+    if (e.kind === 'rarity_flank') {
+      numRow(div, 'gap', e.gap, v => e.gap = v);
+      numRow(div, 'size', e.size, v => e.size = v);
+    }
+    if (e.kind === 'faction') {
+      numRow(div, 'size', e.size, v => e.size = v);
+      selRow(div, 'style', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
+    }
+    if (e.kind === 'level_badge') {
+      numRow(div, 'base_size', e.base_size, v => e.base_size = v);
+      numRow(div, 'star_size', e.star_size, v => e.star_size = v);
+      numRow(div, 'num_size', e.num_size, v => e.num_size = v);
+    }
+  } else {
+    const r = tl.text_regions[sel.name];
+    div.appendChild(title(`${sel.name} 文本区`));
+    if (sel.kind === 'vertex') {
+      numRow(div, 'x', r.polygon[sel.vi][0], v => { r.polygon[sel.vi][0] = v; draw(); });
+      numRow(div, 'y', r.polygon[sel.vi][1], v => { r.polygon[sel.vi][1] = v; draw(); });
+    }
+    numRow(div, 'font_max', r.font_range[0], v => r.font_range[0] = v);
+    numRow(div, 'font_min', r.font_range[1], v => r.font_range[1] = v);
+    checkRow(div, 'wrap', r.wrap, v => r.wrap = v);
+    selRow(div, 'font', FONTS, r.font, v => r.font = v);
+    const add = document.createElement('button');
+    add.textContent = '添加顶点';
+    add.onclick = () => {
+      const c = centroid(r.polygon);
+      r.polygon.push([Math.round(c[0] + 10), Math.round(c[1] + 10)]);
+      markDirty(); draw();
+    };
+    const del = document.createElement('button');
+    del.textContent = '删除选中顶点';
+    del.onclick = () => {
+      if (sel.kind === 'vertex' && r.polygon.length > 3) {
+        r.polygon.splice(sel.vi, 1); sel = {kind: 'region', name: sel.name};
+        markDirty(); refreshSel();
+      }
+    };
+    div.appendChild(add); div.appendChild(del);
+  }
+}
+function title(t) { const h = document.createElement('h4'); h.textContent = t; return h; }
+function numRow(div, label, val, set) {
+  const l = document.createElement('label');
+  l.textContent = label + ' ';
+  const i = document.createElement('input');
+  i.type = 'number'; i.value = val;
+  i.onchange = () => { const v = parseInt(i.value, 10); if (isNaN(v)) { i.value = val; return; } markDirty(); set(v); };
+  l.appendChild(i); div.appendChild(l);
+}
+function checkRow(div, label, val, set) {
+  const l = document.createElement('label');
+  l.textContent = label + ' ';
+  const i = document.createElement('input');
+  i.type = 'checkbox'; i.checked = val;
+  i.onchange = () => { markDirty(); set(i.checked); };
+  l.appendChild(i); div.appendChild(l);
+}
+function selRow(div, label, opts, val, set) {
+  const l = document.createElement('label');
+  l.textContent = label + ' ';
+  const s = document.createElement('select');
+  for (const o of opts) {
+    const op = document.createElement('option');
+    op.value = op.textContent = o;
+    if (o === val) op.selected = true;
+    s.appendChild(op);
+  }
+  s.onchange = () => { markDirty(); set(s.value); };
+  l.appendChild(s); div.appendChild(l);
+}
+function centroid(poly) {
+  return [poly.reduce((a, p) => a + p[0], 0) / poly.length,
+          poly.reduce((a, p) => a + p[1], 0) / poly.length];
+}
+
+// 保存
+document.getElementById('btn-save').onclick = async () => {
+  let r;
+  try {
+    r = await fetch('/api/layout', {method: 'PUT',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(layouts)});
+  } catch (e) {
+    statusEl.textContent = '保存请求失败: ' + e;
+    return;
+  }
+  if (r.ok) { dirty = false; statusEl.textContent = '已保存'; }
+  else statusEl.textContent = '保存失败: ' + (await r.json()).detail;
+};
+document.getElementById('btn-preview').onclick = refreshPreview;
+boot();
+</script>
 </body>
 </html>

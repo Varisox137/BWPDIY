@@ -8,7 +8,7 @@ from io import BytesIO
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 
 from bwpdiy.render.layout import load_layouts
 from bwpdiy.render.pipeline import TYPE_FRAME_CODE, render_card
@@ -59,7 +59,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     @app.get("/layout")
     def layout_page():
-        return FileResponse(static_dir / "layout.html")
+        # 布局设置已迁入编辑器主体页 tab（editor.html #layout），独立页退役，保留重定向兼容旧链接
+        return RedirectResponse("/#layout")
 
     @app.get("/api/layout")
     def get_layout():

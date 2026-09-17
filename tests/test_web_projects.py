@@ -252,11 +252,15 @@ def test_preview_unrenderable_card_422(client, project, library_dir):
 def test_editor_page_at_root(client):
     r = client.get("/")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
+    # 编辑器主体页含两 tab：卡牌库 / 布局设置
+    assert "卡牌库" in r.text and "布局设置" in r.text
 
 
-def test_layout_page_kept(client):
-    r = client.get("/layout")
-    assert r.status_code == 200 and "text/html" in r.headers["content-type"]
+def test_layout_redirects_to_editor_layout_tab(client):
+    """独立布局页已退役：/layout 重定向到编辑器主体页的布局设置 tab。"""
+    r = client.get("/layout", follow_redirects=False)
+    assert r.status_code in (301, 302, 303, 307, 308)
+    assert r.headers["location"] == "/#layout"
 
 
 # ---------- 修复轮 1：StoreError.code 分派 + 坏 artwork 容错 ----------

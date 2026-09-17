@@ -144,14 +144,15 @@ def test_samples_api(client):
     assert "_base_dir" not in battle and "artwork" not in battle
 
 
-# --- layout.html 内嵌 JS 纯函数测试（node 驱动：抽取函数源码 + 桩驱动运行） ---
+# --- editor.html 内嵌 JS 纯函数测试（node 驱动：抽取函数源码 + 桩驱动运行） ---
+# 布局设置 tab 自 layout.html 迁入 editor.html，被测函数名保持不变
 
 NODE = shutil.which("node")
-LAYOUT_HTML = Path(__file__).resolve().parent.parent / "bwpdiy" / "web" / "static" / "layout.html"
+EDITOR_HTML = Path(__file__).resolve().parent.parent / "bwpdiy" / "web" / "static" / "editor.html"
 
 
 def _script() -> str:
-    html = LAYOUT_HTML.read_text(encoding="utf-8")
+    html = EDITOR_HTML.read_text(encoding="utf-8")
     return html.split("<script>", 1)[1].split("</script>", 1)[0]
 
 

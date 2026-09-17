@@ -35,6 +35,8 @@
 | 术语 | 说明 |
 |---|---|
 | 式神项目 | library 下的一个目录 = 1 式神 + 8 卡 + 衍生物，含 `shikigami.yaml`、`cards/`、`images/` |
+| 保留卡名 | `shikigami`：项目的式神卡固定存于 `shikigami.yaml`，可覆盖保存、不可删除；`cards/` 下不允许 `type: 式神` |
+| 项目名/卡名合法性 | store 层保存时拒绝：空名、首尾空白、`.`/`..`、路径分隔符与 `<>:"\|?*`、控制字符、以点结尾（防路径注入）；`cards/` 下字段 `name` 须与文件名一致 |
 | 衍生物 | 项目内由卡效果派生的实体卡，存于 `cards/`，带派生标记 |
 | 引擎段 | 卡牌 yaml 中与 BWPro 口径对齐的字段（type/name/level/rarity/description…） |
 | 渲染段 | `artwork` 段：`images` 列表，每项 `path/offset_x/offset_y/scale` 全可缺省（默认 `<card_id>.png` / 0 / 0 / 1.0） |

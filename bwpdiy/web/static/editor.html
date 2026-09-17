@@ -174,7 +174,9 @@ const cStatusEl = document.getElementById('c-status');
 const cErrorEl = document.getElementById('c-error');
 const cPreviewImg = document.getElementById('c-preview');
 let cPreviewTimer = null;
-let cPreviewSeq = 0;   // 请求序号：旧响应到达时丢弃，避免乱序覆盖新图
+let cPreviewSeq = 0;   // 预览请求序号：旧响应到达时丢弃，避免乱序覆盖新图
+let cPreviewUrl = null;  // 当前预览 objectURL：换图时释放上一张，防内存累积
+let selectSeq = 0;     // 选卡请求序号：快速连点时慢响应不得覆盖新卡表单
 
 function listErr(msgs) {
   document.getElementById('c-list-error').textContent = (msgs || []).join('\n');
@@ -188,13 +190,13 @@ function confirmDiscard() {
 }
 
 // ---- 项目列表 ----
-async function loadProjects() {
+async function loadProjects(selectCardName = null) {
   let r;
   try { r = await fetch('/api/projects'); } catch (e) { listErr(['项目列表请求失败: ' + e]); return; }
   projects = await r.json();
   if (!projects.includes(curProject)) curProject = null;
   buildProjectList();
-  if (curProject) await loadCards();
+  if (curProject) await loadCards(selectCardName);
   else { cards = []; buildCardList(); clearCard(); }
 }
 function buildProjectList() {
@@ -219,7 +221,9 @@ async function selectProject(p) {
 
 // ---- 卡牌列表 ----
 async function loadCards(selectName = null) {
-  const r = await fetch(`/api/projects/${enc(curProject)}/cards`);
+  let r;
+  try { r = await fetch(`/api/projects/${enc(curProject)}/cards`); }
+  catch (e) { listErr(['卡牌列表请求失败: ' + e]); return; }
   if (!r.ok) { cards = []; buildCardList(); clearCard(); listErr(await parseErrorDetail(r)); return; }
   cards = await r.json();
   buildCardList();
@@ -244,7 +248,11 @@ async function selectCard(name, force = false) {
   buildCardList();
   listErr([]);
   cStatusEl.textContent = '';
-  const r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(name)}`);
+  const seq = ++selectSeq;
+  let r;
+  try { r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(name)}`); }
+  catch (e) { if (seq === selectSeq) listErr(['卡牌读取请求失败: ' + e]); return; }
+  if (seq !== selectSeq) return;  // 期间又选了别的卡，丢弃本次慢响应
   if (!r.ok) { clearCard(); listErr(await parseErrorDetail(r)); return; }
   cardData = await r.json();
   formData = deepCopy(cardData);
@@ -256,6 +264,7 @@ function clearCard() {
   curCard = null; cardData = null; formData = null; cDirty = false;
   document.getElementById('c-form').textContent = '未选中卡牌';
   cPreviewImg.removeAttribute('src');
+  if (cPreviewUrl) { URL.revokeObjectURL(cPreviewUrl); cPreviewUrl = null; }
   cErrorEl.textContent = '';
 }
 
@@ -312,12 +321,14 @@ document.getElementById('c-ren-proj').onclick = async () => {
   if (!curProject) { listErr(['请先选择项目']); return; }
   const r = await ask({title: `重命名项目「${curProject}」为`, value: curProject});
   if (!r || !r.text || r.text === curProject) return;
+  if (cDirty && !confirm('当前卡牌有未保存修改，项目重命名后将丢弃，继续？')) return;
   const resp = await fetch(`/api/projects/${enc(curProject)}`, {method: 'PUT',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify({new_name: r.text})});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
-  curProject = r.text;
+  const keep = curCard;  // 重命名后保持当前卡选中（loadCards 缺省会跳第一张卡）
+  curProject = r.text; cDirty = false;
   listErr([]);
-  await loadProjects();
+  await loadProjects(keep);
 };
 document.getElementById('c-del-proj').onclick = async () => {
   if (!curProject) { listErr(['请先选择项目']); return; }
@@ -353,14 +364,23 @@ document.getElementById('c-ren-card').onclick = async () => {
   if (curCard === 'shikigami') { listErr(['式神卡（shikigami）不可重命名']); return; }
   const r = await ask({title: `重命名卡牌「${curCard}」为`, value: curCard});
   if (!r || !r.text || r.text === curCard) return;
-  // 后端无卡牌改名接口：以当前表单内容（含未保存修改）改名另存，再删旧卡
+  if (cDirty && !confirm('当前卡牌有未保存修改，将随改名一并保存到新卡，继续？')) return;
+  // 后端无卡牌改名接口：以当前表单内容改名另存新卡，再删旧卡。
+  // 先 PUT 后 DELETE：任何一步失败旧卡数据都不丢（DELETE 失败仅新旧并存，可手动善后）
+  const oldName = curCard;
   const data = deepCopy(formData);
   data.name = r.text;
   const put = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(r.text)}`, {method: 'PUT',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
   if (!put.ok) { listErr(await parseErrorDetail(put)); return; }
-  const del = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}`, {method: 'DELETE'});
-  if (!del.ok) { listErr(await parseErrorDetail(del)); return; }
+  const del = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(oldName)}`, {method: 'DELETE'});
+  if (!del.ok) {
+    cDirty = false; curCard = r.text;
+    await loadCards(r.text);  // 新卡已落盘：刷新列表露出并存状态，便于手动善后
+    listErr([`新卡「${r.text}」已创建，但旧卡「${oldName}」删除失败（两卡并存，请手动处理）：`,
+             ...(await parseErrorDetail(del))]);
+    return;
+  }
   cDirty = false; curCard = r.text;
   listErr([]);
   await loadCards(r.text);
@@ -390,7 +410,9 @@ async function cHandlePreviewResponse(r, seq) {
   cErrorEl.textContent = '';
   const blob = await r.blob();
   const url = URL.createObjectURL(blob);
-  cPreviewImg.onload = () => URL.revokeObjectURL(url);
+  const prev = cPreviewUrl;
+  cPreviewUrl = url;
+  cPreviewImg.onload = () => { if (prev) URL.revokeObjectURL(prev); };  // 新图加载成功才释放旧图
   cPreviewImg.src = url;
 }
 async function cPreviewProject() {
@@ -445,7 +467,7 @@ function buildForm() {
     selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
     selRowC(div, '稀有度', RARITIES, formData.rarity ?? 'R', v => setField('rarity', v));
     if (t === '法术') {
-      checkRowC(div, '觉醒（evolve）', !!formData.evolve, v => {
+      checkRowC(div, '觉醒', !!formData.evolve, v => {
         formData.evolve = v;
         if (!v) { delete formData['power+']; delete formData['health+']; }  // 非觉醒法术不可携带数值
         afterEdit(true);
@@ -625,6 +647,19 @@ async function saveCard() {
 // stat 图标仅限存在 _l 大图变体的资源（sj 只有 _s，渲染 stat 用 _l，选 sj 会预览失败）
 const ICONS = ['ll', 'sm', 'hj', 'nj', 'pj', 'zl', 'fl', 'nl'];
 const FONTS = ['name', 'desc'];
+// 内部标识 → 界面中文显示名（未收录原样显示；图标码语义见 docs/terminology.md 内嵌图标段）
+const DISP = {
+  // 布局元素名 / 文本区名 / 字体键
+  level: '等级标', faction: '派系标', rarity: '稀有度', power: '力量', health: '生命',
+  shield: '护甲', durability: '耐久', name: '卡名', footer: '脚注', desc: '描述',
+  // 元素 kind
+  stat: '数值', rarity_flank: '稀有度双标', level_badge: '等级标', text: '文本',
+  // stat 字段
+  'power+': '力量+', 'shield+': '护甲+', 'health+': '生命+',
+  // stat 图标码（资源代号）
+  ll: '力量', sm: '生命', hj: '护甲', pj: '破甲', nj: '耐久', zl: '战力', fl: '乏力', nl: '能量',
+};
+function disp(k) { return DISP[k] || k; }
 // stat 输入框从当前类型布局的 stat 元素 field 派生（不硬编码 field），再按矩阵过滤
 function statInputs() {
   const allowed = STAT_MATRIX[curType] || {};
@@ -760,27 +795,27 @@ function textRow(div, label, val, set) {
   l.appendChild(i); div.appendChild(l);
 }
 
-// 左栏列表
+// 左栏列表（显示中文名，内部键存 dataset.key 供选中高亮比对）
 function buildLists() {
   const tl = typeLayout();
   const ed = document.getElementById('l-elems'); ed.innerHTML = '';
   for (const name of Object.keys(tl.elements)) {
     const d = document.createElement('div');
-    d.textContent = name; d.className = 'item';
+    d.textContent = disp(name); d.className = 'item'; d.dataset.key = name;
     d.onclick = () => { sel = {kind: 'element', name}; refreshSel(); };
     ed.appendChild(d);
   }
   const rd = document.getElementById('l-regions'); rd.innerHTML = '';
   for (const name of Object.keys(tl.text_regions)) {
     const d = document.createElement('div');
-    d.textContent = name; d.className = 'item';
+    d.textContent = disp(name); d.className = 'item'; d.dataset.key = name;
     d.onclick = () => { sel = {kind: 'region', name}; refreshSel(); };
     rd.appendChild(d);
   }
 }
 function refreshSel() {
   document.querySelectorAll('#l-sidebar .item').forEach(d =>
-    d.classList.toggle('active', sel && d.textContent === sel.name));
+    d.classList.toggle('active', sel && d.dataset.key === sel.name));
   buildProps(); draw();
 }
 
@@ -880,7 +915,7 @@ function pick(mx, my) {
   return null;
 }
 
-// 右栏属性面板
+// 右栏属性面板（标签全中文；disp 映射内部标识）
 function buildProps() {
   const div = document.getElementById('l-props');
   div.innerHTML = '';
@@ -888,55 +923,57 @@ function buildProps() {
   const tl = typeLayout();
   if (sel.kind === 'element') {
     const e = tl.elements[sel.name];
-    div.appendChild(title(e.kind === 'stat' ? `${sel.name} (stat: ${e.field})` : `${sel.name} (${e.kind})`));
-    numRow(div, 'x', e.pos[0], v => { e.pos[0] = v; draw(); });
-    numRow(div, 'y', e.pos[1], v => { e.pos[1] = v; draw(); });
+    div.appendChild(title(e.kind === 'stat'
+      ? `${disp(sel.name)}（数值：${disp(e.field)}）`
+      : `${disp(sel.name)}（${disp(e.kind)}）`));
+    numRow(div, '位置 x', e.pos[0], v => { e.pos[0] = v; draw(); });
+    numRow(div, '位置 y', e.pos[1], v => { e.pos[1] = v; draw(); });
     if (e.kind === 'stat') {
-      numRow(div, 'icon_size', e.icon_size, v => { e.icon_size = v; syncElemField(sel.name, 'icon_size', v); });
-      numRow(div, 'num_dx', e.num_offset[0], v => { e.num_offset[0] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
-      numRow(div, 'num_dy', e.num_offset[1], v => { e.num_offset[1] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
-      numRow(div, 'font_size', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
+      numRow(div, '图标尺寸', e.icon_size, v => { e.icon_size = v; syncElemField(sel.name, 'icon_size', v); });
+      numRow(div, '数字偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
+      numRow(div, '数字偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
+      numRow(div, '字号', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
       if (e.icon_neg) {
         // 战斗护甲：按当前值自动选贴图（值<0 用破甲 pj，否则护甲 hj），不提供手动选择
         const n = document.createElement('div');
         n.className = 'note';
-        n.textContent = `图标按数值自动选择: ${e.icon}/${e.icon_neg}`;
+        n.textContent = `图标按数值自动选择：${disp(e.icon)}/${disp(e.icon_neg)}`;
         div.appendChild(n);
       } else {
-        selRow(div, 'icon', ICONS, e.icon, v => e.icon = v);
+        selRow(div, '图标', ICONS, e.icon, v => e.icon = v, disp);
       }
     }
     if (e.kind === 'rarity_flank') {
-      numRow(div, 'gap', e.gap, v => { e.gap = v; syncElemField(sel.name, 'gap', v); });
-      numRow(div, 'margin', e.margin ?? 8, v => { e.margin = v; syncElemField(sel.name, 'margin', v); });
-      numRow(div, 'size', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
+      numRow(div, '默认间距', e.gap, v => { e.gap = v; syncElemField(sel.name, 'gap', v); });
+      numRow(div, '卡名间距', e.margin ?? 8, v => { e.margin = v; syncElemField(sel.name, 'margin', v); });
+      numRow(div, '尺寸', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
     }
     if (e.kind === 'faction') {
-      numRow(div, 'size', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
-      selRow(div, 'style', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
+      numRow(div, '尺寸', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
+      selRow(div, '样式', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
     }
     if (e.kind === 'level_badge') {
       // per-type 开关，不跨类型同步；协战按需求不提供开关（等价始终启用）
-      if (curType !== '协战') checkRow(div, 'enabled', e.enabled !== false, v => e.enabled = v);
-      numRow(div, 'base_size', e.base_size, v => { e.base_size = v; syncElemField(sel.name, 'base_size', v); });
-      numRow(div, 'star_size', e.star_size, v => { e.star_size = v; syncElemField(sel.name, 'star_size', v); });
-      numRow(div, 'num_size', e.num_size, v => { e.num_size = v; syncElemField(sel.name, 'num_size', v); });
+      if (curType !== '协战') checkRow(div, '启用', e.enabled !== false, v => e.enabled = v);
+      numRow(div, '底座尺寸', e.base_size, v => { e.base_size = v; syncElemField(sel.name, 'base_size', v); });
+      numRow(div, '星标尺寸', e.star_size, v => { e.star_size = v; syncElemField(sel.name, 'star_size', v); });
+      numRow(div, '数字尺寸', e.num_size, v => { e.num_size = v; syncElemField(sel.name, 'num_size', v); });
     }
     if (e.kind === 'text') {
-      numRow(div, 'font_size', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
-      selRow(div, 'font', FONTS, e.font || 'name', v => e.font = v);
+      numRow(div, '字号', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
+      selRow(div, '字体', FONTS, e.font || 'name', v => e.font = v, disp);
     }
   } else {
     const r = tl.text_regions[sel.name];
-    div.appendChild(title(`${sel.name} 文本区`));
-    numRow(div, 'cx', r.center[0], v => { r.center[0] = v; draw(); });
-    numRow(div, 'cy', r.center[1], v => { r.center[1] = v; draw(); });
-    numRow(div, 'width', r.width, v => { r.width = v; syncRegionField(sel.name, 'width', v); draw(); });
-    numRow(div, 'height', r.height, v => { r.height = v; syncRegionField(sel.name, 'height', v); draw(); });
-    numRow(div, 'font_max', r.font_range[0], v => { r.font_range[0] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
-    numRow(div, 'font_min', r.font_range[1], v => { r.font_range[1] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
-    checkRow(div, 'wrap', r.wrap, v => r.wrap = v);
-    selRow(div, 'font', FONTS, r.font, v => r.font = v);
+    div.appendChild(title(`${disp(sel.name)} 文本区`));
+    numRow(div, '中心 x', r.center[0], v => { r.center[0] = v; draw(); });
+    numRow(div, '中心 y', r.center[1], v => { r.center[1] = v; draw(); });
+    numRow(div, '宽度', r.width, v => { r.width = v; syncRegionField(sel.name, 'width', v); draw(); });
+    numRow(div, '高度', r.height, v => { r.height = v; syncRegionField(sel.name, 'height', v); draw(); });
+    numRow(div, '字号上限', r.font_range[0], v => { r.font_range[0] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
+    numRow(div, '字号下限', r.font_range[1], v => { r.font_range[1] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
+    checkRow(div, '自动换行', r.wrap, v => r.wrap = v);
+    selRow(div, '字体', FONTS, r.font, v => r.font = v, disp);
   }
 }
 function title(t) { const h = document.createElement('h4'); h.textContent = t; return h; }
@@ -956,13 +993,14 @@ function checkRow(div, label, val, set) {
   i.onchange = () => { markDirty(); set(i.checked); schedulePreview(); };
   l.appendChild(i); div.appendChild(l);
 }
-function selRow(div, label, opts, val, set) {
+function selRow(div, label, opts, val, set, map = null) {
   const l = document.createElement('label');
   l.textContent = label + ' ';
   const s = document.createElement('select');
   for (const o of opts) {
     const op = document.createElement('option');
-    op.value = op.textContent = o;
+    op.value = o;
+    op.textContent = map ? map(o) : o;  // map：内部值 → 中文显示名（值保持内部键不变）
     if (o === val) op.selected = true;
     s.appendChild(op);
   }

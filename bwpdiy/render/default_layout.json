@@ -34,8 +34,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": false
+        "font_size": 30
       },
       "health": {
         "kind": "stat",
@@ -50,8 +49,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": false
+        "font_size": 30
       },
       "name": {
         "kind": "text",
@@ -107,7 +105,8 @@
           256,
           358
         ],
-        "gap": 16,
+        "gap": 28,
+        "margin": 8,
         "size": 24
       },
       "power": {
@@ -123,8 +122,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": true
+        "font_size": 30
       },
       "shield": {
         "kind": "stat",
@@ -140,8 +138,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": true
+        "font_size": 30
       },
       "name": {
         "kind": "text",
@@ -197,7 +194,8 @@
           256,
           358
         ],
-        "gap": 16,
+        "gap": 28,
+        "margin": 8,
         "size": 24
       },
       "power": {
@@ -213,8 +211,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": true
+        "font_size": 30
       },
       "health": {
         "kind": "stat",
@@ -229,8 +226,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": true
+        "font_size": 30
       },
       "name": {
         "kind": "text",
@@ -286,7 +282,8 @@
           256,
           358
         ],
-        "gap": 16,
+        "gap": 28,
+        "margin": 8,
         "size": 24
       },
       "power": {
@@ -302,8 +299,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": false
+        "font_size": 30
       },
       "health": {
         "kind": "stat",
@@ -318,8 +314,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": false
+        "font_size": 30
       },
       "name": {
         "kind": "text",
@@ -375,7 +370,8 @@
           256,
           358
         ],
-        "gap": 16,
+        "gap": 28,
+        "margin": 8,
         "size": 24
       },
       "durability": {
@@ -391,8 +387,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": false
+        "font_size": 30
       },
       "name": {
         "kind": "text",
@@ -448,7 +443,8 @@
           256,
           358
         ],
-        "gap": 16,
+        "gap": 28,
+        "margin": 8,
         "size": 24
       },
       "name": {

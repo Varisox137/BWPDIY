@@ -7,10 +7,10 @@
           120,
           65
         ],
-        "base_size": 50,
+        "base_size": 52,
         "star_size": 68,
         "num_size": 40,
-        "enabled": false
+        "enabled": true
       },
       "faction": {
         "kind": "faction",
@@ -23,7 +23,7 @@
       },
       "power": {
         "kind": "stat",
-        "field": "power",
+        "field": "power+",
         "icon": "ll",
         "pos": [
           160,
@@ -31,11 +31,10 @@
         ],
         "icon_size": 64,
         "num_offset": [
-          10,
-          0
+          8,
+          -2
         ],
-        "font_size": 52,
-        "signed": false
+        "font_size": 52
       },
       "health": {
         "kind": "stat",
@@ -50,8 +49,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": false
+        "font_size": 30
       },
       "name": {
         "kind": "text",
@@ -97,7 +95,7 @@
           120,
           60
         ],
-        "base_size": 50,
+        "base_size": 52,
         "star_size": 68,
         "num_size": 40
       },
@@ -107,7 +105,8 @@
           256,
           345
         ],
-        "gap": 20,
+        "gap": 31,
+        "margin": 8,
         "size": 22
       },
       "power": {
@@ -115,16 +114,15 @@
         "field": "power+",
         "icon": "ll",
         "pos": [
-          137,
-          485
+          138,
+          484
         ],
         "icon_size": 64,
         "num_offset": [
-          10,
-          0
+          8,
+          -2
         ],
-        "font_size": 52,
-        "signed": true
+        "font_size": 52
       },
       "shield": {
         "kind": "stat",
@@ -132,16 +130,15 @@
         "icon": "hj",
         "icon_neg": "pj",
         "pos": [
-          375,
-          485
+          377,
+          482
         ],
         "icon_size": 56,
         "num_offset": [
-          15,
-          -3
+          13,
+          -2
         ],
-        "font_size": 52,
-        "signed": true
+        "font_size": 52
       },
       "name": {
         "kind": "text",
@@ -187,7 +184,7 @@
           120,
           65
         ],
-        "base_size": 50,
+        "base_size": 52,
         "star_size": 68,
         "num_size": 40
       },
@@ -197,7 +194,8 @@
           256,
           358
         ],
-        "gap": 20,
+        "gap": 31,
+        "margin": 8,
         "size": 22
       },
       "power": {
@@ -210,15 +208,14 @@
         ],
         "icon_size": 64,
         "num_offset": [
-          10,
-          0
+          8,
+          -2
         ],
-        "font_size": 52,
-        "signed": true
+        "font_size": 52
       },
       "health": {
         "kind": "stat",
-        "field": "health+",
+        "field": "health",
         "icon": "sm",
         "pos": [
           360,
@@ -229,8 +226,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": true
+        "font_size": 30
       },
       "name": {
         "kind": "text",
@@ -276,7 +272,7 @@
           120,
           65
         ],
-        "base_size": 50,
+        "base_size": 52,
         "star_size": 68,
         "num_size": 40
       },
@@ -286,12 +282,13 @@
           256,
           358
         ],
-        "gap": 20,
+        "gap": 31,
+        "margin": 8,
         "size": 22
       },
       "power": {
         "kind": "stat",
-        "field": "power",
+        "field": "power+",
         "icon": "ll",
         "pos": [
           160,
@@ -299,11 +296,10 @@
         ],
         "icon_size": 64,
         "num_offset": [
-          10,
-          0
+          8,
+          -2
         ],
-        "font_size": 52,
-        "signed": false
+        "font_size": 52
       },
       "health": {
         "kind": "stat",
@@ -318,8 +314,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": false
+        "font_size": 30
       },
       "name": {
         "kind": "text",
@@ -365,7 +360,7 @@
           120,
           65
         ],
-        "base_size": 50,
+        "base_size": 52,
         "star_size": 68,
         "num_size": 40
       },
@@ -375,7 +370,8 @@
           256,
           358
         ],
-        "gap": 20,
+        "gap": 31,
+        "margin": 8,
         "size": 22
       },
       "durability": {
@@ -391,8 +387,7 @@
           22,
           0
         ],
-        "font_size": 30,
-        "signed": false
+        "font_size": 30
       },
       "name": {
         "kind": "text",
@@ -438,7 +433,7 @@
           120,
           65
         ],
-        "base_size": 50,
+        "base_size": 52,
         "star_size": 68,
         "num_size": 40
       },
@@ -448,7 +443,8 @@
           256,
           358
         ],
-        "gap": 20,
+        "gap": 31,
+        "margin": 8,
         "size": 22
       },
       "name": {

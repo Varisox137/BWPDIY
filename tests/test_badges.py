@@ -24,19 +24,54 @@ def test_level_badge(assets_dir):
         opaque(render_element(canvas(), lib, "level", elem, {})) == 0
 
 
-def test_rarity_flank_symmetric(assets_dir):
+def _flank_elem():
+    return {"kind": "rarity_flank", "pos": [256, 358], "gap": 32, "size": 24, "margin": 8}
+
+
+def test_rarity_flank_short_name_static(assets_dir):
+    """短名（name_width/2+margin <= gap）双标固定在 pos±gap，位置与卡名宽度无关。"""
     lib = AssetLibrary(assets_dir)
-    elem = {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24}
-    # 卡名越宽，两标越外移：比较短名/长名 ctx 下右标位置的像素差异
-    narrow = render_element(canvas(), lib, "rarity", elem, {"rarity": "SSR"}, {"name_width": 40})
-    wide = render_element(canvas(), lib, "rarity", elem, {"rarity": "SSR"}, {"name_width": 160})
-    assert opaque(narrow) > 0 and opaque(wide) > 0
-    # 右标中心 x = 256 + name_width/2 + 16 + 12：宽名时右标右侧应有像素而窄名时没有
-    assert wide.getpixel((256 + 80 + 16 + 24, 358))[3] > 0
-    assert narrow.getpixel((256 + 80 + 16 + 24, 358))[3] == 0
+    elem = _flank_elem()
+    no_name = render_element(canvas(), lib, "rarity", elem, {"rarity": "SSR"}, {"name_width": 0})
+    # 40/2+8=28 < 32：仍按默认半间距，逐像素一致
+    short = render_element(canvas(), lib, "rarity", elem, {"rarity": "SSR"}, {"name_width": 40})
+    assert list(no_name.getdata()) == list(short.getdata())
+    assert no_name.getpixel((256 - 32, 358))[3] > 0  # 左标中心 x=224
+    assert no_name.getpixel((256 - 32 - 24, 358))[3] == 0  # 左标之左无墨迹
     # 无 rarity 字段：按默认 R 渲染
-    default_r = render_element(canvas(), lib, "rarity", elem, {}, {"name_width": 40})
+    default_r = render_element(canvas(), lib, "rarity", elem, {}, {"name_width": 0})
     assert opaque(default_r) > 0
+    # margin 缺省回退 8
+    no_margin = render_element(canvas(), lib, "rarity",
+                               {"kind": "rarity_flank", "pos": [256, 358], "gap": 32, "size": 24},
+                               {"rarity": "SSR"}, {"name_width": 0})
+    assert list(no_margin.getdata()) == list(no_name.getdata())
+
+
+def test_rarity_flank_long_name_moves(assets_dir):
+    """长名（name_width/2+margin > gap）双标按与卡名缘固定 margin 外移。"""
+    lib = AssetLibrary(assets_dir)
+    elem = _flank_elem()
+    # 120/2+8=68 > 32：右标中心 x=256+68(+1)
+    wide = render_element(canvas(), lib, "rarity", elem, {"rarity": "SSR"}, {"name_width": 120})
+    assert wide.getpixel((256 + 68, 358))[3] > 0
+    assert wide.getpixel((256 + 68 + 24, 358))[3] == 0
+    short = render_element(canvas(), lib, "rarity", elem, {"rarity": "SSR"}, {"name_width": 0})
+    assert short.getpixel((256 + 68, 358))[3] == 0
+
+
+def test_rarity_flank_mirror_symmetric(assets_dir):
+    """长短名下双标均关于 cx 镜像对称（右标 +1px 补偿偶数尺寸，容差 1px）。"""
+    lib = AssetLibrary(assets_dir)
+    elem = _flank_elem()
+    for name_width in (0, 120):
+        img = render_element(canvas(), lib, "rarity", elem, {"rarity": "SSR"},
+                             {"name_width": name_width})
+        region = img.crop((150, 340, 362, 376))
+        bbox = region.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
+        assert bbox
+        left_edge, right_edge = bbox[0] + 150, bbox[2] + 150
+        assert abs((256 - left_edge) - (right_edge - 256)) <= 1
 
 
 def test_faction(assets_dir):
@@ -53,11 +88,11 @@ def test_faction(assets_dir):
 def test_stat_signed_and_offset(assets_dir):
     lib = AssetLibrary(assets_dir)
     elem = {"kind": "stat", "field": "power+", "icon": "ll", "pos": [160, 485],
-            "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": True}
-    img = render_element(canvas(), lib, "power", elem, {"power+": 1})
+            "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
+    img = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": 1})
     assert opaque(img) > 100  # 图标+数字两处像素
     # 缺字段跳过
-    assert opaque(render_element(canvas(), lib, "power", elem, {})) == 0
+    assert opaque(render_element(canvas(), lib, "power", elem, {"type": "战斗"})) == 0
 
 
 def test_text_element_centered(assets_dir):
@@ -89,30 +124,98 @@ def _cy(bbox):
 
 
 @pytest.mark.parametrize("value", [3, -3, -12])
-def test_stat_signed_vertical_alignment(assets_dir, value):
-    """signed stat：正负号与数字竖直居中对齐；带号与不带号数字位置一致（容差 1px）。
+def test_stat_signed_block_centered(assets_dir, value):
+    """带号 stat（战斗）：符号+数字整体块的视觉中心对齐 num_pos（容差 1px）。
 
     覆盖 + 与 -：田氏颜体 `-` 字形预测 bbox 虚报底边，按预测口径对齐会错位（审查回归）。
     """
+    from bwpdiy.render.badges import _render_ink
     lib = AssetLibrary(assets_dir)
-    # num_offset 拉大，使数字带与图标像素分离便于测量
-    base = {"kind": "stat", "field": "power+", "icon": "ll", "pos": [100, 485],
+    # num_offset 拉大，使数字带与图标像素分离便于测量；num_pos=(160,485)
+    elem = {"kind": "stat", "field": "power+", "icon": "ll", "pos": [100, 485],
             "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
-    signed = render_element(canvas(), lib, "power", dict(base, signed=True), {"power+": value})
-    unsigned = render_element(canvas(), lib, "power", dict(base, signed=False), {"power+": abs(value)})
-    # 数字带：num_pos=(160,485) 附近（图标在 x≤116，不进带）
-    u_digits = _band_bbox(unsigned, 120, 220)
-    assert u_digits
-    # signed 图中：数字墨迹 = 不带号数字 x 范围内的墨迹；符号墨迹 = 其左侧
-    s_digits = _band_bbox(signed, u_digits[0], u_digits[2])
-    s_sign = _band_bbox(signed, 120, u_digits[0])
+    signed = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": value})
+    # 整体块：num_pos=(160,485) 附近（图标在 x≤116，不进带）
+    block = _band_bbox(signed, 120, 260)
+    assert block
+    assert abs((block[0] + block[2]) / 2 - 160) <= 1  # 块视觉中心对齐 num_pos.x
+    # 符号/数字竖直居中：数字带 = 块右侧 digit_ink 宽（与渲染同源 _render_ink 口径）
+    font = lib.font("name", 30)
+    dw = _render_ink(str(abs(value)), font)[0].width
+    s_digits = _band_bbox(signed, block[2] - dw, block[2])
+    s_sign = _band_bbox(signed, block[0], block[2] - dw - 1)
     assert s_digits and s_sign
-    # 数字部分位置逐像素一致（含多位数 12）
-    assert s_digits == u_digits
-    # 符号中心与数字中心竖直对齐（容差 1px）
     assert abs(_cy(s_sign) - _cy(s_digits)) <= 1
     # 符号半宽化：符号明显窄于数字（田氏颜体 +/- 为全宽字形，须水平压缩；用户裁定 0.65）
     assert (s_sign[2] - s_sign[0]) < (s_digits[2] - s_digits[0])
+
+
+def test_stat_unsigned_block_centered(assets_dir):
+    """不带号 stat（式神/形态/幻境等其余类型）：数字视觉中心对齐 num_pos。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": "power", "icon": "ll", "pos": [100, 485],
+            "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
+    img = render_element(canvas(), lib, "power", elem, {"type": "式神", "power": 12})
+    block = _band_bbox(img, 120, 260)
+    assert block
+    assert abs((block[0] + block[2]) / 2 - 160) <= 1
+
+
+def test_stat_sign_derived_by_type(assets_dir):
+    """符号有无按卡牌类型派生：战斗 +/-，法术（觉醒样卡）只 +，其余不带号。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": "power+", "icon": "ll", "pos": [100, 485],
+            "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
+
+    def digit_band(card):
+        img = render_element(canvas(), lib, "power", elem, card)
+        return _band_bbox(img, 120, 260)
+
+    unsigned = digit_band({"power+": 3})  # 无类型：不带号
+    spell = digit_band({"type": "法术", "power+": 3})  # 法术：只 +
+    combat = digit_band({"type": "战斗", "power+": -3})  # 战斗：+/-（负值带 -）
+    assert unsigned and spell and combat
+    # 带号块比不带号数字带宽（符号+间隔）；不带号块中心即 num_pos
+    assert (spell[2] - spell[0]) > (unsigned[2] - unsigned[0])
+    assert (combat[2] - combat[0]) > (unsigned[2] - unsigned[0])
+    assert abs((unsigned[0] + unsigned[2]) / 2 - 160) <= 1
+    # 法术带的是 + 号：与战斗同值 +3 的块逐像素一致
+    combat_pos = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": 3})
+    spell_img = render_element(canvas(), lib, "power", elem, {"type": "法术", "power+": 3})
+    assert list(combat_pos.getdata()) == list(spell_img.getdata())
+
+
+@pytest.mark.parametrize("card_type,field", [("战斗", "power+"), ("战斗", "shield+"),
+                                             ("法术", "power+"), ("法术", "health+")])
+def test_stat_zero_skipped_for_combat_spell(assets_dir, card_type, field):
+    """战斗/法术的加成 stat 值为 0 时整个角标（图标+数字）不渲染。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": field, "icon": "ll", "pos": [160, 485],
+            "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
+    assert opaque(render_element(canvas(), lib, "stat", elem, {field: 0, "type": card_type})) == 0
+    assert opaque(render_element(canvas(), lib, "stat", elem, {field: 1, "type": card_type})) > 0
+
+
+@pytest.mark.parametrize("card_type,field", [("式神", "power"), ("形态", "health"),
+                                             ("幻境", "durability")])
+def test_stat_zero_rendered_for_body_types(assets_dir, card_type, field):
+    """式神/形态/幻境的 stat 值为 0 也照常渲染。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": field, "icon": "ll", "pos": [160, 485],
+            "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
+    assert opaque(render_element(canvas(), lib, "stat", elem, {field: 0, "type": card_type})) > 0
+
+
+def test_stat_rendered_helper():
+    """stat_rendered：stat 元素实际渲染判定（渲染与文本避让障碍同口径）。"""
+    from bwpdiy.render.badges import stat_rendered
+    shield = {"kind": "stat", "field": "shield+"}
+    assert stat_rendered(shield, {"type": "战斗", "shield+": 2})
+    assert stat_rendered(shield, {"type": "战斗", "shield+": -1})
+    assert not stat_rendered(shield, {"type": "战斗", "shield+": 0})
+    assert not stat_rendered(shield, {"type": "战斗"})  # 字段缺失
+    durability = {"kind": "stat", "field": "durability"}
+    assert stat_rendered(durability, {"type": "幻境", "durability": 0})  # 幻境 0 照渲
 
 
 def test_level_badge_disabled(assets_dir):
@@ -132,9 +235,10 @@ def test_stat_icon_neg(assets_dir):
     lib = AssetLibrary(assets_dir)
     elem = {"kind": "stat", "field": "shield+", "icon": "hj", "icon_neg": "pj",
             "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0],
-            "font_size": 30, "signed": True}
-    pos_img = render_element(canvas(), lib, "shield", elem, {"shield+": 1})
-    neg_img = render_element(canvas(), lib, "shield", elem, {"shield+": -1})
+            "font_size": 30}
+    # 战斗护甲按当前值自动选贴图：值 < 0 用破甲 pj，否则护甲 hj
+    pos_img = render_element(canvas(), lib, "shield", elem, {"type": "战斗", "shield+": 1})
+    neg_img = render_element(canvas(), lib, "shield", elem, {"type": "战斗", "shield+": -1})
     assert list(pos_img.getdata()) != list(neg_img.getdata())  # 负值换用破甲贴图
     # stat_obstacle 矩形公式
     x0, y0, x1, y1 = stat_obstacle(elem)

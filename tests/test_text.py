@@ -55,8 +55,25 @@ def test_obstacles_sealing_line_returns_none(assets_dir):
     assert img is not None
 
 
-def test_obstacles_narrow_bottom_lines(assets_dir):
-    # 底部左右有数值标障碍：长描述末尾几行可用宽度应变窄（行数增多或末行更短）
+def test_explicit_newline_forces_break(assets_dir):
+    """显式 \n 强制断行：每段内再自动换行、逐行居中。"""
+    lib = AssetLibrary(assets_dir)
+    font, lines = fit_in_region("第一行\n第二行", rect_region(100, 100, 400, 200), lib)
+    assert [l[0] for l in lines] == ["第一行", "第二行"]
+    assert lines[0][2] < lines[1][2]  # 第二行在下方
+
+
+def test_consecutive_newlines_merged(assets_dir):
+    """连续 \n 合并为一个换行（不产生空行）。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(100, 100, 400, 200)
+    font, lines = fit_in_region("甲\n\n\n乙", region, lib)
+    assert [l[0] for l in lines] == ["甲", "乙"]
+    img = draw_region(canvas(), lib, "甲\n\n乙", region)
+    assert sum(1 for p in img.getdata() if p[3] > 0) > 50
+
+
+def test_obstacles_narrow_bottom_lines(assets_dir):    # 底部左右有数值标障碍：长描述末尾几行可用宽度应变窄（行数增多或末行更短）
     lib = AssetLibrary(assets_dir)
     text = "这是一段用于验证障碍避让的长描述文本，需要排很多行才能放下。" * 4
     region = rect_region(100, 100, 400, 400)

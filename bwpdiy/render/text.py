@@ -1,5 +1,7 @@
 """文本层：矩形文本区排版（自动换行、行内居中、字号递减适配、障碍避让）。"""
 
+import re
+
 from PIL import Image, ImageDraw, ImageFont
 
 from bwpdiy.render.assets import AssetLibrary
@@ -8,6 +10,11 @@ from bwpdiy.render.geometry import clamp_span_by_obstacles
 TEXT_FILL = (60, 45, 30, 255)
 
 _LINE_GAP = 6
+
+
+def _normalize_newlines(text: str) -> str:
+    """连续 \n 合并为一个换行（显式 \n 是强制断行，但不产生空行）。"""
+    return re.sub(r"\n+", "\n", text)
 
 
 def _line_height(font: ImageFont.FreeTypeFont) -> float:
@@ -72,6 +79,7 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
 def fit_in_region(text: str, region: dict, lib: AssetLibrary,
                   obstacles: list | None = None):
     """字号从大到小适配，返回 (font, lines)；最小字号仍排不下时返回 None。"""
+    text = _normalize_newlines(text)
     max_size, min_size = region["font_range"]
     for size in range(max_size, min_size - 1, -1):
         font = lib.font(region["font"], size)
@@ -84,6 +92,7 @@ def fit_in_region(text: str, region: dict, lib: AssetLibrary,
 def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
                 region: dict, obstacles: list | None = None,
                 fill=TEXT_FILL) -> Image.Image:
+    text = _normalize_newlines(text)
     fitted = fit_in_region(text, region, lib, obstacles)
     if fitted is None:
         font = lib.font(region["font"], region["font_range"][1])

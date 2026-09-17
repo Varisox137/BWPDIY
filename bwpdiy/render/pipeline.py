@@ -12,7 +12,7 @@ from PIL import Image
 
 from bwpdiy.render.artwork import apply_mask, fit_artwork
 from bwpdiy.render.assets import AssetLibrary
-from bwpdiy.render.badges import render_element, stat_obstacle
+from bwpdiy.render.badges import render_element, stat_obstacle, stat_rendered
 from bwpdiy.render.layout import get_type_layout, load_layouts
 from bwpdiy.render.text import draw_region
 
@@ -84,7 +84,7 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     if card.get("description") and "desc" in regions:
         obstacles = [stat_obstacle(e) for e in elements.values()
                      if e["kind"] == "stat" and e.get("enabled", True)
-                     and e["field"] in card]
+                     and stat_rendered(e, card)]
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
                              obstacles=obstacles)
     # 裁剪掉整画布四周的透明边（bbox 取自合成图 alpha，等级标等溢出元素自然包含）

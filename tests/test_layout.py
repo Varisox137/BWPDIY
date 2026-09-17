@@ -69,6 +69,27 @@ def test_shipped_layouts_schema_current():
                 assert rarity["gap"] > 0 and rarity["margin"] > 0
 
 
+# 各类型 stat 元素 field 的钉死口径（与 stat 适用矩阵、样卡字段一致）
+EXPECTED_STAT_FIELDS = {
+    "式神": {"power": "power", "health": "health"},
+    "战斗": {"power": "power+", "shield": "shield+"},
+    "法术": {"power": "power+", "health": "health+"},
+    "形态": {"power": "power", "health": "health"},
+    "幻境": {"durability": "durability"},
+    "协战": {},
+}
+
+
+def test_shipped_layout_stat_fields():
+    """出厂与包内默认布局 stat 元素 field 按类型钉死（propagate 误覆盖 field 污染回归）。"""
+    for path in (Path("assets"), Path("bwpdiy/render")):
+        layouts = layout.load_layouts(path)
+        for t in TYPES:
+            fields = {n: e["field"] for n, e in layouts[t]["elements"].items()
+                      if e["kind"] == "stat"}
+            assert fields == EXPECTED_STAT_FIELDS[t], f"{path}/{t}: {fields}"
+
+
 def test_normalize_size_fields_majority_wins(tmp_path):
     """跨类型同名元素尺寸类字段不一致：多数值归一 + 告警；pos 不归一。"""
     custom = {t: {"elements": {"power": _stat(30)}, "text_regions": {}} for t in TYPES}

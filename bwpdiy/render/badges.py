@@ -64,17 +64,32 @@ def _render_ink(text: str, font, stroke_width: int = 2):
 # 用户裁定比官方口径稍大一点
 _SIGN_X_SCALE = 0.65
 
-# stat 符号口径按卡牌类型派生：战斗可有 +/-，法术（觉醒样卡）只 +，其余类型不带号
-_STAT_SIGN = {"战斗": "+-", "法术": "+"}
-# 战斗/法术的加成 stat 值为 0 时整个角标（图标+数字）不渲染；式神/形态/幻境 0 照渲
-_ZERO_SKIP_TYPES = frozenset({"战斗", "法术"})
+# stat 适用矩阵（用户裁定唯一口径，渲染/文本避让/GUI 输入同表）：
+# (type, field) -> "signed"（带 ± 号，0 不绘制：战斗、法术觉醒）/ "plain"（无符号，0 照常绘制）
+# 表外组合即使 card 带该字段也不绘制；协战/非觉醒法术无任何 stat
+_STAT_MATRIX = {
+    ("式神", "power"): "plain", ("式神", "health"): "plain",
+    ("战斗", "power+"): "signed", ("战斗", "shield+"): "signed",
+    ("法术", "power+"): "signed", ("法术", "health+"): "signed",  # 仅 evolve=true
+    ("形态", "power"): "plain", ("形态", "health"): "plain",
+    ("幻境", "durability"): "plain",
+}
+
+
+def _stat_mode(elem: dict, card: dict) -> str | None:
+    """(type, field) 在适用矩阵中的符号模式；表外/非觉醒法术返回 None。"""
+    ctype = card.get("type")
+    if ctype == "法术" and not card.get("evolve", False):
+        return None
+    return _STAT_MATRIX.get((ctype, elem["field"]))
 
 
 def stat_rendered(elem: dict, card: dict) -> bool:
-    """stat 元素是否实际渲染（字段缺失、战斗/法术 0 值时跳过）；文本避让障碍同口径。"""
-    if elem["field"] not in card:
+    """stat 元素是否实际渲染（按适用矩阵：表外组合/字段缺失跳过，signed 模式 0 值跳过）。"""
+    mode = _stat_mode(elem, card)
+    if mode is None or elem["field"] not in card:
         return False
-    return not (card[elem["field"]] == 0 and card.get("type") in _ZERO_SKIP_TYPES)
+    return not (card[elem["field"]] == 0 and mode == "signed")
 
 
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
@@ -123,13 +138,10 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         pos = elem["pos"]
         num_pos = (pos[0] + elem["num_offset"][0], pos[1] + elem["num_offset"][1])
         font = lib.font("name", elem["font_size"])
-        sign_mode = _STAT_SIGN.get(card.get("type"))
-        if sign_mode == "+-":
+        # signed 模式（战斗/法术觉醒）按实际正负拼 +/-，负值同走 0.65 压缩符号路径
+        sign = ""
+        if _stat_mode(elem, card) == "signed":
             sign = "+" if value >= 0 else "-"
-        elif sign_mode == "+":
-            sign = "+" if value > 0 else ""
-        else:
-            sign = ""
         digits = str(abs(value)) if sign else str(value)
         # 符号（如有）+ 数字作为一个整体块，块的视觉中心对齐 num_pos。
         # 符号与数字分别离屏渲染取真墨迹：同一字体中 +/- 墨迹中心与数字不一致，

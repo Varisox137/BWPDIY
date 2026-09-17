@@ -142,3 +142,145 @@ def test_samples_api(client):
     battle = samples["战斗"]
     assert battle["name"] == "义道" and battle["shield+"] == 2
     assert "_base_dir" not in battle and "artwork" not in battle
+
+
+# --- layout.html 内嵌 JS 纯函数测试（node 驱动：抽取函数源码 + 桩驱动运行） ---
+
+NODE = shutil.which("node")
+LAYOUT_HTML = Path(__file__).resolve().parent.parent / "bwpdiy" / "web" / "static" / "layout.html"
+
+
+def _script() -> str:
+    html = LAYOUT_HTML.read_text(encoding="utf-8")
+    return html.split("<script>", 1)[1].split("</script>", 1)[0]
+
+
+def _extract_js(script: str, decl: str) -> str:
+    """按花括号配对从内嵌脚本中抽取一个声明（函数/const 对象字面量）。"""
+    start = script.index(decl)
+    brace = script.index("{", start)
+    depth = 0
+    for i in range(brace, len(script)):
+        if script[i] == "{":
+            depth += 1
+        elif script[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return script[start:i + 1]
+    raise AssertionError(f"{decl} 花括号不配对")
+
+
+def _run_node(tmp_path, driver: str):
+    import subprocess
+    src = tmp_path / "driver.js"
+    src.write_text(driver, encoding="utf-8")
+    r = subprocess.run([NODE, str(src)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "OK" in r.stdout
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_propagate_style_keys_only(tmp_path):
+    """保存传播只镜像样式键白名单；kind/field/icon/icon_neg/pos/enabled 不跨类型覆盖。"""
+    script = _script()
+    import re
+    style_keys = re.search(r"const STYLE_KEYS = .*?;", script, re.S).group(0)
+    propagate = _extract_js(script, "function propagateFromCurrentType()")
+    driver = f"""
+const assert = require('node:assert');
+const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
+let curType = "战斗";
+{style_keys}
+{propagate}
+const layouts = {{
+  "战斗": {{elements: {{
+    power: {{kind: "stat", field: "power+", icon: "ll", pos: [138, 484],
+            icon_size: 64, num_offset: [8, -2], font_size: 52}},
+    shield: {{kind: "stat", field: "shield+", icon: "hj", icon_neg: "pj", pos: [377, 482],
+             icon_size: 56, num_offset: [13, -2], font_size: 52}},
+    level: {{kind: "level_badge", pos: [120, 60], base_size: 52, star_size: 68, num_size: 40,
+            enabled: false}},
+  }}}},
+  "法术": {{elements: {{
+    power: {{kind: "stat", field: "power+", icon: "ll", pos: [160, 485],
+            icon_size: 32, num_offset: [22, 0], font_size: 30}},
+    health: {{kind: "stat", field: "health+", icon: "sm", pos: [360, 485],
+             icon_size: 32, num_offset: [22, 0], font_size: 30}},
+    shield: {{kind: "stat", field: "shield+", icon: "hj", pos: [360, 485],
+             icon_size: 32, num_offset: [22, 0], font_size: 30}},
+    level: {{kind: "level_badge", pos: [120, 65], base_size: 50, star_size: 68, num_size: 40,
+            enabled: true}},
+  }}}},
+  "形态": {{elements: {{
+    power: {{kind: "stat", field: "power", icon: "zl", pos: [160, 485],
+            icon_size: 32, num_offset: [22, 0], font_size: 30}},
+  }}}},
+}};
+function typeLayout() {{ return layouts[curType]; }}
+propagateFromCurrentType();
+// 样式键镜像
+assert.strictEqual(layouts["法术"].elements.power.icon_size, 64);
+assert.deepStrictEqual(layouts["法术"].elements.power.num_offset, [8, -2]);
+assert.strictEqual(layouts["形态"].elements.power.font_size, 52);
+assert.strictEqual(layouts["法术"].elements.level.base_size, 52);
+// 内容/结构键不镜像（field 跨类型污染回归）
+assert.strictEqual(layouts["形态"].elements.power.field, "power");
+assert.strictEqual(layouts["法术"].elements.health.field, "health+");
+assert.strictEqual(layouts["形态"].elements.power.icon, "zl");
+assert.strictEqual(layouts["法术"].elements.shield.icon, "hj");
+assert.ok(!("icon_neg" in layouts["法术"].elements.shield));
+assert.deepStrictEqual(layouts["法术"].elements.power.pos, [160, 485]);
+assert.strictEqual(layouts["法术"].elements.level.enabled, true);
+console.log("OK");
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_gui_stat_inputs_derived(tmp_path):
+    """stat 输入框从布局 stat 元素 field 派生 + 适用矩阵过滤（协战/非觉醒法术/表外无输入框）。"""
+    script = _script()
+    stat_matrix = _extract_js(script, "const STAT_MATRIX = {") + ";"
+    stat_inputs = _extract_js(script, "function statInputs()")
+    driver = f"""
+const assert = require('node:assert');
+{stat_matrix}
+{stat_inputs}
+let curType;
+let cardOverrides = {{}};
+let samples = {{"法术": {{evolve: true}}}};
+function cardField(name) {{
+  const ov = cardOverrides[curType] || {{}};
+  return name in ov ? ov[name] : (samples[curType] || {{}})[name];
+}}
+const layouts = {{
+  "式神": {{elements: {{power: {{kind: "stat", field: "power"}},
+                       health: {{kind: "stat", field: "health"}}, name: {{kind: "text"}}}}}},
+  "战斗": {{elements: {{power: {{kind: "stat", field: "power+"}},
+                       shield: {{kind: "stat", field: "shield+"}}}}}},
+  "法术": {{elements: {{power: {{kind: "stat", field: "power+"}},
+                       health: {{kind: "stat", field: "health+"}}}}}},
+  "幻境": {{elements: {{durability: {{kind: "stat", field: "durability"}}}}}},
+  "协战": {{elements: {{}}}},
+}};
+function typeLayout() {{ return layouts[curType]; }}
+curType = "式神";
+assert.deepStrictEqual(statInputs(), [["power", "力量"], ["health", "生命"]]);
+curType = "战斗";
+assert.deepStrictEqual(statInputs(), [["power+", "力量+"], ["shield+", "护甲+"]]);
+curType = "法术";
+assert.deepStrictEqual(statInputs(), [["power+", "力量+"], ["health+", "生命+"]]);
+cardOverrides["法术"] = {{evolve: false}};  // 非觉醒法术：无输入框
+assert.deepStrictEqual(statInputs(), []);
+delete cardOverrides["法术"];
+curType = "幻境";
+assert.deepStrictEqual(statInputs(), [["durability", "耐久"]]);
+curType = "协战";
+assert.deepStrictEqual(statInputs(), []);
+// 布局 field 被改出矩阵（污染场景）：表外 field 不提供输入框
+layouts["式神"].elements.power.field = "power+";
+curType = "式神";
+assert.deepStrictEqual(statInputs(), [["health", "生命"]]);
+console.log("OK");
+"""
+    _run_node(tmp_path, driver)

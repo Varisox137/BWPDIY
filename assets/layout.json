@@ -23,7 +23,7 @@
       },
       "power": {
         "kind": "stat",
-        "field": "power+",
+        "field": "power",
         "icon": "ll",
         "pos": [
           160,
@@ -215,7 +215,7 @@
       },
       "health": {
         "kind": "stat",
-        "field": "health",
+        "field": "health+",
         "icon": "sm",
         "pos": [
           360,
@@ -288,7 +288,7 @@
       },
       "power": {
         "kind": "stat",
-        "field": "power+",
+        "field": "power",
         "icon": "ll",
         "pos": [
           160,

@@ -44,16 +44,26 @@ const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
 // stat 图标仅限存在 _l 大图变体的资源（sj 只有 _s，渲染 stat 用 _l，选 sj 会预览失败）
 const ICONS = ['ll', 'sm', 'hj', 'nj', 'pj', 'zl', 'fl', 'nl'];
 const FONTS = ['name', 'desc'];
-// 卡牌内容输入：各类型可编辑的 stat 字段（[字段, 标签]）；式神/形态/幻境强制非负
-const STAT_INPUTS = {
-  "式神": [["power", "力量"], ["health", "生命"]],
-  "战斗": [["power+", "力量+"], ["shield+", "护甲+"]],
-  "法术": [["power+", "力量+"], ["health+", "生命+"]],
-  "形态": [["power", "力量"], ["health", "生命"]],
-  "幻境": [["durability", "耐久"]],
-  "协战": [],
+// stat 适用矩阵（与 badges.py _STAT_MATRIX 同口径）：type -> {field: 输入框标签}
+// 表外组合不提供输入框也不绘制；法术仅觉醒（evolve）有 stat；式神/形态/幻境强制非负
+const STAT_MATRIX = {
+  "式神": {"power": "力量", "health": "生命"},
+  "战斗": {"power+": "力量+", "shield+": "护甲+"},
+  "法术": {"power+": "力量+", "health+": "生命+"},
+  "形态": {"power": "力量", "health": "生命"},
+  "幻境": {"durability": "耐久"},
 };
 const NONNEG_TYPES = new Set(["式神", "形态", "幻境"]);
+// stat 输入框从当前类型布局的 stat 元素 field 派生（不硬编码 field），再按矩阵过滤
+function statInputs() {
+  const allowed = STAT_MATRIX[curType] || {};
+  if (curType === "法术" && !cardField('evolve')) return [];  // 非觉醒法术无 stat
+  const inputs = [];
+  for (const e of Object.values(typeLayout().elements)) {
+    if (e.kind === 'stat' && e.field in allowed) inputs.push([e.field, allowed[e.field]]);
+  }
+  return inputs;
+}
 let layouts = null;          // 完整布局 dict（/api/layout）
 let samples = null;          // 六类型样卡字段（/api/samples）
 let cardOverrides = {};      // type -> {field: value} 卡牌内容覆盖（POST /api/preview 的 card）
@@ -134,7 +144,7 @@ function buildCardProps() {
   div.innerHTML = '';
   if (!samples || !samples[curType]) return;
   const nonneg = NONNEG_TYPES.has(curType);  // 式神/形态/幻境 stat 强制非负
-  for (const [field, label] of STAT_INPUTS[curType] || []) {
+  for (const [field, label] of statInputs()) {
     const l = document.createElement('label');
     l.textContent = label + ' ';
     const i = document.createElement('input');
@@ -387,8 +397,13 @@ function selRow(div, label, opts, val, set) {
   l.appendChild(s); div.appendChild(l);
 }
 
-// 保存时以当前类型为准传播：同名元素除 pos/enabled 外的全部字段镜像到所有类型
-// （缺键补齐、多键删除；pos 按类型独立，enabled 是按类型开关不同步）
+// 保存时以当前类型为准传播：同名元素的样式键镜像到所有类型（缺键不删、各自保留）。
+// 内容/结构键（kind/field/icon/icon_neg/pos/enabled）一律不镜像——field 曾被跨类型覆盖
+// 造成数据污染（式神/形态 power→power+、法术 health+→health），只同步白名单内样式键。
+// 编辑期 syncElemField 调用点同样只传样式键（num_offset/icon_size/font_size/gap/margin/
+// size/base_size/star_size/num_size），与本能保持同口径。
+const STYLE_KEYS = new Set(["size", "icon_size", "font_size", "num_offset", "gap",
+                            "margin", "base_size", "star_size", "num_size", "font", "style"]);
 function propagateFromCurrentType() {
   const cur = typeLayout().elements || {};
   for (const [name, el] of Object.entries(cur)) {
@@ -396,11 +411,8 @@ function propagateFromCurrentType() {
       if (t === curType) continue;
       const other = layouts[t] && layouts[t].elements && layouts[t].elements[name];
       if (!other) continue;
-      for (const k of Object.keys(other)) {
-        if (k !== 'pos' && k !== 'enabled' && !(k in el)) delete other[k];
-      }
-      for (const [k, v] of Object.entries(el)) {
-        if (k !== 'pos' && k !== 'enabled') other[k] = JSON.parse(JSON.stringify(v));
+      for (const k of STYLE_KEYS) {
+        if (k in el) other[k] = JSON.parse(JSON.stringify(el[k]));
       }
     }
   }

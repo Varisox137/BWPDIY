@@ -162,7 +162,11 @@ def test_stat_unsigned_block_centered(assets_dir):
 
 
 def test_stat_sign_derived_by_type(assets_dir):
-    """符号有无按卡牌类型派生：战斗 +/-，法术（觉醒样卡）只 +，其余不带号。"""
+    """符号规则按 stat 适用矩阵：战斗/法术觉醒 ±，式神/形态/幻境不带号。
+
+    法术觉醒与战斗共用同一 signed 路径（含负值压缩符号），同值渲染逐像素一致——
+    钉死审查遗留的"法术负值走全宽 - 路径"不一致。
+    """
     lib = AssetLibrary(assets_dir)
     elem = {"kind": "stat", "field": "power+", "icon": "ll", "pos": [100, 485],
             "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
@@ -171,29 +175,49 @@ def test_stat_sign_derived_by_type(assets_dir):
         img = render_element(canvas(), lib, "power", elem, card)
         return _band_bbox(img, 120, 260)
 
-    unsigned = digit_band({"power+": 3})  # 无类型：不带号
-    spell = digit_band({"type": "法术", "power+": 3})  # 法术：只 +
-    combat = digit_band({"type": "战斗", "power+": -3})  # 战斗：+/-（负值带 -）
-    assert unsigned and spell and combat
-    # 带号块比不带号数字带宽（符号+间隔）；不带号块中心即 num_pos
-    assert (spell[2] - spell[0]) > (unsigned[2] - unsigned[0])
-    assert (combat[2] - combat[0]) > (unsigned[2] - unsigned[0])
-    assert abs((unsigned[0] + unsigned[2]) / 2 - 160) <= 1
-    # 法术带的是 + 号：与战斗同值 +3 的块逐像素一致
+    spell = digit_band({"type": "法术", "evolve": True, "power+": 3})  # 法术觉醒：+
+    combat = digit_band({"type": "战斗", "power+": -3})  # 战斗：+/-
+    assert spell and combat
+    # 法术觉醒 +3 与战斗 +3 逐像素一致（同一 signed 路径）
     combat_pos = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": 3})
-    spell_img = render_element(canvas(), lib, "power", elem, {"type": "法术", "power+": 3})
+    spell_img = render_element(canvas(), lib, "power", elem,
+                               {"type": "法术", "evolve": True, "power+": 3})
     assert list(combat_pos.getdata()) == list(spell_img.getdata())
+    # 法术觉醒 -3 与战斗 -3 逐像素一致：负值同走 0.65 压缩符号路径
+    combat_neg = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": -3})
+    spell_neg = render_element(canvas(), lib, "power", elem,
+                               {"type": "法术", "evolve": True, "power+": -3})
+    assert list(combat_neg.getdata()) == list(spell_neg.getdata())
+
+
+@pytest.mark.parametrize("card", [
+    {"type": "法术", "power+": 3},                # 非觉醒法术：无任何角标
+    {"type": "法术", "evolve": False, "power+": 3},
+    {"type": "协战", "power+": 3},                # 协战：无 stat
+    {"type": "式神", "power+": 3},                # 表外 (type, field) 组合
+    {"type": "形态", "shield+": 2},               # 表外：形态无护甲加成
+    {"power+": 3},                                # 缺 type
+])
+def test_stat_matrix_off_whitelist_skipped(assets_dir, card):
+    """适用矩阵表外组合即使 card 带该字段也不绘制。"""
+    lib = AssetLibrary(assets_dir)
+    field = "shield+" if "shield+" in card else "power+"
+    elem = {"kind": "stat", "field": field, "icon": "ll", "pos": [160, 485],
+            "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
+    assert opaque(render_element(canvas(), lib, "stat", elem, card)) == 0
 
 
 @pytest.mark.parametrize("card_type,field", [("战斗", "power+"), ("战斗", "shield+"),
                                              ("法术", "power+"), ("法术", "health+")])
-def test_stat_zero_skipped_for_combat_spell(assets_dir, card_type, field):
-    """战斗/法术的加成 stat 值为 0 时整个角标（图标+数字）不渲染。"""
+def test_stat_zero_skipped_for_combat_evolve_spell(assets_dir, card_type, field):
+    """战斗/法术觉醒的加成 stat 值为 0 时整个角标（图标+数字）不渲染。"""
     lib = AssetLibrary(assets_dir)
     elem = {"kind": "stat", "field": field, "icon": "ll", "pos": [160, 485],
             "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
-    assert opaque(render_element(canvas(), lib, "stat", elem, {field: 0, "type": card_type})) == 0
-    assert opaque(render_element(canvas(), lib, "stat", elem, {field: 1, "type": card_type})) > 0
+    card = {field: 0, "type": card_type, "evolve": True}
+    assert opaque(render_element(canvas(), lib, "stat", elem, card)) == 0
+    card[field] = 1
+    assert opaque(render_element(canvas(), lib, "stat", elem, card)) > 0
 
 
 @pytest.mark.parametrize("card_type,field", [("式神", "power"), ("形态", "health"),
@@ -207,7 +231,7 @@ def test_stat_zero_rendered_for_body_types(assets_dir, card_type, field):
 
 
 def test_stat_rendered_helper():
-    """stat_rendered：stat 元素实际渲染判定（渲染与文本避让障碍同口径）。"""
+    """stat_rendered：stat 元素实际渲染判定（渲染与文本避让障碍同口径），按适用矩阵。"""
     from bwpdiy.render.badges import stat_rendered
     shield = {"kind": "stat", "field": "shield+"}
     assert stat_rendered(shield, {"type": "战斗", "shield+": 2})
@@ -216,6 +240,14 @@ def test_stat_rendered_helper():
     assert not stat_rendered(shield, {"type": "战斗"})  # 字段缺失
     durability = {"kind": "stat", "field": "durability"}
     assert stat_rendered(durability, {"type": "幻境", "durability": 0})  # 幻境 0 照渲
+    power = {"kind": "stat", "field": "power+"}
+    assert stat_rendered(power, {"type": "法术", "evolve": True, "power+": 3})  # 法术觉醒
+    assert not stat_rendered(power, {"type": "法术", "evolve": True, "power+": 0})  # 觉醒 0 不绘
+    assert not stat_rendered(power, {"type": "法术", "power+": 3})  # 非觉醒法术不绘
+    assert not stat_rendered(power, {"type": "协战", "power+": 3})  # 协战无 stat
+    assert not stat_rendered(power, {"type": "式神", "power+": 3})  # 表外组合
+    body = {"kind": "stat", "field": "power"}
+    assert stat_rendered(body, {"type": "式神", "power": 0})  # 式神 0 照渲
 
 
 def test_level_badge_disabled(assets_dir):

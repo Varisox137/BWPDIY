@@ -23,6 +23,18 @@ def stat_obstacle(elem: dict) -> tuple[float, float, float, float]:
             y + half)
 
 
+def _paste_element(canvas: Image.Image, img: Image.Image,
+                   pos: tuple[float, float],
+                   size: tuple[int, int]) -> Image.Image:
+    """元素贴图统一口径：裁 alpha bbox 后等比 contain 进 size 框（size=内容可见尺寸）。"""
+    bbox = img.getchannel("A").getbbox()
+    if bbox:
+        img = img.crop(bbox)
+    scale = min(size[0] / img.width, size[1] / img.height)
+    fit = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
+    return paste_centered(canvas, img, pos, fit)
+
+
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                    elem: dict, card: dict, ctx: dict | None = None) -> Image.Image:
     """渲染单个布局元素；渲染条件不满足时原样返回 canvas。"""
@@ -30,12 +42,12 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
     if kind == "level_badge":
         if card.get("level") is None:
             return canvas
-        out = paste_centered(canvas, lib.level_base(), elem["pos"],
+        out = _paste_element(canvas, lib.level_base(), elem["pos"],
                              (elem["base_size"], elem["base_size"]))
         if card.get("evolve", False):
-            out = paste_centered(out, lib.level_star(), elem["pos"],
+            out = _paste_element(out, lib.level_star(), elem["pos"],
                                  (elem["star_size"], elem["star_size"]))
-        return paste_centered(out, lib.level_num("yellow", card["level"]),
+        return _paste_element(out, lib.level_num("yellow", card["level"]),
                               elem["pos"], (elem["num_size"], elem["num_size"]))
     if kind == "rarity_flank":
         rarity = card.get("rarity", "R")  # 缺省默认 R
@@ -43,20 +55,16 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         name_width = (ctx or {}).get("name_width", 0)
         offset = round(name_width / 2 + elem["gap"] + elem["size"] / 2)
         mark = lib.rarity(rarity)
-        # 稀有度标素材带透明边，裁至内容 bbox 使 size 即可见尺寸
-        bbox = mark.getchannel("A").getbbox()
-        if bbox:
-            mark = mark.crop(bbox)
-        out = paste_centered(canvas, mark, (cx - offset, y),
+        out = _paste_element(canvas, mark, (cx - offset, y),
                              (elem["size"], elem["size"]))
-        # 偶数尺寸右标右移 1px：覆盖右缘包含端点，与左标保持等距间隙
-        return paste_centered(out, mark, (cx + offset + 1, y),
+        # 偶数尺寸右标右移 1px：与左标保持关于 cx 的像素级镜像
+        return _paste_element(out, mark, (cx + offset + 1, y),
                               (elem["size"], elem["size"]))
     if kind == "faction":
         color = FACTION_COLOR.get(card.get("faction", ""))
         if color is None:
             return canvas
-        return paste_centered(canvas, lib.faction(color, elem.get("style", 2)),
+        return _paste_element(canvas, lib.faction(color, elem.get("style", 2)),
                               elem["pos"], (elem["size"], elem["size"]))
     if kind == "stat":
         field = elem["field"]
@@ -66,7 +74,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         icon = elem["icon"]
         if value < 0 and elem.get("icon_neg"):
             icon = elem["icon_neg"]  # 负值换贴图（护甲→破甲）
-        out = paste_centered(canvas, lib.icon(icon, "l"), elem["pos"],
+        out = _paste_element(canvas, lib.icon(icon, "l"), elem["pos"],
                              (elem["icon_size"], elem["icon_size"]))
         text = f"{value:+d}" if elem.get("signed") else str(value)
         pos = elem["pos"]

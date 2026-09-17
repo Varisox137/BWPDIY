@@ -49,11 +49,15 @@ def test_render_with_layout_override(assets_dir, sample_art):
     from bwpdiy.render.layout import load_layouts, get_type_layout
     layouts = load_layouts(assets_dir)
     tl = get_type_layout(layouts, "法术")
-    tl["elements"]["rarity"]["pos"] = [200, 200]
+    tl["elements"]["rarity"]["pos"] = [256, 200]  # 上移稀有度双标（保持牌框内部，裁剪 bbox 不变）
     card = {"type": "法术", "name": "sample_art", "rarity": "R",
             "_base_dir": str(sample_art.parent)}
-    img = render_card(card, assets_dir, layout=tl)
-    assert img.mode == "RGBA"
+    default = render_card(card, assets_dir)
+    moved = render_card(card, assets_dir, layout=tl)
+    assert moved.mode == "RGBA"
+    # 覆盖生效判别：稀有度双标移入牌框内部，裁剪 bbox 不变但像素必变
+    assert moved.size == default.size
+    assert list(moved.getdata()) != list(default.getdata())
 
 
 def test_footer_rendered(assets_dir, sample_art):

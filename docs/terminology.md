@@ -39,7 +39,7 @@
 | 引擎段 | 卡牌 yaml 中与 BWPro 口径对齐的字段（type/name/level/rarity/description…） |
 | 渲染段 | `artwork` 段：`images` 列表，每项 `path/offset_x/offset_y/scale` 全可缺省（默认 `<card_id>.png` / 0 / 0 / 1.0） |
 | 布局配置 | `assets/layout.json`（出厂值入 git）+ 包内 `bwpdiy/render/default_layout.json` 回退；按 6 卡牌类型各一套「元素表 + 命名文本区」 |
-| 元素 | 布局中的可定位渲染单元，kind ∈ level_badge / rarity_flank（卡名两侧对称双标，随卡名宽度外移）/ faction / stat（图标+数字一组，num_offset 相对偏移，signed 控制正负号，icon_neg 负值换贴图） |
+| 元素 | 布局中的可定位渲染单元，kind ∈ level_badge / rarity_flank（卡名两侧对称双标，随卡名宽度外移）/ faction（`style` 选贴图样式，默认 2）/ stat（图标+数字一组，num_offset 相对偏移，signed 控制正负号，icon_neg 负值换贴图）；贴图统一先裁 alpha 透明边、再等比 contain 进 size 框（size=内容可见尺寸，禁止非等比拉伸） |
 | 文本区 | 命名多边形区域（name/desc/footer），逐行扫描线求宽、行内居中、字号递减适配；footer = “式神名-类型[/子类型]”小字；激活的 stat 元素作为障碍矩形参与 desc 逐行收窄（文本避让） |
 
 ## 二期术语（预留，一期不实现）

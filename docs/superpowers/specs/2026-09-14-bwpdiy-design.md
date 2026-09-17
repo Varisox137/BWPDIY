@@ -84,7 +84,7 @@ artwork:
 
 异画不涉及卡图形状/布局的改变，仅立绘不同。按 BWPro 的 id 原则：异画卡与原画卡 id 不同，但无需新增 yaml——同一份 yaml 的 `artwork.images` 列表按序对应。每张图的 offset/scale 独立微调。
 
-**一期不做**：框品（墨染/琉璃/百炼）与多牌框支持。渲染器一期只用 norm 框、low 版型；`frame_variant` 字段预留但不进表单。
+**一期不做**：框品（墨染/琉璃/百炼）与多牌框支持。渲染器一期只用 norm 框、low 版型；`frame_variant` 字段预留但不进表单，schema 白名单暂拒该字段，二期开放时放行。
 
 ### schema 校验
 

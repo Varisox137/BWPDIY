@@ -8,7 +8,9 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -18,6 +20,11 @@ from .schema import SchemaError, validate_card
 SHIKIGAMI_STEM = "shikigami"  # 保留卡名：项目的式神卡，固定存于 shikigami.yaml
 
 _ILLEGAL_CHARS = set('<>:"/\\|?*')
+_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
 
 
 class StoreError(Exception):
@@ -25,7 +32,7 @@ class StoreError(Exception):
 
 
 def _check_name(name: str, kind: str) -> None:
-    """项目名/卡名安全：拒绝空名、路径分隔符、..、Windows 非法字符，防路径注入。"""
+    """项目名/卡名安全：拒绝空名、路径分隔符、..、Windows 非法字符与保留设备名，防路径注入。"""
     if not isinstance(name, str) or not name.strip():
         raise StoreError(f"{kind}不能为空")
     if name != name.strip():
@@ -39,6 +46,8 @@ def _check_name(name: str, kind: str) -> None:
         raise StoreError(f"{kind}含控制字符：「{name}」")
     if name.endswith("."):
         raise StoreError(f"{kind}不能以点结尾：「{name}」")
+    if name.split(".")[0].upper() in _RESERVED_NAMES:
+        raise StoreError(f"{kind}是 Windows 保留设备名：「{name}」")
 
 
 def _project_dir(library: Path, project: str) -> Path:
@@ -156,9 +165,17 @@ def delete_card(library: Path, project: str, card_name: str) -> None:
 
 
 def _dump_yaml(path: Path, data: dict) -> None:
-    """中文不转义、键序稳定（插入序）。"""
+    """中文不转义、键序稳定（插入序）；临时文件 + os.replace 原子写，防半截 yaml。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(data, allow_unicode=True, sort_keys=False),
-        encoding="utf-8",
-    )
+    text = yaml.safe_dump(data, allow_unicode=True, sort_keys=False)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise

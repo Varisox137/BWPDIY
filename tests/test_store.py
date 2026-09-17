@@ -92,6 +92,29 @@ def test_project_name_injection_rejected(lib, bad):
         create_project(lib, bad)
 
 
+@pytest.mark.parametrize("bad", [
+    "CON", "con", "PRN", "AUX", "NUL", "nul",
+    "COM1", "com9", "LPT1", "lpt9", "con.txt",
+])
+def test_reserved_device_names_rejected(lib, bad):
+    with pytest.raises(StoreError, match="保留"):
+        create_project(lib, bad)
+
+
+def test_rename_to_reserved_name(lib):
+    create_project(lib, "山风")
+    with pytest.raises(StoreError) as exc:
+        rename_project(lib, "山风", "NUL")
+    assert "保留" in str(exc.value)
+    assert "已存在" not in str(exc.value)  # Windows 上 NUL.exists() 为真，不得误报
+
+
+def test_card_name_reserved_rejected(lib):
+    create_project(lib, "山风")
+    with pytest.raises(StoreError, match="保留"):
+        save_card(lib, "山风", "NUL", FIGHT)
+
+
 @pytest.mark.parametrize("bad", ["", "..", "../x", "a/b", "a\\b", "a?b"])
 def test_card_name_injection_rejected(lib, bad):
     create_project(lib, "山风")
@@ -136,6 +159,37 @@ def test_load_card_invalid_yaml(lib):
     (lib / "山风" / "cards" / "坏.yaml").write_text("- 这不是映射", encoding="utf-8")
     with pytest.raises(StoreError, match="yaml"):
         load_card(lib, "山风", "坏")
+
+
+def test_load_card_broken_yaml_syntax(lib):
+    create_project(lib, "山风")
+    (lib / "山风" / "cards" / "坏.yaml").write_text("a: [未闭合", encoding="utf-8")
+    with pytest.raises(StoreError, match="yaml"):
+        load_card(lib, "山风", "坏")
+
+
+def test_load_card_empty_file(lib):
+    create_project(lib, "山风")
+    (lib / "山风" / "cards" / "空.yaml").write_text("", encoding="utf-8")
+    assert load_card(lib, "山风", "空") == {}
+
+
+def test_rename_project_invalid_new_name(lib):
+    create_project(lib, "山风")
+    with pytest.raises(StoreError, match="项目名"):
+        rename_project(lib, "山风", "../evil")
+    assert list_projects(lib) == ["山风"]  # 未发生移动
+
+
+def test_stat_matrix_parity_with_render():
+    """store 与 render 双份 stat 适用矩阵键集/signed 口径对账（防漂移）。"""
+    from bwpdiy.render.badges import _STAT_MATRIX
+    from bwpdiy.store import schema
+
+    store_keys = {(t, f) for t, fields in schema._STATS_BY_TYPE.items() for f in fields}
+    assert store_keys == set(_STAT_MATRIX.keys())
+    for (_ctype, field), mode in _STAT_MATRIX.items():
+        assert (field in schema._SIGNED_STATS) == (mode == "signed"), field
 
 
 def test_delete_card(lib):

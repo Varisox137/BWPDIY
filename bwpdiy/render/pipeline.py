@@ -38,9 +38,11 @@ def _artwork_ref(card: dict) -> dict:
     return ref
 
 
-def render_card(card: dict, assets_dir: Path, layout: dict | None = None) -> Image.Image:
+def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
+                crop: bool = True) -> Image.Image:
     """渲染单张完整卡面：512×512 画布合成后按 alpha bbox 裁剪返回（竖版 RGBA）。
 
+    crop=False 时跳过裁剪返回完整 512×512（布局预览等需要坐标对齐的场景用）。
     缺资源/缺字段抛明确异常（FileNotFoundError/KeyError/ValueError），调用方兜底。
     """
     card_type = card["type"]
@@ -82,5 +84,7 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None) -> Ima
                 footer += f"/{card['special_type']}"
         canvas = draw_region(canvas, lib, footer, regions["footer"])
     # 裁剪掉整画布四周的透明边（bbox 取自合成图 alpha，等级标等溢出元素自然包含）
+    if not crop:
+        return canvas
     bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
     return canvas.crop(bbox) if bbox else canvas

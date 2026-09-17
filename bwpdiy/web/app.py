@@ -62,7 +62,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None) -> FastAPI:
             raise HTTPException(400, f"未知卡牌类型: {card_type}")
         card = dict(SAMPLE_CARDS[card_type])
         try:
-            img = render_card(card, assets_dir, layout=request["layout"])
+            img = render_card(card, assets_dir, layout=request["layout"], crop=False)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()

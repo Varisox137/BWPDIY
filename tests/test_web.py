@@ -78,6 +78,10 @@ def test_preview_png(client):
     r = client.post("/api/preview", json={"type": "战斗", "layout": tl})
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     assert len(r.content) > 10000
+    # 预览不裁剪：返回完整 512×512（布局配置页覆盖层坐标 1:1 对齐的前提）
+    from io import BytesIO
+    from PIL import Image
+    assert Image.open(BytesIO(r.content)).size == (512, 512)
 
 
 @pytest.mark.parametrize("card_type", ["式神", "战斗", "法术", "形态", "幻境", "协战"])
@@ -86,6 +90,9 @@ def test_preview_all_types(client, card_type):
     tl = get_type_layout(load_layouts(client.app.state.assets_dir), card_type)
     r = client.post("/api/preview", json={"type": card_type, "layout": tl})
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    from io import BytesIO
+    from PIL import Image
+    assert Image.open(BytesIO(r.content)).size == (512, 512)
 
 
 def test_preview_bad_type(client):

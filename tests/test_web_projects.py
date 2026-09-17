@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -256,3 +257,53 @@ def test_editor_page_at_root(client):
 def test_layout_page_kept(client):
     r = client.get("/layout")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
+
+
+# ---------- 修复轮 1：StoreError.code 分派 + 坏 artwork 容错 ----------
+
+def test_error_status_immune_to_keyword_in_name(client):
+    """名字含「不存在」子串不得翻转状态码：按 StoreError.code 分派而非消息关键词。"""
+    assert client.post("/api/projects", json={"name": "不存在"}).status_code == 200
+    r = client.post("/api/projects", json={"name": "不存在"})
+    assert r.status_code == 409 and "已存在" in r.json()["detail"]
+    assert client.post("/api/projects", json={"name": "并不存在xx"}).status_code == 200
+    r = client.post("/api/projects", json={"name": "并不存在xx"})
+    assert r.status_code == 409
+    # 非法名「不存在.」（以点结尾）：消息含「不存在」子串，仍须 422
+    r = client.post("/api/projects", json={"name": "不存在."})
+    assert r.status_code == 422
+    # 删除名为「不存在」的项目后再次删除：真正的 not_found
+    assert client.delete("/api/projects/不存在").status_code == 200
+    assert client.delete("/api/projects/不存在").status_code == 404
+
+
+@pytest.mark.parametrize("artwork", [
+    "烂",                          # artwork 非映射
+    [1, 2],                        # artwork 为列表
+    {"images": "不是列表"},         # images 非列表
+    {"images": [{"path": 123}]},   # path 非字符串
+])
+def test_preview_bad_artwork_shape_fallback(client, project, library_dir, artwork):
+    """手写坏 yaml 的 artwork 形状非法：视为无图回退占位（load 不校验、预览宽容），不 500。"""
+    card = _battle_card("坏图卡")
+    card["artwork"] = artwork
+    (library_dir / project / "cards" / "坏图卡.yaml").write_text(
+        yaml.safe_dump(card, allow_unicode=True), encoding="utf-8")
+    r = client.post(f"/api/projects/{project}/cards/坏图卡/preview", json={})
+    assert r.status_code == 200 and _png_size(r) == (512, 512)
+
+
+def test_preview_multi_images_uses_first(client, project, library_dir):
+    """多图列表：渲染消费首图，首图存在时后续条目缺失不影响。"""
+    shutil.copy2(SAMPLE_ART, library_dir / project / "images" / "卡图.png")
+    card = _battle_card()
+    card["artwork"] = {"images": [{"path": "卡图.png"}, {"path": "异画缺图.png"}]}
+    assert client.put(f"/api/projects/{project}/cards/测试斩", json=card).status_code == 200
+    r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
+    assert r.status_code == 200 and _png_size(r) == (512, 512)
+
+
+def test_encoded_slash_in_path_rejected(client, project):
+    """%2F 编码路径：Starlette 解码后多段不匹配路由（404），不会落到文件系统。"""
+    r = client.get("/api/projects/a%2Fb/cards")
+    assert r.status_code == 404

@@ -40,12 +40,14 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     app.state.assets_dir = assets_dir
     app.state.library_dir = library_dir
 
-    # store 异常 → HTTP 状态码：不存在 404、已存在 409、其余（非法名/保留名/不可删除）422
+    # store 异常 → HTTP 状态码：按 StoreError.code 分派（not_found 404、already_exists 409，
+    # 其余 invalid_name/invalid_data/forbidden/path_escape 均 422），不受消息内嵌资源名影响
+    _STATUS_BY_CODE = {"not_found": 404, "already_exists": 409}
+
     @app.exception_handler(StoreError)
     def _store_error(request, exc: StoreError):
-        msg = str(exc)
-        status = 404 if "不存在" in msg else 409 if "已存在" in msg else 422
-        return JSONResponse(status_code=status, content={"detail": msg})
+        return JSONResponse(status_code=_STATUS_BY_CODE.get(exc.code, 422),
+                            content={"detail": str(exc)})
 
     @app.exception_handler(SchemaError)
     def _schema_error(request, exc: SchemaError):
@@ -176,18 +178,27 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
 
 def _with_artwork_fallback(card: dict, images_dir: Path) -> dict:
-    """artwork 基准目录设为项目 images/；无 images 或首图文件缺失时回退占位图（与样卡一致）。"""
+    """artwork 基准目录设为项目 images/；无 images 或首图文件缺失时回退占位图（与样卡一致）。
+
+    store 刻意 load 不校验（支持手改 yaml），此处对 artwork 形状容错：
+    artwork 非映射、images 非列表、首图非映射、path 非字符串一律视为无图，回退占位。
+    """
     card = dict(card)
     card["_base_dir"] = str(images_dir)
-    artwork = dict(card.get("artwork") or {})
+    raw_artwork = card.get("artwork")
+    artwork = dict(raw_artwork) if isinstance(raw_artwork, dict) else {}
     images = artwork.get("images")
-    first = images[0] if images else None
+    first = images[0] if isinstance(images, list) and images else None
     ref = dict(first) if isinstance(first, dict) else {}
-    art_path = Path(ref.get("path") or f"{card.get('name', '')}.png")
+    raw_path = ref.get("path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raw_path = f"{card.get('name', '')}.png"
+    art_path = Path(raw_path)
     if not art_path.is_absolute():
         art_path = images_dir / art_path
     if not art_path.is_file():
-        ref = {k: ref[k] for k in ("offset_x", "offset_y", "scale") if k in ref}
+        ref = {k: ref[k] for k in ("offset_x", "offset_y", "scale")
+               if k in ref and isinstance(ref[k], (int, float))}
         ref["path"] = str(_SAMPLE_ART)
         artwork["images"] = [ref]
     card["artwork"] = artwork

@@ -192,6 +192,30 @@ def test_stat_matrix_parity_with_render():
         assert (field in schema._SIGNED_STATS) == (mode == "signed"), field
 
 
+def test_store_error_codes(lib):
+    """StoreError 携带语义 code，供 web 层分派状态码（不依赖消息关键词）。"""
+    with pytest.raises(StoreError) as e:
+        create_project(lib, "../evil")
+    assert e.value.code == "invalid_name"
+    create_project(lib, "山风")
+    with pytest.raises(StoreError) as e:
+        create_project(lib, "山风")
+    assert e.value.code == "already_exists"
+    with pytest.raises(StoreError) as e:
+        delete_project(lib, "无此项目")
+    assert e.value.code == "not_found"
+    with pytest.raises(StoreError) as e:
+        load_card(lib, "山风", "无此卡")
+    assert e.value.code == "not_found"
+    with pytest.raises(StoreError) as e:
+        delete_card(lib, "山风", "shikigami")
+    assert e.value.code == "forbidden"
+    (lib / "山风" / "cards" / "坏.yaml").write_text("a: [未闭合", encoding="utf-8")
+    with pytest.raises(StoreError) as e:
+        load_card(lib, "山风", "坏")
+    assert e.value.code == "invalid_data"
+
+
 def test_delete_card(lib):
     create_project(lib, "山风")
     save_card(lib, "山风", "斩", FIGHT)

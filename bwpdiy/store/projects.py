@@ -28,26 +28,36 @@ _RESERVED_NAMES = {
 
 
 class StoreError(Exception):
-    """存取层错误（项目/卡不存在、已存在、非法名等），消息为中文。"""
+    """存取层错误（项目/卡不存在、已存在、非法名等），消息为中文。
+
+    code 为语义码，供上层（web）分派状态码，不随消息措辞/内嵌资源名变化：
+    not_found（404）/ already_exists（409）/ invalid_name、invalid_data、
+    forbidden、path_escape（均 422）；缺省 invalid（422）。
+    """
+
+    def __init__(self, message: str, code: str = "invalid"):
+        self.code = code
+        super().__init__(message)
 
 
 def _check_name(name: str, kind: str) -> None:
     """项目名/卡名安全：拒绝空名、路径分隔符、..、Windows 非法字符与保留设备名，防路径注入。"""
     if not isinstance(name, str) or not name.strip():
-        raise StoreError(f"{kind}不能为空")
+        raise StoreError(f"{kind}不能为空", code="invalid_name")
     if name != name.strip():
-        raise StoreError(f"{kind}首尾不能是空白字符：「{name}」")
+        raise StoreError(f"{kind}首尾不能是空白字符：「{name}」", code="invalid_name")
     if name in (".", "..") or ".." in name.split("/") or ".." in name.split("\\"):
-        raise StoreError(f"{kind}不能是 . 或 ..：「{name}」")
+        raise StoreError(f"{kind}不能是 . 或 ..：「{name}」", code="invalid_name")
     bad = _ILLEGAL_CHARS & set(name)
     if bad:
-        raise StoreError(f"{kind}含非法字符 {''.join(sorted(bad))}：「{name}」（不允许路径分隔符与 <>:\"|?*）")
+        raise StoreError(f"{kind}含非法字符 {''.join(sorted(bad))}：「{name}」（不允许路径分隔符与 <>:\"|?*）",
+                         code="invalid_name")
     if any(ord(c) < 32 for c in name):
-        raise StoreError(f"{kind}含控制字符：「{name}」")
+        raise StoreError(f"{kind}含控制字符：「{name}」", code="invalid_name")
     if name.endswith("."):
-        raise StoreError(f"{kind}不能以点结尾：「{name}」")
+        raise StoreError(f"{kind}不能以点结尾：「{name}」", code="invalid_name")
     if name.split(".")[0].upper() in _RESERVED_NAMES:
-        raise StoreError(f"{kind}是 Windows 保留设备名：「{name}」")
+        raise StoreError(f"{kind}是 Windows 保留设备名：「{name}」", code="invalid_name")
 
 
 def _project_dir(library: Path, project: str) -> Path:
@@ -58,7 +68,7 @@ def _project_dir(library: Path, project: str) -> Path:
 def _require_project(library: Path, project: str) -> Path:
     pdir = _project_dir(library, project)
     if not pdir.is_dir():
-        raise StoreError(f"项目不存在：{project}")
+        raise StoreError(f"项目不存在：{project}", code="not_found")
     return pdir
 
 
@@ -83,7 +93,7 @@ def create_project(library: Path, project: str) -> Path:
     """新建项目骨架：cards/、images/ 与默认式神卡（name=项目名，红莲 3/4）。"""
     pdir = _project_dir(library, project)
     if pdir.exists():
-        raise StoreError(f"项目已存在：{project}")
+        raise StoreError(f"项目已存在：{project}", code="already_exists")
     (pdir / "cards").mkdir(parents=True)
     (pdir / "images").mkdir()
     shikigami = {"type": "式神", "name": project, "faction": "红莲", "power": 3, "health": 4}
@@ -95,7 +105,7 @@ def rename_project(library: Path, old: str, new: str) -> Path:
     src = _require_project(library, old)
     dst = _project_dir(library, new)
     if dst.exists():
-        raise StoreError(f"项目已存在：{new}")
+        raise StoreError(f"项目已存在：{new}", code="already_exists")
     src.rename(dst)
     return dst
 
@@ -103,7 +113,7 @@ def rename_project(library: Path, old: str, new: str) -> Path:
 def delete_project(library: Path, project: str) -> None:
     pdir = _require_project(library, project)
     if pdir.resolve().parent != Path(library).resolve():
-        raise StoreError(f"项目路径越界：{project}")
+        raise StoreError(f"项目路径越界：{project}", code="path_escape")
     shutil.rmtree(pdir)
 
 
@@ -125,15 +135,17 @@ def load_card(library: Path, project: str, card_name: str) -> dict:
     """读取卡牌 yaml；load 不做 schema 校验（校验在保存时执行）。"""
     path = _card_path(_require_project(library, project), card_name)
     if not path.is_file():
-        raise StoreError(f"卡牌不存在：{project}/{card_name}")
+        raise StoreError(f"卡牌不存在：{project}/{card_name}", code="not_found")
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as e:
-        raise StoreError(f"卡牌文件不是合法的 yaml：{project}/{card_name}（{e}）") from e
+        raise StoreError(f"卡牌文件不是合法的 yaml：{project}/{card_name}（{e}）",
+                         code="invalid_data") from e
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise StoreError(f"卡牌文件内容必须是 yaml 映射：{project}/{card_name}")
+        raise StoreError(f"卡牌文件内容必须是 yaml 映射：{project}/{card_name}",
+                         code="invalid_data")
     return data
 
 
@@ -158,9 +170,9 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> Path:
 def delete_card(library: Path, project: str, card_name: str) -> None:
     path = _card_path(_require_project(library, project), card_name)
     if card_name == SHIKIGAMI_STEM:
-        raise StoreError("式神卡（shikigami.yaml）不可删除，可覆盖保存")
+        raise StoreError("式神卡（shikigami.yaml）不可删除，可覆盖保存", code="forbidden")
     if not path.is_file():
-        raise StoreError(f"卡牌不存在：{project}/{card_name}")
+        raise StoreError(f"卡牌不存在：{project}/{card_name}", code="not_found")
     path.unlink()
 
 

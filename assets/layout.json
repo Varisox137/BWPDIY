@@ -1,76 +1,551 @@
 {
   "式神": {
     "elements": {
-      "faction": {"kind": "faction", "pos": [256, 318], "size": 44, "style": 2},
-      "power": {"kind": "stat", "field": "power", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false},
-      "health": {"kind": "stat", "field": "health", "icon": "sm", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false}
+      "faction": {
+        "kind": "faction",
+        "pos": [
+          256,
+          318
+        ],
+        "size": 44,
+        "style": 2
+      },
+      "power": {
+        "kind": "stat",
+        "field": "power",
+        "icon": "ll",
+        "pos": [
+          160,
+          485
+        ],
+        "icon_size": 32,
+        "num_offset": [
+          22,
+          0
+        ],
+        "font_size": 30,
+        "signed": false
+      },
+      "health": {
+        "kind": "stat",
+        "field": "health",
+        "icon": "sm",
+        "pos": [
+          360,
+          485
+        ],
+        "icon_size": 32,
+        "num_offset": [
+          22,
+          0
+        ],
+        "font_size": 30,
+        "signed": false
+      },
+      "name": {
+        "kind": "text",
+        "pos": [
+          256,
+          358
+        ],
+        "font_size": 30,
+        "font": "name"
+      },
+      "footer": {
+        "kind": "text",
+        "pos": [
+          256,
+          484
+        ],
+        "font_size": 12,
+        "font": "desc"
+      }
     },
     "text_regions": {
-      "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
-      "desc": {"polygon": [[130, 386], [382, 386], [382, 466], [130, 466]], "font_range": [22, 12], "wrap": true, "font": "desc"},
-      "footer": {"polygon": [[150, 472], [362, 472], [362, 496], [150, 496]], "font_range": [14, 10], "wrap": false, "font": "desc"}
+      "desc": {
+        "polygon": [
+          [
+            130,
+            386
+          ],
+          [
+            382,
+            386
+          ],
+          [
+            382,
+            466
+          ],
+          [
+            130,
+            466
+          ]
+        ],
+        "font_range": [
+          22,
+          12
+        ],
+        "wrap": true,
+        "font": "desc"
+      }
     }
   },
   "战斗": {
     "elements": {
-      "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
-      "power": {"kind": "stat", "field": "power+", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true},
-      "shield": {"kind": "stat", "field": "shield+", "icon": "hj", "icon_neg": "pj", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true}
+      "level": {
+        "kind": "level_badge",
+        "pos": [
+          120,
+          65
+        ],
+        "base_size": 72,
+        "star_size": 60,
+        "num_size": 40
+      },
+      "rarity": {
+        "kind": "rarity_flank",
+        "pos": [
+          256,
+          358
+        ],
+        "gap": 16,
+        "size": 24
+      },
+      "power": {
+        "kind": "stat",
+        "field": "power+",
+        "icon": "ll",
+        "pos": [
+          160,
+          485
+        ],
+        "icon_size": 32,
+        "num_offset": [
+          22,
+          0
+        ],
+        "font_size": 30,
+        "signed": true
+      },
+      "shield": {
+        "kind": "stat",
+        "field": "shield+",
+        "icon": "hj",
+        "icon_neg": "pj",
+        "pos": [
+          360,
+          485
+        ],
+        "icon_size": 32,
+        "num_offset": [
+          22,
+          0
+        ],
+        "font_size": 30,
+        "signed": true
+      },
+      "name": {
+        "kind": "text",
+        "pos": [
+          256,
+          358
+        ],
+        "font_size": 30,
+        "font": "name"
+      },
+      "footer": {
+        "kind": "text",
+        "pos": [
+          256,
+          484
+        ],
+        "font_size": 12,
+        "font": "desc"
+      }
     },
     "text_regions": {
-      "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
-      "desc": {"polygon": [[130, 386], [382, 386], [382, 466], [130, 466]], "font_range": [22, 12], "wrap": true, "font": "desc"},
-      "footer": {"polygon": [[150, 472], [362, 472], [362, 496], [150, 496]], "font_range": [14, 10], "wrap": false, "font": "desc"}
+      "desc": {
+        "polygon": [
+          [
+            130,
+            386
+          ],
+          [
+            382,
+            386
+          ],
+          [
+            382,
+            466
+          ],
+          [
+            130,
+            466
+          ]
+        ],
+        "font_range": [
+          22,
+          12
+        ],
+        "wrap": true,
+        "font": "desc"
+      }
     }
   },
   "法术": {
     "elements": {
-      "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
-      "power": {"kind": "stat", "field": "power+", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true},
-      "health": {"kind": "stat", "field": "health+", "icon": "sm", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": true}
+      "level": {
+        "kind": "level_badge",
+        "pos": [
+          120,
+          65
+        ],
+        "base_size": 72,
+        "star_size": 60,
+        "num_size": 40
+      },
+      "rarity": {
+        "kind": "rarity_flank",
+        "pos": [
+          256,
+          358
+        ],
+        "gap": 16,
+        "size": 24
+      },
+      "power": {
+        "kind": "stat",
+        "field": "power+",
+        "icon": "ll",
+        "pos": [
+          160,
+          485
+        ],
+        "icon_size": 32,
+        "num_offset": [
+          22,
+          0
+        ],
+        "font_size": 30,
+        "signed": true
+      },
+      "health": {
+        "kind": "stat",
+        "field": "health+",
+        "icon": "sm",
+        "pos": [
+          360,
+          485
+        ],
+        "icon_size": 32,
+        "num_offset": [
+          22,
+          0
+        ],
+        "font_size": 30,
+        "signed": true
+      },
+      "name": {
+        "kind": "text",
+        "pos": [
+          256,
+          358
+        ],
+        "font_size": 30,
+        "font": "name"
+      },
+      "footer": {
+        "kind": "text",
+        "pos": [
+          256,
+          484
+        ],
+        "font_size": 12,
+        "font": "desc"
+      }
     },
     "text_regions": {
-      "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
-      "desc": {"polygon": [[130, 386], [382, 386], [382, 466], [130, 466]], "font_range": [22, 12], "wrap": true, "font": "desc"},
-      "footer": {"polygon": [[150, 472], [362, 472], [362, 496], [150, 496]], "font_range": [14, 10], "wrap": false, "font": "desc"}
+      "desc": {
+        "polygon": [
+          [
+            130,
+            386
+          ],
+          [
+            382,
+            386
+          ],
+          [
+            382,
+            466
+          ],
+          [
+            130,
+            466
+          ]
+        ],
+        "font_range": [
+          22,
+          12
+        ],
+        "wrap": true,
+        "font": "desc"
+      }
     }
   },
   "形态": {
     "elements": {
-      "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
-      "power": {"kind": "stat", "field": "power", "icon": "ll", "pos": [160, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false},
-      "health": {"kind": "stat", "field": "health", "icon": "sm", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false}
+      "level": {
+        "kind": "level_badge",
+        "pos": [
+          120,
+          65
+        ],
+        "base_size": 72,
+        "star_size": 60,
+        "num_size": 40
+      },
+      "rarity": {
+        "kind": "rarity_flank",
+        "pos": [
+          256,
+          358
+        ],
+        "gap": 16,
+        "size": 24
+      },
+      "power": {
+        "kind": "stat",
+        "field": "power",
+        "icon": "ll",
+        "pos": [
+          160,
+          485
+        ],
+        "icon_size": 32,
+        "num_offset": [
+          22,
+          0
+        ],
+        "font_size": 30,
+        "signed": false
+      },
+      "health": {
+        "kind": "stat",
+        "field": "health",
+        "icon": "sm",
+        "pos": [
+          360,
+          485
+        ],
+        "icon_size": 32,
+        "num_offset": [
+          22,
+          0
+        ],
+        "font_size": 30,
+        "signed": false
+      },
+      "name": {
+        "kind": "text",
+        "pos": [
+          256,
+          358
+        ],
+        "font_size": 30,
+        "font": "name"
+      },
+      "footer": {
+        "kind": "text",
+        "pos": [
+          256,
+          484
+        ],
+        "font_size": 12,
+        "font": "desc"
+      }
     },
     "text_regions": {
-      "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
-      "desc": {"polygon": [[130, 386], [382, 386], [382, 466], [130, 466]], "font_range": [22, 12], "wrap": true, "font": "desc"},
-      "footer": {"polygon": [[150, 472], [362, 472], [362, 496], [150, 496]], "font_range": [14, 10], "wrap": false, "font": "desc"}
+      "desc": {
+        "polygon": [
+          [
+            130,
+            386
+          ],
+          [
+            382,
+            386
+          ],
+          [
+            382,
+            466
+          ],
+          [
+            130,
+            466
+          ]
+        ],
+        "font_range": [
+          22,
+          12
+        ],
+        "wrap": true,
+        "font": "desc"
+      }
     }
   },
   "幻境": {
     "elements": {
-      "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24},
-      "durability": {"kind": "stat", "field": "durability", "icon": "nj", "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0], "font_size": 30, "signed": false}
+      "level": {
+        "kind": "level_badge",
+        "pos": [
+          120,
+          65
+        ],
+        "base_size": 72,
+        "star_size": 60,
+        "num_size": 40
+      },
+      "rarity": {
+        "kind": "rarity_flank",
+        "pos": [
+          256,
+          358
+        ],
+        "gap": 16,
+        "size": 24
+      },
+      "durability": {
+        "kind": "stat",
+        "field": "durability",
+        "icon": "nj",
+        "pos": [
+          360,
+          485
+        ],
+        "icon_size": 32,
+        "num_offset": [
+          22,
+          0
+        ],
+        "font_size": 30,
+        "signed": false
+      },
+      "name": {
+        "kind": "text",
+        "pos": [
+          256,
+          358
+        ],
+        "font_size": 30,
+        "font": "name"
+      },
+      "footer": {
+        "kind": "text",
+        "pos": [
+          256,
+          484
+        ],
+        "font_size": 12,
+        "font": "desc"
+      }
     },
     "text_regions": {
-      "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
-      "desc": {"polygon": [[130, 386], [382, 386], [382, 466], [130, 466]], "font_range": [22, 12], "wrap": true, "font": "desc"},
-      "footer": {"polygon": [[150, 472], [362, 472], [362, 496], [150, 496]], "font_range": [14, 10], "wrap": false, "font": "desc"}
+      "desc": {
+        "polygon": [
+          [
+            130,
+            386
+          ],
+          [
+            382,
+            386
+          ],
+          [
+            382,
+            466
+          ],
+          [
+            130,
+            466
+          ]
+        ],
+        "font_range": [
+          22,
+          12
+        ],
+        "wrap": true,
+        "font": "desc"
+      }
     }
   },
   "协战": {
     "elements": {
-      "level": {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "star_size": 60, "num_size": 40},
-      "rarity": {"kind": "rarity_flank", "pos": [256, 358], "gap": 16, "size": 24}
+      "level": {
+        "kind": "level_badge",
+        "pos": [
+          120,
+          65
+        ],
+        "base_size": 72,
+        "star_size": 60,
+        "num_size": 40
+      },
+      "rarity": {
+        "kind": "rarity_flank",
+        "pos": [
+          256,
+          358
+        ],
+        "gap": 16,
+        "size": 24
+      },
+      "name": {
+        "kind": "text",
+        "pos": [
+          256,
+          358
+        ],
+        "font_size": 30,
+        "font": "name"
+      },
+      "footer": {
+        "kind": "text",
+        "pos": [
+          256,
+          484
+        ],
+        "font_size": 12,
+        "font": "desc"
+      }
     },
     "text_regions": {
-      "name": {"polygon": [[140, 336], [372, 336], [372, 380], [140, 380]], "font_range": [36, 16], "wrap": false, "font": "name"},
-      "desc": {"polygon": [[130, 386], [382, 386], [382, 466], [130, 466]], "font_range": [22, 12], "wrap": true, "font": "desc"},
-      "footer": {"polygon": [[150, 472], [362, 472], [362, 496], [150, 496]], "font_range": [14, 10], "wrap": false, "font": "desc"}
+      "desc": {
+        "polygon": [
+          [
+            130,
+            386
+          ],
+          [
+            382,
+            386
+          ],
+          [
+            382,
+            466
+          ],
+          [
+            130,
+            466
+          ]
+        ],
+        "font_range": [
+          22,
+          12
+        ],
+        "wrap": true,
+        "font": "desc"
+      }
     }
   }
 }

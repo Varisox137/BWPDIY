@@ -58,6 +58,66 @@ def test_stat_signed_and_offset(assets_dir):
     assert opaque(render_element(canvas(), lib, "power", elem, {})) == 0
 
 
+def test_text_element_centered(assets_dir):
+    """kind=text 点元素：以 pos 为中心水平居中单行文本；字段缺失跳过。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "text", "pos": [256, 358], "font_size": 30, "font": "name"}
+    img = render_element(canvas(), lib, "name", elem, {"name": "测试卡名"})
+    bbox = img.getchannel("A").getbbox()
+    assert bbox
+    cx = (bbox[0] + bbox[2]) / 2
+    assert abs(cx - 256) <= 1  # 水平居中于 pos
+    cy = (bbox[1] + bbox[3]) / 2
+    assert abs(cy - 358) < elem["font_size"] / 2  # 竖直在 pos 附近（mm 锚点按字体度量居中）
+    # 字段缺失/为空：原样返回
+    assert opaque(render_element(canvas(), lib, "footer", elem, {})) == 0
+
+
+def _column_clusters(img, x0, x1, y0, y1):
+    """数字带内按列聚类不透明像素（空列切分），返回 [(x_start, x_end, y_min, y_max)]。"""
+    px = img.load()
+    clusters, cur = [], None
+    for x in range(x0, x1):
+        ys = [y for y in range(y0, y1) if px[x, y][3] > 10]
+        if ys:
+            if cur is None:
+                cur = [x, x, min(ys), max(ys)]
+            else:
+                cur[1] = x
+                cur[2] = min(cur[2], min(ys))
+                cur[3] = max(cur[3], max(ys))
+        elif cur is not None:
+            clusters.append(tuple(cur))
+            cur = None
+    if cur is not None:
+        clusters.append(tuple(cur))
+    return clusters
+
+
+def test_stat_signed_vertical_alignment(assets_dir):
+    """signed stat：正负号与数字竖直居中对齐；带号与不带号数字位置一致（容差 1px）。"""
+    lib = AssetLibrary(assets_dir)
+    # num_offset 拉大，使数字带与图标像素分离便于逐簇测量
+    base = {"kind": "stat", "field": "power+", "icon": "ll", "pos": [100, 485],
+            "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
+    signed = render_element(canvas(), lib, "power", dict(base, signed=True), {"power+": 3})
+    unsigned = render_element(canvas(), lib, "power", dict(base, signed=False), {"power+": 3})
+    # 数字带：num_pos=(160,485) 附近（图标在 x≤116，不进带）
+    band = (130, 220, 460, 510)
+    s_clusters = _column_clusters(signed, *band)
+    u_clusters = _column_clusters(unsigned, *band)
+    assert len(s_clusters) == 2  # 符号 + 数字两簇
+    assert len(u_clusters) == 1  # 仅数字一簇
+    s_digits, u_digits = s_clusters[-1], u_clusters[-1]
+    # 数字部分竖直位置一致
+    assert abs((s_digits[2] + s_digits[3]) - (u_digits[2] + u_digits[3])) <= 2
+    assert s_digits[0] == u_digits[0] and s_digits[1] == u_digits[1]
+    # 符号中心与数字中心竖直对齐（容差 1px）
+    sign_cy = (s_clusters[0][2] + s_clusters[0][3]) / 2
+    digit_cy = (s_digits[2] + s_digits[3]) / 2
+    assert abs(sign_cy - digit_cy) <= 1
+
+
 def test_stat_icon_neg(assets_dir):
     from bwpdiy.render.badges import stat_obstacle
     lib = AssetLibrary(assets_dir)

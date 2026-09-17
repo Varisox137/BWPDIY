@@ -26,7 +26,7 @@
 </div>
 <div id="main">
   <div>
-    <button id="btn-preview">预览</button>
+    <button id="btn-preview">强制刷新</button>
     <button id="btn-save">保存</button>
     <span id="status"></span>
   </div>
@@ -60,6 +60,28 @@ async function boot() {
 }
 function typeLayout() { return layouts[curType]; }
 function markDirty() { dirty = true; }
+
+// 实时预览：任何调整后防抖 300ms 自动刷新（拖拽 mousemove 不走这里，mouseup 直接刷）
+let previewTimer = null;
+let previewSeq = 0;  // 请求序号：旧响应到达时丢弃，避免乱序覆盖新图
+function schedulePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(refreshPreview, 300);
+}
+
+// 尺寸类字段跨类型同步：同名元素在所有类型间保持一致（pos 与内容类字段不同步）
+function syncElemField(name, key, val) {
+  for (const t of TYPES) {
+    const el = layouts[t] && layouts[t].elements && layouts[t].elements[name];
+    if (el && key in el) el[key] = val;
+  }
+}
+function syncRegionField(name, key, val) {
+  for (const t of TYPES) {
+    const r = layouts[t] && layouts[t].text_regions && layouts[t].text_regions[name];
+    if (r && key in r) r[key] = val;
+  }
+}
 
 // 顶部类型 tab
 function buildTypes() {
@@ -105,6 +127,7 @@ function refreshSel() {
 
 // 预览
 async function refreshPreview() {
+  const seq = ++previewSeq;
   let r;
   try {
     r = await fetch('/api/preview', {
@@ -115,6 +138,7 @@ async function refreshPreview() {
     statusEl.textContent = '预览请求失败: ' + e;
     return;
   }
+  if (seq !== previewSeq) return;  // 期间又有新调整，丢弃本次结果
   if (!r.ok) {
     statusEl.textContent = '预览失败: ' + (await r.json()).detail;
     return;
@@ -122,7 +146,10 @@ async function refreshPreview() {
   statusEl.textContent = dirty ? '● 未保存' : '';
   const blob = await r.blob();
   const img = new Image();
-  img.onload = () => { previewImg = img; draw(); URL.revokeObjectURL(img.src); };
+  img.onload = () => {
+    if (seq !== previewSeq) { URL.revokeObjectURL(img.src); return; }
+    previewImg = img; draw(); URL.revokeObjectURL(img.src);
+  };
   img.src = URL.createObjectURL(blob);
 }
 
@@ -204,27 +231,31 @@ function buildProps() {
     numRow(div, 'x', e.pos[0], v => { e.pos[0] = v; draw(); });
     numRow(div, 'y', e.pos[1], v => { e.pos[1] = v; draw(); });
     if (e.kind === 'stat') {
-      numRow(div, 'icon_size', e.icon_size, v => e.icon_size = v);
-      numRow(div, 'num_dx', e.num_offset[0], v => { e.num_offset[0] = v; draw(); });
-      numRow(div, 'num_dy', e.num_offset[1], v => { e.num_offset[1] = v; draw(); });
-      numRow(div, 'font_size', e.font_size, v => e.font_size = v);
+      numRow(div, 'icon_size', e.icon_size, v => { e.icon_size = v; syncElemField(sel.name, 'icon_size', v); });
+      numRow(div, 'num_dx', e.num_offset[0], v => { e.num_offset[0] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
+      numRow(div, 'num_dy', e.num_offset[1], v => { e.num_offset[1] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
+      numRow(div, 'font_size', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
       checkRow(div, 'signed', e.signed, v => e.signed = v);
       selRow(div, 'icon', ICONS, e.icon, v => e.icon = v);
       selRow(div, 'icon_neg', ['（无）'].concat(ICONS), e.icon_neg || '（无）',
              v => { if (v === '（无）') delete e.icon_neg; else e.icon_neg = v; });
     }
     if (e.kind === 'rarity_flank') {
-      numRow(div, 'gap', e.gap, v => e.gap = v);
-      numRow(div, 'size', e.size, v => e.size = v);
+      numRow(div, 'gap', e.gap, v => { e.gap = v; syncElemField(sel.name, 'gap', v); });
+      numRow(div, 'size', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
     }
     if (e.kind === 'faction') {
-      numRow(div, 'size', e.size, v => e.size = v);
+      numRow(div, 'size', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
       selRow(div, 'style', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
     }
     if (e.kind === 'level_badge') {
-      numRow(div, 'base_size', e.base_size, v => e.base_size = v);
-      numRow(div, 'star_size', e.star_size, v => e.star_size = v);
-      numRow(div, 'num_size', e.num_size, v => e.num_size = v);
+      numRow(div, 'base_size', e.base_size, v => { e.base_size = v; syncElemField(sel.name, 'base_size', v); });
+      numRow(div, 'star_size', e.star_size, v => { e.star_size = v; syncElemField(sel.name, 'star_size', v); });
+      numRow(div, 'num_size', e.num_size, v => { e.num_size = v; syncElemField(sel.name, 'num_size', v); });
+    }
+    if (e.kind === 'text') {
+      numRow(div, 'font_size', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
+      selRow(div, 'font', FONTS, e.font || 'name', v => e.font = v);
     }
   } else {
     const r = tl.text_regions[sel.name];
@@ -233,8 +264,8 @@ function buildProps() {
       numRow(div, 'x', r.polygon[sel.vi][0], v => { r.polygon[sel.vi][0] = v; draw(); });
       numRow(div, 'y', r.polygon[sel.vi][1], v => { r.polygon[sel.vi][1] = v; draw(); });
     }
-    numRow(div, 'font_max', r.font_range[0], v => r.font_range[0] = v);
-    numRow(div, 'font_min', r.font_range[1], v => r.font_range[1] = v);
+    numRow(div, 'font_max', r.font_range[0], v => { r.font_range[0] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
+    numRow(div, 'font_min', r.font_range[1], v => { r.font_range[1] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
     checkRow(div, 'wrap', r.wrap, v => r.wrap = v);
     selRow(div, 'font', FONTS, r.font, v => r.font = v);
     const add = document.createElement('button');
@@ -242,14 +273,14 @@ function buildProps() {
     add.onclick = () => {
       const c = centroid(r.polygon);
       r.polygon.push([Math.round(c[0] + 10), Math.round(c[1] + 10)]);
-      markDirty(); draw();
+      markDirty(); draw(); schedulePreview();
     };
     const del = document.createElement('button');
     del.textContent = '删除选中顶点';
     del.onclick = () => {
       if (sel.kind === 'vertex' && r.polygon.length > 3) {
         r.polygon.splice(sel.vi, 1); sel = {kind: 'region', name: sel.name};
-        markDirty(); refreshSel();
+        markDirty(); refreshSel(); schedulePreview();
       }
     };
     div.appendChild(add); div.appendChild(del);
@@ -261,7 +292,7 @@ function numRow(div, label, val, set) {
   l.textContent = label + ' ';
   const i = document.createElement('input');
   i.type = 'number'; i.value = val;
-  i.onchange = () => { const v = parseInt(i.value, 10); if (isNaN(v)) { i.value = val; return; } markDirty(); set(v); };
+  i.onchange = () => { const v = parseInt(i.value, 10); if (isNaN(v)) { i.value = val; return; } markDirty(); set(v); schedulePreview(); };
   l.appendChild(i); div.appendChild(l);
 }
 function checkRow(div, label, val, set) {
@@ -269,7 +300,7 @@ function checkRow(div, label, val, set) {
   l.textContent = label + ' ';
   const i = document.createElement('input');
   i.type = 'checkbox'; i.checked = val;
-  i.onchange = () => { markDirty(); set(i.checked); };
+  i.onchange = () => { markDirty(); set(i.checked); schedulePreview(); };
   l.appendChild(i); div.appendChild(l);
 }
 function selRow(div, label, opts, val, set) {
@@ -282,7 +313,7 @@ function selRow(div, label, opts, val, set) {
     if (o === val) op.selected = true;
     s.appendChild(op);
   }
-  s.onchange = () => { markDirty(); set(s.value); };
+  s.onchange = () => { markDirty(); set(s.value); schedulePreview(); };
   l.appendChild(s); div.appendChild(l);
 }
 function centroid(poly) {

@@ -2,7 +2,7 @@
 
 合成顺序（自底向上，术语见 docs/terminology.md）：
 牌框 frame → 卡图 artwork（蒙版裁切）→ 布局元素（等级标/稀有度双标/派系标/
-数值标，由 assets/layout.json 驱动）→ 卡名 → 描述文本 → 页脚。
+数值标/卡名/脚注点文本，由 assets/layout.json 驱动）→ 描述文本。
 一期固定：版型 low、框品 norm、等级数字 yellow。
 """
 
@@ -14,7 +14,7 @@ from bwpdiy.render.artwork import apply_mask, fit_artwork
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.badges import render_element, stat_obstacle
 from bwpdiy.render.layout import get_type_layout, load_layouts
-from bwpdiy.render.text import draw_region, fit_in_region
+from bwpdiy.render.text import draw_region
 
 CARD_SIZE = (512, 512)
 
@@ -64,25 +64,28 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     canvas = Image.alpha_composite(frame, art)
 
     type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
-    regions = type_layout["text_regions"]
-    # 先测卡名宽度（rarity_flank 外移量依据；排不下按 0）
-    name_fit = fit_in_region(card["name"], regions["name"], lib)
-    ctx = {"name_width": name_fit[0].getlength(card["name"]) if name_fit else 0}
-    for elem_name, elem in type_layout["elements"].items():
+    elements = type_layout["elements"]
+    card = dict(card)
+    # 脚注兜底：式神名-类型[/子类型]（footer 点元素直接读 card["footer"]）
+    if not card.get("footer"):
+        card["footer"] = f"{card.get('shikigami', card['name'])}-{card_type}"
+        if card.get("special_type"):
+            card["footer"] += f"/{card['special_type']}"
+    # 先测卡名宽度（rarity_flank 外移量依据；name 点元素缺失按 0）
+    name_width = 0
+    name_elem = elements.get("name")
+    if name_elem and name_elem.get("kind") == "text":
+        name_font = lib.font(name_elem.get("font", "name"), name_elem["font_size"])
+        name_width = name_font.getlength(card["name"])
+    ctx = {"name_width": name_width}
+    for elem_name, elem in elements.items():
         canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
-    canvas = draw_region(canvas, lib, card["name"], regions["name"])
+    regions = type_layout["text_regions"]
     if card.get("description") and "desc" in regions:
-        obstacles = [stat_obstacle(e) for e in type_layout["elements"].values()
+        obstacles = [stat_obstacle(e) for e in elements.values()
                      if e["kind"] == "stat" and e["field"] in card]
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
                              obstacles=obstacles)
-    if "footer" in regions:
-        footer = card.get("footer")
-        if not footer:
-            footer = f"{card.get('shikigami', card['name'])}-{card_type}"
-            if card.get("special_type"):
-                footer += f"/{card['special_type']}"
-        canvas = draw_region(canvas, lib, footer, regions["footer"])
     # 裁剪掉整画布四周的透明边（bbox 取自合成图 alpha，等级标等溢出元素自然包含）
     if not crop:
         return canvas

@@ -1,9 +1,10 @@
-"""元素渲染：按布局元素定义渲染 等级标/稀有度双标/派系标/数值标。"""
+"""元素渲染：按布局元素定义渲染 等级标/稀有度双标/派系标/数值标/点文本。"""
 
 from PIL import Image, ImageDraw
 
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.common import paste_centered
+from bwpdiy.render.text import TEXT_FILL
 
 FACTION_COLOR = {
     "红莲": "red",
@@ -76,13 +77,39 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
             icon = elem["icon_neg"]  # 负值换贴图（护甲→破甲）
         out = _paste_element(canvas, lib.icon(icon, "l"), elem["pos"],
                              (elem["icon_size"], elem["icon_size"]))
-        text = f"{value:+d}" if elem.get("signed") else str(value)
         pos = elem["pos"]
         num_pos = (pos[0] + elem["num_offset"][0], pos[1] + elem["num_offset"][1])
+        font = lib.font("name", elem["font_size"])
         out = out.copy()
         draw = ImageDraw.Draw(out)
-        draw.text(num_pos, text, font=lib.font("name", elem["font_size"]),
-                  anchor="mm", fill=(255, 255, 255, 255),
+        text = f"{value:+d}" if elem.get("signed") else str(value)
+        if elem.get("signed"):
+            # 符号与数字分别绘制：同一字体中 +/- 墨迹中心与数字不一致，
+            # 整串 mm 锚点会导致视觉错位；数字锚定 num_pos，符号按墨迹中心对齐
+            sign, digits = text[0], text[1:]
+            draw.text(num_pos, digits, font=font, anchor="mm",
+                      fill=(255, 255, 255, 255),
+                      stroke_width=2, stroke_fill=(0, 0, 0, 220))
+            db = draw.textbbox(num_pos, digits, font=font, anchor="mm", stroke_width=2)
+            sb = draw.textbbox((0, 0), sign, font=font, anchor="mm", stroke_width=2)
+            sign_pos = (db[0] - 2 - sb[2], (db[1] + db[3]) / 2 - (sb[1] + sb[3]) / 2)
+            draw.text(sign_pos, sign, font=font, anchor="mm",
+                      fill=(255, 255, 255, 255),
+                      stroke_width=2, stroke_fill=(0, 0, 0, 220))
+            return out
+        draw.text(num_pos, text, font=font, anchor="mm",
+                  fill=(255, 255, 255, 255),
                   stroke_width=2, stroke_fill=(0, 0, 0, 220))
+        return out
+    if kind == "text":
+        # 点文本（卡名/脚注）：以 pos 为中心水平居中单行，不换行不做多边形排版
+        text = card.get(name)
+        if not text:
+            return canvas
+        out = canvas.copy()
+        draw = ImageDraw.Draw(out)
+        draw.text(tuple(elem["pos"]), str(text),
+                  font=lib.font(elem.get("font", "name"), elem["font_size"]),
+                  anchor="mm", fill=TEXT_FILL)
         return out
     raise ValueError(f"未知元素 kind: {kind}")

@@ -36,6 +36,30 @@ def _paste_element(canvas: Image.Image, img: Image.Image,
     return paste_centered(canvas, img, pos, fit)
 
 
+def _true_ink_bbox(text: str, font, stroke_width: int = 2):
+    """离屏渲染取真实墨迹 bbox（相对 mm 锚点），含描边。
+
+    不能用 textbbox 的预测口径：田氏颜体 `-` 字形轮廓含不产墨的延伸点，
+    预测 bbox 底边虚报（报 y20..36 实际墨迹 y20..24），按预测中心对齐必错位。
+    """
+    probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    predicted = probe.textbbox((0, 0), text, font=font, anchor="mm",
+                               stroke_width=stroke_width)
+    pad = 8
+    ox = -predicted[0] + pad
+    oy = -predicted[1] + pad
+    img = Image.new("RGBA", (predicted[2] - predicted[0] + pad * 2,
+                             predicted[3] - predicted[1] + pad * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.text((ox, oy), text, font=font, anchor="mm",
+              fill=(255, 255, 255, 255), stroke_width=stroke_width,
+              stroke_fill=(0, 0, 0, 220))
+    bbox = img.getchannel("A").getbbox()
+    if bbox is None:
+        return None
+    return (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
+
+
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                    elem: dict, card: dict, ctx: dict | None = None) -> Image.Image:
     """渲染单个布局元素；渲染条件不满足时原样返回 canvas。"""
@@ -85,17 +109,20 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         text = f"{value:+d}" if elem.get("signed") else str(value)
         if elem.get("signed"):
             # 符号与数字分别绘制：同一字体中 +/- 墨迹中心与数字不一致，
-            # 整串 mm 锚点会导致视觉错位；数字锚定 num_pos，符号按墨迹中心对齐
+            # 整串 mm 锚点会导致视觉错位；数字锚定 num_pos（与不带号逐像素一致），
+            # 符号按真墨迹中心对齐（两侧均离屏实测，textbbox 对 `-` 虚报底边）
             sign, digits = text[0], text[1:]
             draw.text(num_pos, digits, font=font, anchor="mm",
                       fill=(255, 255, 255, 255),
                       stroke_width=2, stroke_fill=(0, 0, 0, 220))
-            db = draw.textbbox(num_pos, digits, font=font, anchor="mm", stroke_width=2)
-            sb = draw.textbbox((0, 0), sign, font=font, anchor="mm", stroke_width=2)
-            sign_pos = (db[0] - 2 - sb[2], (db[1] + db[3]) / 2 - (sb[1] + sb[3]) / 2)
-            draw.text(sign_pos, sign, font=font, anchor="mm",
-                      fill=(255, 255, 255, 255),
-                      stroke_width=2, stroke_fill=(0, 0, 0, 220))
+            db = _true_ink_bbox(digits, font)
+            sb = _true_ink_bbox(sign, font)
+            if db is not None and sb is not None:
+                sign_pos = (num_pos[0] + db[0] - 2 - sb[2],
+                            num_pos[1] + (db[1] + db[3]) / 2 - (sb[1] + sb[3]) / 2)
+                draw.text(sign_pos, sign, font=font, anchor="mm",
+                          fill=(255, 255, 255, 255),
+                          stroke_width=2, stroke_fill=(0, 0, 0, 220))
             return out
         draw.text(num_pos, text, font=font, anchor="mm",
                   fill=(255, 255, 255, 255),

@@ -33,7 +33,10 @@ def _normalize_size_fields(layouts: dict) -> None:
                 if not isinstance(item, dict):
                     continue
                 for key, value in item.items():
-                    if key in _PER_TYPE_KEYS or not isinstance(value, (int, float, list)):
+                    # bool 是 int 子类，须先排除：bool 属内容类字段（signed/wrap 已在
+                    # 白名单），被误当尺寸类会在新增 bool 字段时错误归一
+                    if (key in _PER_TYPE_KEYS or isinstance(value, bool)
+                            or not isinstance(value, (int, float, list))):
                         continue
                     slot = groups.setdefault(f"{section}.{name}", {}).setdefault(key, [])
                     slot.append((card_type, _freeze(value)))
@@ -49,12 +52,16 @@ def _normalize_size_fields(layouts: dict) -> None:
             chosen = next(v for _, v in entries if v in winners)
             warnings.warn(
                 f"布局尺寸类字段跨类型不一致已归一: {group_name}.{key} "
-                f"取值 {sorted(winners)!r} → {chosen!r}", stacklevel=2)
+                # key=repr：手改出混合类型值（int 与 list 并存）时 sorted 直接比较会 TypeError
+                f"取值 {sorted(winners, key=repr)!r} → {chosen!r}", stacklevel=2)
             for card_type, type_layout in layouts.items():
                 item = (type_layout.get(group_name.split(".")[0]) or {}).get(
                     group_name.split(".", 1)[1])
                 if item is not None and key in item:
-                    item[key] = list(chosen) if isinstance(item[key], list) else chosen
+                    if isinstance(item[key], list):  # 写回保持原 list 形态（含标量胜出时包装）
+                        item[key] = list(chosen) if isinstance(chosen, (list, tuple)) else [chosen]
+                    else:
+                        item[key] = chosen
 
 
 def load_layouts(assets_dir: Path) -> dict:

@@ -135,6 +135,7 @@ async function refreshPreview() {
       body: JSON.stringify({type: curType, layout: typeLayout()}),
     });
   } catch (e) {
+    if (seq !== previewSeq) return;  // 过期请求的失败文案不得覆盖新状态
     statusEl.textContent = '预览请求失败: ' + e;
     return;
   }
@@ -206,7 +207,9 @@ function pick(mx, my) {
     if (e.kind === 'stat') {
       const np = [e.pos[0] + e.num_offset[0], e.pos[1] + e.num_offset[1]];
       if (near(...np)) return { sel: {kind: 'element', name},
-        set: (x, y) => { e.num_offset = [x - e.pos[0], y - e.pos[1]]; } };
+        // num_offset 是尺寸类字段：拖拽数字锚点同样跨类型广播（与属性面板 num_dx/num_dy 一致）
+        set: (x, y) => { e.num_offset = [x - e.pos[0], y - e.pos[1]];
+          syncElemField(name, 'num_offset', [...e.num_offset]); } };
     }
     if (near(...e.pos)) return { sel: {kind: 'element', name}, set: (x, y) => { e.pos = [x, y]; } };
   }

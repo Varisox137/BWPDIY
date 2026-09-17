@@ -95,6 +95,31 @@ def test_normalize_list_fields(tmp_path):
         assert layouts[t]["text_regions"]["desc"]["font_range"] == [22, 12]
 
 
+def test_normalize_mixed_types_no_crash(tmp_path):
+    """手改出混合类型值（int vs list）时告警不得 TypeError，仍完成归一。"""
+    custom = {"战斗": {"elements": {"power": _stat(30)}, "text_regions": {}},
+              "法术": {"elements": {"power": _stat(30)}, "text_regions": {}}}
+    custom["法术"]["elements"]["power"]["font_size"] = [30]  # 畸形：list 与 int 混合
+    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    with pytest.warns(UserWarning):
+        layouts = layout.load_layouts(tmp_path)
+    assert layouts["战斗"]["elements"]["power"]["font_size"] == 30
+    assert layouts["法术"]["elements"]["power"]["font_size"] == [30]  # 归一写回保持原形态
+
+
+def test_normalize_skips_bool_fields(tmp_path):
+    """bool 是 int 子类：新增 bool 内容字段不得被误当尺寸类归一。"""
+    custom = {t: {"elements": {"power": dict(_stat(30), bold=(t != "法术"))},
+                  "text_regions": {}} for t in TYPES}
+    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        layouts = layout.load_layouts(tmp_path)
+    assert not [w for w in caught if issubclass(w.category, UserWarning)]
+    assert layouts["法术"]["elements"]["power"]["bold"] is False
+    assert layouts["战斗"]["elements"]["power"]["bold"] is True
+
+
 def test_shipped_layouts_already_normalized():
     """出厂与包内默认布局不得触发归一告警（数据已一致）。"""
     for path in (Path("assets"), Path("bwpdiy/render")):

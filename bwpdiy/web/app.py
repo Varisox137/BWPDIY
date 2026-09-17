@@ -1,6 +1,8 @@
 """FastAPI 编辑器服务（当前含布局配置工具 API）。"""
 
 import json
+import os
+import shutil
 from io import BytesIO
 from pathlib import Path
 
@@ -31,8 +33,26 @@ def create_app(assets_dir: Path, static_dir: Path | None = None) -> FastAPI:
 
     @app.put("/api/layout")
     async def put_layout(request: dict):
+        # 最小形状校验：非空 dict，每个类型值须与 load_layouts 产物同构；
+        # 不强制六类型齐全（部分保存、缺省回退默认是特性）
+        if not request:
+            raise HTTPException(422, "布局为空：拒绝覆盖现有配置")
+        for card_type, type_layout in request.items():
+            if (not isinstance(type_layout, dict)
+                    or "elements" not in type_layout
+                    or "text_regions" not in type_layout):
+                raise HTTPException(
+                    422, f"布局形状非法: 类型 {card_type} 必须是含 elements/text_regions 键的对象")
         path = assets_dir / "layout.json"
-        path.write_text(json.dumps(request, ensure_ascii=False, indent=2), encoding="utf-8")
+        data = json.dumps(request, ensure_ascii=False, indent=2)
+        try:
+            if path.is_file():
+                shutil.copy2(path, path.with_name(path.name + ".bak"))
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(data, encoding="utf-8")
+            os.replace(tmp, path)
+        except OSError as e:
+            raise HTTPException(422, f"布局写盘失败: {e}") from e
         return {"ok": True}
 
     @app.post("/api/preview")

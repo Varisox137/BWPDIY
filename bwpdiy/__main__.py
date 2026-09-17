@@ -1,6 +1,7 @@
 """python -m bwpdiy：启动编辑器 WebGUI（默认 http://127.0.0.1:8630）。"""
 
 import sys
+from pathlib import Path
 
 
 def main() -> int:
@@ -8,7 +9,7 @@ def main() -> int:
 
     from bwpdiy.web.app import create_app
 
-    app = create_app("assets")
+    app = create_app(Path(__file__).resolve().parent.parent / "assets")
     uvicorn.run(app, host="127.0.0.1", port=8630)
     return 0
 

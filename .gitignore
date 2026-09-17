@@ -18,6 +18,10 @@ examples/
 # 本地笔记
 thoughts.txt
 
+# 布局配置写盘备份/临时文件（PUT /api/layout 原子写产物）
+*.json.bak
+*.json.tmp
+
 # 系统
 .DS_Store
 Thumbs.db

@@ -1192,6 +1192,11 @@ fetch('/api/version').then(r => r.json()).then(v => {
 applyExtOptions();  // 扩展选项恢复（含布局 navtab 显隐）
 loadProjects();
 if (location.hash === '#layout' && extOptions.layout) showTab('layout');  // /layout 重定向落点（布局 tab 隐藏时不跳转）
+
+// 未保存修改（布局 dirty / 卡牌 cDirty）时关闭或刷新标签页弹浏览器确认框
+window.addEventListener('beforeunload', ev => {
+  if (dirty || cDirty) { ev.preventDefault(); ev.returnValue = ''; }
+});
 </script>
 </body>
 </html>

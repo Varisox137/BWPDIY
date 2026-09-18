@@ -948,7 +948,8 @@ function draw() {
   if (previewImg) ctx.drawImage(previewImg, 0, 0);
   const tl = typeLayout();
   for (const [name, e] of Object.entries(tl.elements)) {
-    handle(e.pos, sel && sel.name === name ? '#ff4' : '#0ff');
+    // 元素位置点：绿色小圆点（比文本区中心方块略小），选中变黄
+    handle(e.pos, sel && sel.name === name ? '#ff4' : '#4f4', 4);
     if (e.kind === 'stat') {
       const np = [e.pos[0] + e.num_offset[0], e.pos[1] + e.num_offset[1]];
       handle(np, sel && sel.name === name ? '#ff4' : '#f8f', 5, true);

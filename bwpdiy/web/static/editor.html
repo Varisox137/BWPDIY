@@ -56,6 +56,10 @@
   #l-frame-variants { color: #d9b96a; font-size: 12px; margin-top: 4px; }
   #l-frame-variants .fv { margin: 0 3px; font-size: 12px; }
   #l-frame-variants .fv.active { background: #d9b96a; }
+
+  /* ---- 更新横幅 ---- */
+  #update-banner { display: none; background: #fff3cd; color: #664d03; padding: 5px 10px; font-size: 13px; text-align: center; }
+  #update-banner button { margin-left: 8px; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -71,6 +75,11 @@
   </span>
 </nav>
 
+<div id="update-banner">
+  <span id="update-text"></span>
+  <button id="update-btn">一键更新</button>
+  <a id="update-link" href="https://github.com/Varisox137/BWPDIY/releases/latest" target="_blank" rel="noopener" style="display:none">前往下载</a>
+</div>
 <div id="tab-cards" class="tabpage active">
   <div id="c-left">
     <h4>项目</h4>
@@ -1252,6 +1261,37 @@ fetch('/api/version').then(r => r.json()).then(v => {
 }).catch(() => {});
 applyExtOptions();  // 扩展选项恢复（含布局 navtab 显隐）
 loadProjects();
+// 自动更新检查：有新版出横幅；exe 一键更新（下载后程序退出替换重启），开发模式仅给下载链接
+fetch('/api/update/check').then(r => r.json()).then(u => {
+  if (!u.has_update) return;
+  document.getElementById('update-text').textContent = `发现新版本 ${u.latest}（当前 v${u.current}）`;
+  const btn = document.getElementById('update-btn');
+  if (u.frozen) {
+    btn.onclick = async () => {
+      if (!confirm(`下载并更新到 ${u.latest}？程序将自动重启。`)) return;
+      btn.disabled = true;
+      document.getElementById('update-text').textContent = '正在下载更新，请稍候…';
+      let r;
+      try {
+        r = await fetch('/api/update/apply', {method: 'POST'});
+      } catch (e) {
+        // 更新成功时进程退出会掐断连接，也可能落到此处：按成功提示处理
+        document.getElementById('update-text').textContent = '程序正在退出并更新重启（若未自动启动请手动打开）';
+        return;
+      }
+      if (r.ok) {
+        document.getElementById('update-text').textContent = '下载完成，程序即将退出并自动更新重启';
+      } else {
+        document.getElementById('update-text').textContent = '更新失败：' + (await parseErrorDetail(r)).join('；');
+        btn.disabled = false;
+      }
+    };
+  } else {
+    btn.style.display = 'none';
+    document.getElementById('update-link').style.display = '';
+  }
+  document.getElementById('update-banner').style.display = 'block';
+}).catch(() => {});  // 离线/检查失败静默：不出横幅
 if (location.hash === '#layout' && extOptions.layout) showTab('layout');  // /layout 重定向落点（布局 tab 隐藏时不跳转）
 
 // 未保存修改（布局 dirty / 卡牌 cDirty）时关闭或刷新标签页弹浏览器确认框

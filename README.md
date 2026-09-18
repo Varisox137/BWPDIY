@@ -43,6 +43,9 @@ PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产�
   自适应先上移锚点再缩字号；破甲分离配置与样式变体；等级 0 不绘制（启用开关移除）；
   stats 资源去重；中立牌脚注；未保存关闭提示；GUI 卡牌内容栏重排、文本区并入元素列表
 - [ ] M4：HTTP API + BWPro 集成文档
+- [x] 未发布（下一版）：卡牌库卡图上传（选图落盘项目 `images/` + 写回 `artwork.images[0].path`，
+  offset_x/offset_y/scale 数字调参实时预览，不做旋转/拖拽/滚轮）；
+  exe 自动更新（页面加载检查 GitHub latest release，横幅提示 + 一键下载替换重启，开发模式仅给下载链接）
 - 二期：`[关键词]`/`#图标` 富文本、勾玉四色（黄/青/紫/红，BWPro 对战四位己方式神用）、协战双式神头像框、多牌框版型
 
 ## 美术资源来源与权利说明

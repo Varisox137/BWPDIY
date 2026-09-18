@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from PIL import Image
 
 from bwpdiy import __version__
+from bwpdiy import updater
 from bwpdiy.render.layout import load_layouts
 from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
 from bwpdiy.resources import default_library_dir
@@ -112,6 +113,24 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     @app.get("/api/version")
     def get_version():
         return {"version": __version__}
+
+    # ---------- 自动更新（仅 frozen exe 可一键替换；检查对全模式开放） ----------
+
+    @app.get("/api/update/check")
+    def update_check():
+        return JSONResponse(updater.check_update())
+
+    @app.post("/api/update/apply")
+    def update_apply():
+        # 重新拉取 release 信息（不信前端传来的 URL），有更新才下载
+        info = updater.check_update()
+        if not info.get("has_update"):
+            raise HTTPException(422, info.get("error") or "当前已是最新版本")
+        try:
+            latest = updater.download_and_schedule_restart(info)
+        except Exception as e:
+            raise HTTPException(422, f"更新失败: {e}") from e
+        return {"ok": True, "latest": latest, "message": "下载完成，程序将退出并自动更新重启"}
 
     @app.get("/api/samples")
     def get_samples():

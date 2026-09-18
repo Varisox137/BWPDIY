@@ -271,3 +271,45 @@ def test_stat_icon_neg(assets_dir):
     pos_img = render_element(canvas(), lib, "shield", elem, {"type": "战斗", "shield+": 1})
     neg_img = render_element(canvas(), lib, "shield", elem, {"type": "战斗", "shield+": -1})
     assert list(pos_img.getdata()) != list(neg_img.getdata())  # 负值换用破甲贴图
+
+
+# ---------- 掩膜采集：composite 贴图保真（P1 修复） ----------
+
+def test_paste_centered_composite_preserves_alpha():
+    """composite=True 走 alpha_composite：透明层上源 alpha 保真（默认 paste 会平方 alpha）。"""
+    from bwpdiy.render.common import paste_centered
+    src = Image.new("RGBA", (4, 4), (10, 10, 10, 20))  # 淡边缘 alpha=20
+    out = paste_centered(canvas(), src, (100, 100), composite=True)
+    assert out.getchannel("A").getpixel((100, 100)) == 20  # 保真入掩膜（>10）
+    default = paste_centered(canvas(), src, (100, 100))
+    assert default.getchannel("A").getpixel((100, 100)) < 10  # 默认 paste：20²/255≈1 被掩膜丢弃
+
+
+def test_stat_mask_composite_covers_faint_edges(assets_dir):
+    """淡边缘图标：composite 掩膜严格覆盖默认 paste 掩膜，且吃到 alpha≤50 的淡边缘。"""
+    from types import SimpleNamespace
+
+    from bwpdiy.render.geometry import mask_row_runs
+    lib = AssetLibrary(assets_dir)
+    # 合成淡边缘图标：中心实、外圈 alpha=20（实卡有 ~8% 可见度，默认 paste 平方后被 alpha_min=10 丢弃）
+    icon = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(icon)
+    d.rectangle((8, 8, 23, 23), fill=(10, 10, 10, 255))
+    d.rectangle((4, 4, 27, 27), outline=(10, 10, 10, 20), width=4)
+    fake_lib = SimpleNamespace(icon=lambda *a, **k: icon, font=lib.font)
+    elem = {"kind": "stat", "field": "power", "icon": "ll",
+            "pos": [100, 100], "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
+    card = {"type": "式神", "power": 3}
+    default_runs = mask_row_runs(render_element(canvas(), fake_lib, "power", elem, card)
+                                 .getchannel("A"))
+    composite_runs = mask_row_runs(render_element(canvas(), fake_lib, "power", elem, card,
+                                                  composite=True).getchannel("A"))
+    # 图标行 y=100：默认掩膜左界在实芯 x≈92，composite 掩膜吃到淡边缘 x≈88（严格更宽）
+    default_left = min(x0 for x0, _ in default_runs[100])
+    composite_left = min(x0 for x0, _ in composite_runs[100])
+    assert composite_left < default_left
+    # 超集关系：默认掩膜的每个墨迹区间都被 composite 掩膜覆盖
+    for row, runs in default_runs.items():
+        for x0, x1 in runs:
+            assert any(c0 <= x0 and x1 <= c1 for c0, c1 in composite_runs[row])

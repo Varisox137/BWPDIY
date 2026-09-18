@@ -90,7 +90,10 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         if stat_elems:
             layer = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
             for i, e in enumerate(stat_elems):
-                layer = render_element(layer, lib, f"stat_{i}", e, card, ctx)
+                # composite=True：掩膜采集走 alpha_composite，图标源 alpha 保真
+                # （默认 paste 在透明层上平方 alpha，抗锯齿淡边缘会被掩膜阈值丢弃）
+                layer = render_element(layer, lib, f"stat_{i}", e, card, ctx,
+                                       composite=True)
             obstacle_mask = layer.getchannel("A")
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
                              obstacle_mask=obstacle_mask)

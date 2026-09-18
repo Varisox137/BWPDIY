@@ -17,14 +17,15 @@ FACTION_COLOR = {
 
 def _paste_element(canvas: Image.Image, img: Image.Image,
                    pos: tuple[float, float],
-                   size: tuple[int, int]) -> Image.Image:
+                   size: tuple[int, int],
+                   composite: bool = False) -> Image.Image:
     """元素贴图统一口径：裁 alpha bbox 后等比 contain 进 size 框（size=内容可见尺寸）。"""
     bbox = img.getchannel("A").getbbox()
     if bbox:
         img = img.crop(bbox)
     scale = min(size[0] / img.width, size[1] / img.height)
     fit = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
-    return paste_centered(canvas, img, pos, fit)
+    return paste_centered(canvas, img, pos, fit, composite=composite)
 
 
 def _render_ink(text: str, font, stroke_width: int = 2):
@@ -84,8 +85,13 @@ def stat_rendered(elem: dict, card: dict) -> bool:
 
 
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
-                   elem: dict, card: dict, ctx: dict | None = None) -> Image.Image:
-    """渲染单个布局元素；渲染条件不满足时原样返回 canvas。"""
+                   elem: dict, card: dict, ctx: dict | None = None,
+                   composite: bool = False) -> Image.Image:
+    """渲染单个布局元素；渲染条件不满足时原样返回 canvas。
+
+    composite=True 时 stat 图标走 alpha_composite 贴图（源 alpha 保真）：
+    仅供 pipeline 的文本避让掩膜采集；实卡绘制用缺省 paste 行为。
+    """
     kind = elem["kind"]
     if not elem.get("enabled", True):
         return canvas  # per-type 开关（当前用于 level_badge 整体停用）
@@ -125,7 +131,8 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         if value < 0 and elem.get("icon_neg"):
             icon = elem["icon_neg"]  # 负值换贴图（战斗护甲→破甲，按当前值自动选择）
         out = _paste_element(canvas, lib.icon(icon, "l"), elem["pos"],
-                             (elem["icon_size"], elem["icon_size"]))
+                             (elem["icon_size"], elem["icon_size"]),
+                             composite=composite)
         pos = elem["pos"]
         num_pos = (pos[0] + elem["num_offset"][0], pos[1] + elem["num_offset"][1])
         font = lib.font("name", elem["font_size"])

@@ -12,7 +12,7 @@ from PIL import Image
 
 from bwpdiy.render.artwork import apply_mask, fit_artwork
 from bwpdiy.render.assets import AssetLibrary
-from bwpdiy.render.badges import render_element, stat_obstacle, stat_rendered
+from bwpdiy.render.badges import render_element, stat_rendered
 from bwpdiy.render.layout import get_type_layout, load_layouts
 from bwpdiy.render.text import draw_region
 
@@ -82,11 +82,18 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
     regions = type_layout["text_regions"]
     if card.get("description") and "desc" in regions:
-        obstacles = [stat_obstacle(e) for e in elements.values()
-                     if e["kind"] == "stat" and e.get("enabled", True)
-                     and stat_rendered(e, card)]
+        # 文本避让掩膜：实际渲染的 stat 元素在透明层再渲染一份，取 alpha 真墨迹
+        stat_elems = [e for e in elements.values()
+                      if e["kind"] == "stat" and e.get("enabled", True)
+                      and stat_rendered(e, card)]
+        obstacle_mask = None
+        if stat_elems:
+            layer = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
+            for i, e in enumerate(stat_elems):
+                layer = render_element(layer, lib, f"stat_{i}", e, card, ctx)
+            obstacle_mask = layer.getchannel("A")
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
-                             obstacles=obstacles)
+                             obstacle_mask=obstacle_mask)
     # 裁剪掉整画布四周的透明边（bbox 取自合成图 alpha，等级标等溢出元素自然包含）
     if not crop:
         return canvas

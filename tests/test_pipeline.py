@@ -95,3 +95,41 @@ def test_desc_avoids_stat_obstacles(assets_dir, sample_art):
             "_base_dir": str(sample_art.parent)}
     img = render_card(card, assets_dir)
     assert img.mode == "RGBA"
+
+
+def test_desc_ink_keeps_gap_from_stat_ink(assets_dir, sample_art):
+    """端到端：描述墨迹与 stat 角标真实墨迹（图标+数字）相距 ≥ obstacle_gap（缺省 4）。"""
+    from pathlib import Path
+
+    from PIL import Image, ImageChops, ImageFilter
+
+    from bwpdiy.render.assets import AssetLibrary
+    from bwpdiy.render.badges import render_element, stat_rendered
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+
+    card = {"type": "战斗", "name": "sample_art", "shikigami": "测试式神",
+            "level": 1, "rarity": "N", "power+": 2, "shield+": -1,
+            "description": "这是一段相当长的描述文本，用来验证末端行避开数值贴图的排版行为是否正常工作。" * 2,
+            "_base_dir": str(sample_art.parent)}
+    tl = get_type_layout(load_layouts(Path(assets_dir)), "战斗")
+    gap = tl["text_regions"]["desc"].get("obstacle_gap", 4)
+
+    # 描述墨迹 = 有/无描述两版渲染的 RGB 差分（文本画在不透明卡面上，差 alpha 无意义）
+    with_desc = render_card(card, assets_dir, crop=False)
+    without_desc = render_card(dict(card, description=""), assets_dir, crop=False)
+    diff = ImageChops.difference(with_desc.convert("RGB"), without_desc.convert("RGB"))
+    text_ink = diff.convert("L").point(lambda v: 255 if v > 10 else 0)
+
+    # 角标墨迹 = 与管线同口径：stat_rendered 元素在透明层渲染取 alpha
+    lib = AssetLibrary(assets_dir)
+    layer = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+    i = 0
+    for e in tl["elements"].values():
+        if e["kind"] == "stat" and e.get("enabled", True) and stat_rendered(e, card):
+            layer = render_element(layer, lib, f"stat_{i}", e, card, {"name_width": 0})
+            i += 1
+    assert i > 0
+    stat_ink = layer.getchannel("A").point(lambda v: 255 if v > 10 else 0)
+    # 角标墨迹外扩 gap-1 px 后与描述墨迹零重叠 ⇔ 两者距离 ≥ gap
+    dilated = stat_ink.filter(ImageFilter.MaxFilter(2 * gap - 1))
+    assert ImageChops.darker(text_ink, dilated).getbbox() is None

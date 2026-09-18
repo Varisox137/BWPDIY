@@ -263,7 +263,6 @@ def test_level_badge_disabled(assets_dir):
 
 
 def test_stat_icon_neg(assets_dir):
-    from bwpdiy.render.badges import stat_obstacle
     lib = AssetLibrary(assets_dir)
     elem = {"kind": "stat", "field": "shield+", "icon": "hj", "icon_neg": "pj",
             "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0],
@@ -272,7 +271,3 @@ def test_stat_icon_neg(assets_dir):
     pos_img = render_element(canvas(), lib, "shield", elem, {"type": "战斗", "shield+": 1})
     neg_img = render_element(canvas(), lib, "shield", elem, {"type": "战斗", "shield+": -1})
     assert list(pos_img.getdata()) != list(neg_img.getdata())  # 负值换用破甲贴图
-    # stat_obstacle 矩形公式
-    x0, y0, x1, y1 = stat_obstacle(elem)
-    assert x0 == 360 - 16 and y0 == 485 - 16
-    assert x1 > 360 + 16 and y1 == 485 + 16

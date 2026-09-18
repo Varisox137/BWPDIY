@@ -1,11 +1,11 @@
-"""文本层：矩形文本区排版（自动换行、行内居中、字号递减适配、障碍避让）。"""
+"""文本层：矩形文本区排版（自动换行、逐行居中、字号递减适配、掩膜墨迹避让）。"""
 
 import re
 
 from PIL import Image, ImageDraw, ImageFont
 
 from bwpdiy.render.assets import AssetLibrary
-from bwpdiy.render.geometry import clamp_span_by_obstacles
+from bwpdiy.render.geometry import clamp_span_by_mask, mask_row_runs
 
 TEXT_FILL = (60, 45, 30, 255)
 
@@ -24,79 +24,112 @@ def _line_height(font: ImageFont.FreeTypeFont) -> float:
 
 def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
                     region: dict, wrap: bool,
-                    obstacles: list | None = None):
-    """按给定字号在矩形区内排版，成功返回 [(行, cx, cy)]，失败返回 None。"""
-    obstacles = obstacles or []
+                    row_runs: dict | None = None):
+    """按给定字号在矩形区内排版，成功返回 [(行, cx, cy)]，失败返回 None。
+
+    文本块（行数 × 行高）在区域内水平逐行居中、竖直整体居中：
+    先定字号与行数，再把文本块中心对齐区域中心。行可用宽度按
+    掩膜墨迹（row_runs）逐行收窄，间距字段 obstacle_gap（缺省 4）。
+    """
     cx, cy = region["center"]
     half_w, half_h = region["width"] / 2, region["height"] / 2
     y_top, y_bottom = cy - half_h, cy + half_h
     lh = _line_height(font)
+    gap = region.get("obstacle_gap", 4)
 
     def span_at(y: float):
         span = (cx - half_w, cx + half_w)
-        if obstacles:
-            span = clamp_span_by_obstacles(span, y, lh / 2, obstacles)
+        if row_runs:
+            span = clamp_span_by_mask(span, y, lh / 2, row_runs, gap)
         return span
 
     if not wrap:
-        y = (y_top + y_bottom) / 2
-        span = span_at(y)
+        span = span_at(cy)
         if span is None or font.getlength(text) > span[1] - span[0]:
             return None
-        return [(text, (span[0] + span[1]) / 2, y)]
-    lines: list[tuple[str, float, float]] = []
-    current = ""
-    y = y_top + lh / 2
+        return [(text, (span[0] + span[1]) / 2, cy)]
+
     paragraphs = text.split("\n")
-    for pi, paragraph in enumerate(paragraphs):
-        for ch in paragraph:
-            trial = current + ch
-            span = span_at(y)
-            width = (span[1] - span[0]) if span else 0.0
-            if current and font.getlength(trial) > width:
-                if span is None:  # 障碍封死本行：排版失败，交由字号递减/强排兜底
+
+    def wrap_from(y: float):
+        """从行中心 y 起贪心换行，返回行文本列表；排不下（出底界/被封死）返回 None。"""
+        lines: list[str] = []
+        current = ""
+        for pi, paragraph in enumerate(paragraphs):
+            for ch in paragraph:
+                trial = current + ch
+                span = span_at(y)
+                width = (span[1] - span[0]) if span else 0.0
+                if current and font.getlength(trial) > width:
+                    if span is None:  # 障碍封死本行：排版失败，交由字号递减/强排兜底
+                        return None
+                    lines.append(current)
+                    y += lh
+                    if y + lh / 2 > y_bottom:
+                        return None
+                    current = ch
+                else:
+                    current = trial
+            if pi < len(paragraphs) - 1 or current:
+                if span_at(y) is None:
                     return None
-                lines.append((current, (span[0] + span[1]) / 2, y))
-                y += lh
-                if y + lh / 2 > y_bottom:
-                    return None
-                current = ch
-            else:
-                current = trial
-        if pi < len(paragraphs) - 1 or current:
-            span = span_at(y)
-            if span is None:
-                return None
-            lines.append((current, (span[0] + span[1]) / 2, y))
-            current = ""
-            if pi < len(paragraphs) - 1:
-                y += lh
-                if y + lh / 2 > y_bottom:
-                    return None
-    return lines or None
+                lines.append(current)
+                current = ""
+                if pi < len(paragraphs) - 1:
+                    y += lh
+                    if y + lh / 2 > y_bottom:
+                        return None
+        return lines
+
+    # 先自上而下排版定行数，再按行数竖直居中重排；居中改变了各行 y 带的
+    # 可用宽度，行数可能变化，迭代至行数稳定（计数重复 = 震荡，失败兜底）。
+    line_texts = wrap_from(y_top + lh / 2)
+    if not line_texts:
+        return None
+    seen = set()
+    while len(line_texts) not in seen:
+        seen.add(len(line_texts))
+        n = len(line_texts)
+        y0 = cy - n * lh / 2 + lh / 2
+        if y0 - lh / 2 < y_top - 1e-6:  # 文本块高于区域
+            return None
+        recentered = wrap_from(y0)
+        if recentered is None:
+            return None
+        if len(recentered) == n:
+            return [(t, (span_at(y0 + i * lh)[0] + span_at(y0 + i * lh)[1]) / 2,
+                     y0 + i * lh) for i, t in enumerate(recentered)]
+        line_texts = recentered
+    return None
 
 
-def fit_in_region(text: str, region: dict, lib: AssetLibrary,
-                  obstacles: list | None = None):
-    """字号从大到小适配，返回 (font, lines)；最小字号仍排不下时返回 None。"""
-    text = _normalize_newlines(text)
+def _fit(text: str, region: dict, lib: AssetLibrary, row_runs: dict | None):
     max_size, min_size = region["font_range"]
     for size in range(max_size, min_size - 1, -1):
         font = lib.font(region["font"], size)
-        lines = _layout_at_size(text, font, region, region["wrap"], obstacles)
+        lines = _layout_at_size(text, font, region, region["wrap"], row_runs)
         if lines is not None:
             return font, lines
     return None
 
 
+def fit_in_region(text: str, region: dict, lib: AssetLibrary,
+                  obstacle_mask: Image.Image | None = None):
+    """字号从大到小适配，返回 (font, lines)；最小字号仍排不下时返回 None。"""
+    text = _normalize_newlines(text)
+    row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None
+    return _fit(text, region, lib, row_runs)
+
+
 def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
-                region: dict, obstacles: list | None = None,
+                region: dict, obstacle_mask: Image.Image | None = None,
                 fill=TEXT_FILL) -> Image.Image:
     text = _normalize_newlines(text)
-    fitted = fit_in_region(text, region, lib, obstacles)
+    row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None
+    fitted = _fit(text, region, lib, row_runs)
     if fitted is None:
         font = lib.font(region["font"], region["font_range"][1])
-        lines = _layout_at_size(text, font, region, region["wrap"], obstacles)
+        lines = _layout_at_size(text, font, region, region["wrap"], row_runs)
         if lines is None:  # 强排兜底：nowrap 超宽，或 wrap 最小字号仍排不下（含障碍封死）
             lines = [(text, region["center"][0], region["center"][1])]
         fitted = (font, lines)

@@ -15,15 +15,6 @@ FACTION_COLOR = {
 }
 
 
-def stat_obstacle(elem: dict) -> tuple[float, float, float, float]:
-    """stat 元素的障碍矩形（文本避让用，公式见 Global Constraints）。"""
-    x, y = elem["pos"]
-    half = elem["icon_size"] / 2
-    return (x - half, y - half,
-            x + half + abs(elem["num_offset"][0]) + elem["font_size"] * 1.5,
-            y + half)
-
-
 def _paste_element(canvas: Image.Image, img: Image.Image,
                    pos: tuple[float, float],
                    size: tuple[int, int]) -> Image.Image:

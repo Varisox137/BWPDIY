@@ -15,6 +15,10 @@ def make_card(fixtures, type_, **kw):
     return card
 
 
+def _content_bbox(img):
+    return img.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
+
+
 @pytest.mark.parametrize("kw", [
     {"type": "式神", "faction": "红莲", "power": 3, "health": 4},
     {"type": "战斗", "level": 1, "rarity": "R", "power+": 1, "shield+": 1},
@@ -27,15 +31,20 @@ def test_render_all_types(assets_dir, sample_art, kw):
     card = make_card(sample_art.parent, kw.pop("type"), **kw)
     img = render_card(card, assets_dir)
     assert img.mode == "RGBA"
-    w, h = img.size
-    assert 0.5 < w / h < 0.7  # 竖版卡比例（裁剪后各类型尺寸略有差异）
+    assert img.size == (512, 512)  # 导出恒 512×512
+    bbox = _content_bbox(img)
+    assert bbox[1] == 0 and bbox[3] == 512  # 上下顶格
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    assert 0.5 < w / h < 0.7  # 竖版卡比例（左右留白）
 
 
 def test_render_minimal_card(assets_dir, sample_art):
     # artwork 缺省 path → <name>.png
     card = {"type": "法术", "name": "sample_art", "_base_dir": str(sample_art.parent)}
     img = render_card(card, assets_dir)
-    w, h = img.size
+    assert img.size == (512, 512)
+    bbox = _content_bbox(img)
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
     assert 0.5 < w / h < 0.7
 
 
@@ -75,23 +84,42 @@ def test_footer_with_special_type(assets_dir, sample_art):
     assert img.mode == "RGBA"
 
 
-def test_crop_tightest_alpha_bbox(assets_dir, sample_art):
-    """导出裁剪 = 整卡合成结果的 tightest alpha bbox：小于 512×512，且探出框缘的
-    元素（如左上角探出的等级标）包含在内（bbox 宽于框体自身）。"""
+def test_export_fit_512_top_bottom_flush(assets_dir, sample_art):
+    """导出适配：恒 512×512，内容上下顶格、水平居中（左右留白对称）。"""
     card = make_card(sample_art.parent, "战斗", **{"level": 1, "rarity": "R", "power+": 1, "shield+": 1})
-    full = render_card(card, assets_dir, crop=False)
-    bbox = full.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
-    expected = full.crop(bbox)
     out = render_card(card, assets_dir, crop=True)
-    assert out.size == expected.size
-    assert out.size[0] < 512 and out.size[1] <= 512
-    assert list(out.getdata()) == list(expected.getdata())
-    # 探出元素包含：合成 bbox 比框体 alpha bbox 更宽（等级标探出左缘）
+    assert out.size == (512, 512)
+    bbox = _content_bbox(out)
+    assert bbox[1] == 0 and bbox[3] == 512  # 上下顶格
+    assert abs(bbox[0] - (512 - bbox[2])) <= 1  # 水平居中
+
+
+def test_artwork_clipped_to_frame_silhouette(assets_dir, sample_art):
+    """轮廓裁剪：牌框实际形状之外（含矩形 bbox 内、框形外的区域）无卡图残留。
+
+    回归：旧版按框 alpha 矩形 bbox 裁剪，框形外但 bbox 内的卡图会残留。
+    元素在轮廓裁剪之后绘制，探出框缘的等级标不受影响。
+    """
+    from PIL import ImageChops
+
     from bwpdiy.render.assets import AssetLibrary
-    frame = AssetLibrary(assets_dir).frame("combat", "norm")
-    fbbox = frame.getchannel("A").getbbox()
-    assert bbox[0] < fbbox[0]  # 左缘探出（等级标）
-    assert bbox[2] - bbox[0] >= fbbox[2] - fbbox[0]
+    from bwpdiy.render.pipeline import _outside_frame_mask
+
+    lib = AssetLibrary(assets_dir)
+    # 无等级/稀有度/脚注的极简卡：画布 = 卡图+牌框轮廓裁剪结果（卡名在框内）
+    card = make_card(sample_art.parent, "法术", footer=" ")
+    for variant in ("norm", "black", "blue", "red"):
+        canvas = render_card(dict(card, frame_variant=variant), assets_dir, crop=False)
+        alpha = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0)
+        outside = _outside_frame_mask(lib.frame("spell", variant))
+        assert outside.getbbox() is not None  # 确实存在框外区域（测试有效性）
+        # alpha 与 outside 同为 255 的像素 = 框外残留 → 必须为零
+        assert ImageChops.darker(alpha, outside).getbbox() is None
+    # 等级标探出框缘：裁剪只针对卡图，元素墨迹保留在框外
+    badge = render_card(dict(card, level=1), assets_dir, crop=False)
+    alpha = badge.getchannel("A").point(lambda v: 255 if v > 10 else 0)
+    outside = _outside_frame_mask(lib.frame("spell", "norm"))
+    assert ImageChops.darker(alpha, outside).getbbox() is not None
 
 
 @pytest.mark.parametrize("card_type", ["式神", "战斗", "法术", "形态", "幻境", "协战"])

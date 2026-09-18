@@ -2,16 +2,17 @@
 
 合成顺序（自底向上，术语见 docs/terminology.md）：
 卡图 artwork（fit 至 512 画布）→ 牌框 frame（在上，卡图区透明无需蒙版）→
-裁到框 alpha bbox（去框外卡图）→ 布局元素（等级标/稀有度双标/派系标/
-数值标/卡名/脚注点文本，由 assets/layout.json 驱动）→ 描述文本 →
-最终导出按整卡合成结果 alpha bbox 裁剪（探出框缘的元素包含在内；
-crop=False 布局预览模式返回 512 全画布）。
+轮廓裁剪（删去牌框实际形状之外的所有像素，框缘包围的卡图窗不受影响）→
+布局元素（等级标/稀有度双标/派系标/数值标/卡名/脚注点文本，由 assets/layout.json
+驱动，探出框缘的元素在轮廓裁剪之后绘制、不受影响）→ 描述文本 →
+最终导出按整卡 tightest alpha bbox 裁剪后等比缩放至高 512（上下顶格、
+左右居中留白）贴回 512×512；crop=False 布局预览模式返回 512 全画布。
 框品：card["frame_variant"]（缺省 norm），协战恒 norm。
 """
 
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageDraw
 
 from bwpdiy.render.artwork import fit_artwork
 from bwpdiy.render.assets import AssetLibrary
@@ -20,6 +21,23 @@ from bwpdiy.render.layout import get_type_layout, load_layouts
 from bwpdiy.render.text import FRAME_TEXT_FILL, draw_region
 
 CARD_SIZE = (512, 512)
+
+
+def _outside_frame_mask(frame: Image.Image) -> Image.Image:
+    """L 掩膜（255=牌框实际形状之外）：框 alpha==0 且与画布边缘连通的区域。
+
+    卡图窗虽 alpha==0 但被框缘完整包围、与画布边缘不连通，不受影响；
+    框缘抗锯齿半透明像素（alpha>0）视为框体保留。
+    """
+    mask = frame.getchannel("A").point(lambda v: 255 if v == 0 else 0)
+    w, h = mask.size
+    px = mask.load()
+    seeds = ([(x, 0) for x in range(w)] + [(x, h - 1) for x in range(w)]
+             + [(0, y) for y in range(h)] + [(w - 1, y) for y in range(h)])
+    for s in seeds:
+        if px[s[0], s[1]] == 255:
+            ImageDraw.floodfill(mask, s, 128, thresh=0)
+    return mask.point(lambda v: 255 if v == 128 else 0)
 
 
 def _artwork_ref(card: dict) -> dict:
@@ -34,9 +52,10 @@ def _artwork_ref(card: dict) -> dict:
 
 def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
                 crop: bool = True) -> Image.Image:
-    """渲染单张完整卡面：512×512 画布合成后按 alpha bbox 裁剪返回（竖版 RGBA）。
+    """渲染单张完整卡面：512×512 RGBA，卡面内容上下顶格、左右居中留白（竖版）。
 
-    crop=False 时跳过裁剪返回完整 512×512（布局预览等需要坐标对齐的场景用）。
+    crop=False 时跳过导出适配，返回 512 全画布合成结果（布局预览等需要
+    坐标对齐的场景用）。
     缺资源/缺字段抛明确异常（FileNotFoundError/KeyError/ValueError），调用方兜底。
     """
     card_type = card["type"]
@@ -58,12 +77,11 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     art = Image.open(art_path).convert("RGBA")
     art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"])
     canvas = Image.alpha_composite(art, frame)  # 牌框在上：卡图区透明，无需蒙版
-    # 裁到框 alpha bbox（去框外卡图），贴回 512 画布原位（布局坐标不变）
-    fbbox = frame.getchannel("A").getbbox()
-    if fbbox and fbbox != (0, 0, *CARD_SIZE):
-        body = canvas.crop(fbbox)
-        canvas = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
-        canvas.paste(body, fbbox[:2])
+    # 轮廓裁剪：删去牌框实际形状之外的所有像素（矩形 bbox 裁剪会残留框形外卡图）
+    outside = _outside_frame_mask(frame)
+    if outside.getbbox() is not None:
+        keep = outside.point(lambda v: 0 if v == 255 else 255)
+        canvas.putalpha(ImageChops.multiply(canvas.getchannel("A"), keep))
 
     type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
     elements = type_layout["elements"]
@@ -100,8 +118,19 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         desc_fill = FRAME_TEXT_FILL.get(variant, FRAME_TEXT_FILL["norm"])["desc"]
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
                              obstacle_mask=obstacle_mask, fill=desc_fill)
-    # 裁剪掉整画布四周的透明边（bbox 取自合成图 alpha，探出框缘的元素自然包含）
+    # 导出：tightest alpha bbox 裁剪 → 等比缩放至高 512（上下顶格、左右居中留白）贴回 512×512
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
-    return canvas.crop(bbox) if bbox else canvas
+    if not bbox:
+        return canvas
+    body = canvas.crop(bbox)
+    scale = CARD_SIZE[1] / body.height
+    if body.width * scale > CARD_SIZE[0]:  # 宽溢出则退为按宽适配（上下留白）
+        scale = CARD_SIZE[0] / body.width
+    nw = max(1, round(body.width * scale))
+    nh = max(1, round(body.height * scale))
+    body = body.resize((nw, nh), Image.LANCZOS)
+    out = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
+    out.paste(body, ((CARD_SIZE[0] - nw) // 2, (CARD_SIZE[1] - nh) // 2))
+    return out

@@ -33,5 +33,7 @@ PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产�
 - [x] v1.0：PSD 官方素材全面替换（四类型×四框品牌框/勾玉等级标/按类型数值角标/贴图正负号/裁单枚花标稀有度）；
   新合成管线（卡图→叠框→裁框外→元素→tightest bbox 导出，masks 废弃）；框品字段 frame_variant；
   顶栏「扩展选项」（布局编辑/N 稀有度默认不开放）；exe 启动自动开浏览器；旧素材归档 assets/legacy/
+- [x] v1.0.1：轮廓裁剪修复（删去牌框实际形状外所有像素，取代矩形 bbox 裁剪的框外卡图残留）；
+  导出改为 tightest bbox 后等比缩放至高 512 贴回 512×512（上下顶格、左右居中留白）
 - [ ] M4：HTTP API + BWPro 集成文档
 - 二期：`[关键词]`/`#图标` 富文本、勾玉四色（黄/青/紫/红，BWPro 对战四位己方式神用）、协战双式神头像框、多牌框版型

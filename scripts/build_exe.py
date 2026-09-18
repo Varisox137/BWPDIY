@@ -3,7 +3,7 @@
 用法（Windows Git Bash）：
     PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py
 
-资源内嵌策略：assets/ 全量（排除 frames/unprocessed/ 与 *.psd/*.bak），
+资源内嵌策略：assets/ 全量（排除 frames/unprocessed/、psd_export/ 与 *.psd/*.bak），
 包内数据文件（default_layout.json、web/static/、web/sample_art.png）按包路径映射。
 中间产物在 build/、dist/（均 gitignore），最终 exe 复制到 releases/。
 """
@@ -51,7 +51,7 @@ def _add_data(src: Path, dest: str) -> list[str]:
 def _datas_args() -> list[str]:
     args: list[str] = []
     for p in sorted((ROOT / "assets").rglob("*")):
-        if p.is_dir() or "unprocessed" in p.parts:
+        if p.is_dir() or "unprocessed" in p.parts or "psd_export" in p.parts:
             continue
         if p.suffix.lower() in ASSETS_EXCLUDE_SUFFIXES:
             continue

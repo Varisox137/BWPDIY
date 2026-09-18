@@ -20,3 +20,4 @@
 - 依赖用 uv（`uv add` / `uv sync`），不用 pip 直装。
 - 中文 conventional commit；每次 commit 后 `git push`（失败不阻塞，汇报即可）；rebase/reset/分支操作先问。
 - 大改动先 plan mode；批量新功能委托子代理，收尾全量测试由主上下文亲跑。
+- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`）+ `gh release create`；**同二级版本（前两位不变）的三级小更新发布时，删去该二级版本下的过往 GitHub release 与本地旧 exe，只保留最新版**。

@@ -103,7 +103,7 @@ def test_artwork_clipped_to_frame_silhouette(assets_dir, sample_art):
     from PIL import ImageChops
 
     from bwpdiy.render.assets import AssetLibrary
-    from bwpdiy.render.pipeline import _outside_frame_mask
+    from bwpdiy.render.pipeline import _clean_frame, _outside_frame_mask
 
     lib = AssetLibrary(assets_dir)
     # 无等级/稀有度/脚注的极简卡：画布 = 卡图+牌框轮廓裁剪结果（卡名在框内）
@@ -111,15 +111,42 @@ def test_artwork_clipped_to_frame_silhouette(assets_dir, sample_art):
     for variant in ("norm", "black", "blue", "red"):
         canvas = render_card(dict(card, frame_variant=variant), assets_dir, crop=False)
         alpha = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0)
-        outside = _outside_frame_mask(lib.frame("spell", variant))
+        # 与管线同口径：阈值清理后的框再算轮廓（原框的低 alpha 散点不算框体）
+        outside = _outside_frame_mask(_clean_frame(lib.frame("spell", variant)))
         assert outside.getbbox() is not None  # 确实存在框外区域（测试有效性）
         # alpha 与 outside 同为 255 的像素 = 框外残留 → 必须为零
         assert ImageChops.darker(alpha, outside).getbbox() is None
     # 等级标探出框缘：裁剪只针对卡图，元素墨迹保留在框外
     badge = render_card(dict(card, level=1), assets_dir, crop=False)
     alpha = badge.getchannel("A").point(lambda v: 255 if v > 10 else 0)
-    outside = _outside_frame_mask(lib.frame("spell", "norm"))
+    outside = _outside_frame_mask(_clean_frame(lib.frame("spell", "norm")))
     assert ImageChops.darker(alpha, outside).getbbox() is not None
+
+
+def test_frame_alpha_threshold_removes_junk_islands(assets_dir):
+    """阈值清理：牌框 PSD 导出的低透明度散点（框缘外杂点孤岛）被删去。
+
+    回归：v1.0.1 之前杂点 alpha>0 被算作框体，轮廓裁剪后仍挂住卡图出框。
+    清理后的框在自身轮廓之外不得有任何像素（孤岛全灭）。
+    """
+    from bwpdiy.render.assets import AssetLibrary
+    from bwpdiy.render.pipeline import FRAME_ALPHA_THRESHOLD, _clean_frame, _outside_frame_mask
+
+    assert FRAME_ALPHA_THRESHOLD > 0
+    lib = AssetLibrary(assets_dir)
+    for frame_path in sorted((assets_dir / "frames").glob("*.png")):
+        raw = lib.frame(frame_path.stem.rsplit("_", 1)[0], frame_path.stem.rsplit("_", 1)[1])
+        cleaned = _clean_frame(raw)
+        assert cleaned is not raw  # 不改缓存原图
+        ca = cleaned.getchannel("A")
+        # 清理后无 (0, T) 区间像素
+        lo = ca.point(lambda v: 255 if 0 < v < FRAME_ALPHA_THRESHOLD else 0)
+        assert lo.getbbox() is None, frame_path.name
+        # 轮廓外零像素（杂点孤岛已清除）
+        outside = _outside_frame_mask(cleaned)
+        solid = ca.point(lambda v: 255 if v > 0 else 0)
+        from PIL import ImageChops
+        assert ImageChops.darker(solid, outside).getbbox() is None, frame_path.name
 
 
 @pytest.mark.parametrize("card_type", ["式神", "战斗", "法术", "形态", "幻境", "协战"])

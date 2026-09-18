@@ -22,6 +22,21 @@ from bwpdiy.render.text import FRAME_TEXT_FILL, draw_region
 
 CARD_SIZE = (512, 512)
 
+# 牌框 alpha 清理阈值：alpha < 此值的像素视为杂点删去（PSD 导出在框缘外
+# 留有低透明度散点，会挂住卡图造成出框残留）；同时影响轮廓裁剪的框形判定。
+FRAME_ALPHA_THRESHOLD = 64
+
+
+def _clean_frame(frame: Image.Image) -> Image.Image:
+    """牌框 alpha 清理：alpha < FRAME_ALPHA_THRESHOLD 的像素删去（PSD 导出在框缘
+    外/卡图窗内留有低透明度散点，会挂住卡图造成出框残留）。返回副本，不改原图。"""
+    if FRAME_ALPHA_THRESHOLD <= 0:
+        return frame
+    frame = frame.copy()
+    frame.putalpha(frame.getchannel("A").point(
+        lambda v: 0 if v < FRAME_ALPHA_THRESHOLD else v))
+    return frame
+
 
 def _outside_frame_mask(frame: Image.Image) -> Image.Image:
     """L 掩膜（255=牌框实际形状之外）：框 alpha==0 且与画布边缘连通的区域。
@@ -67,7 +82,7 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         variant = "norm"  # 协战框仅 norm 一种框品
     lib = AssetLibrary(assets_dir)
 
-    frame = lib.frame(code, variant)
+    frame = _clean_frame(lib.frame(code, variant))
     ref = _artwork_ref(card)
     art_path = Path(ref["path"])
     if not art_path.is_absolute():

@@ -84,6 +84,24 @@ def test_footer_with_special_type(assets_dir, sample_art):
     assert img.mode == "RGBA"
 
 
+def test_artwork_path_escape_rejected(assets_dir, sample_art, monkeypatch):
+    """卡图路径必须位于基准目录内：目录外绝对路径/.. 越界 → ValueError；像素超限 → ValueError。"""
+    import bwpdiy.render.pipeline as pipe
+    card = {"type": "法术", "name": "sample_art", "level": 1, "rarity": "N",
+            "_base_dir": str(sample_art.parent)}
+    for bad in ("/etc/passwd.png", "../outside.png"):
+        c = dict(card, artwork={"images": [{"path": bad}]})
+        with pytest.raises(ValueError, match="越出基准目录"):
+            render_card(c, assets_dir)
+    # 基准目录内的绝对路径合法
+    ok = dict(card, artwork={"images": [{"path": str(sample_art.resolve())}]})
+    assert render_card(ok, assets_dir).mode == "RGBA"
+    # 像素上限（monkeypatch 调低，避免真造大图）
+    monkeypatch.setattr(pipe, "ARTWORK_MAX_PIXELS", 10)
+    with pytest.raises(ValueError, match="超像素上限"):
+        render_card(card, assets_dir)
+
+
 def test_footer_neutral_card(assets_dir, sample_art):
     """中立牌（无所属式神）脚注兜底 = 类型[/子类型]，无「所属式神-」前缀；
     式神卡无所属式神字段时回退卡名。"""

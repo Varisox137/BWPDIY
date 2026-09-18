@@ -34,6 +34,9 @@ FRAME_CONTOUR_ERODE = 2  # px
 # 不用原始 alpha box——抗锯齿淡边缘不算墨迹，避免文本无谓避让）。
 OBSTACLE_ALPHA = 128
 
+# 卡图像素上限（防解压炸弹：用户供图全量解码后才缩放）
+ARTWORK_MAX_PIXELS = 64_000_000  # 8000×8000
+
 
 def _normalize_frame(frame: Image.Image) -> Image.Image:
     """牌框归一化到 512×512 画布：等比缩放至高 512（上下顶格），左右居中。
@@ -105,11 +108,21 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     frame = _normalize_frame(lib.frame(code, variant))
     ref = _artwork_ref(card)
     art_path = Path(ref["path"])
+    base_dir = Path(card.get("_base_dir", "."))
     if not art_path.is_absolute():
-        art_path = Path(card.get("_base_dir", ".")) / art_path
+        art_path = base_dir / art_path
+    # 卡图必须位于基准目录内：拒绝目录外绝对路径与 .. 越界
+    # （预览接口可被远程触发时，防本机任意图片被读取外泄）
+    try:
+        art_path.resolve().relative_to(base_dir.resolve())
+    except ValueError:
+        raise ValueError(f"卡图路径越出基准目录: {ref['path']}") from None
     if not art_path.is_file():
         raise FileNotFoundError(f"卡图缺失: {art_path}")
-    art = Image.open(art_path).convert("RGBA")
+    art = Image.open(art_path)
+    if art.width * art.height > ARTWORK_MAX_PIXELS:
+        raise ValueError(f"卡图过大: {art.width}×{art.height} 超像素上限")
+    art = art.convert("RGBA")
     art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"])
     # 卡图按轮廓预裁剪（框实心区内缩 2px），框缘半透明带下无卡图、不洇色
     art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))

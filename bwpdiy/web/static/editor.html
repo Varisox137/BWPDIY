@@ -1145,7 +1145,7 @@ function selRow(div, label, opts, val, set, map = null) {
 }
 
 // 保存时以当前类型为准传播：同名元素的样式键镜像到所有类型（缺键不删、各自保留）。
-// 内容/结构键（kind/field/pos/enabled）一律不镜像——field 曾被跨类型覆盖
+// 内容/结构键（kind/field/pos 等）一律不镜像——field 曾被跨类型覆盖
 // 造成数据污染（式神/形态 power→power+、法术 health+→health），只同步白名单内样式键。
 // 编辑期 syncElemField 调用点同样只传样式键（num_offset/sign_offset/sign_size_plus/
 // sign_size_minus/stroke_width/icon_size/font_size/gap/margin/size/base_size/star_size/

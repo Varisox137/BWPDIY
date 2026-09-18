@@ -27,7 +27,12 @@ def main() -> int:
         timer.daemon = True  # 服务被 Ctrl+C 打断时 Timer 不得拖住进程退出
         timer.start()
 
-    app = create_app(default_assets_dir(), library_dir=default_library_dir())
+    app = create_app(default_assets_dir(), library_dir=default_library_dir(),
+                     loopback_guard=args.host in ("127.0.0.1", "localhost", "::1"))
+    if args.host not in ("127.0.0.1", "localhost", "::1"):
+        # 非回环监听：局域网内任何人可读写/删除项目（无鉴权），且 Host 校验已关闭
+        print(f"警告：监听 {args.host} 非回环地址，同网络主机可完全访问本工具",
+              file=sys.stderr)
     uvicorn.run(app, host=args.host, port=args.port)
     return 0
 

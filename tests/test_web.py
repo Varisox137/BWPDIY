@@ -30,6 +30,23 @@ def test_get_layout(client):
     assert "战斗" in r.json()
 
 
+def test_host_guard(client):
+    """Host 校验（防 DNS rebinding）：非回环 Host 一律 400；回环/testserver 放行。"""
+    assert client.get("/api/layout", headers={"host": "evil.example.com"}).status_code == 400
+    assert client.get("/api/layout", headers={"host": "attacker.com:8630"}).status_code == 400
+    for ok in ("127.0.0.1:8630", "localhost:8630", "[::1]:8630", "testserver"):
+        assert client.get("/api/version", headers={"host": ok}).status_code == 200
+
+
+def test_preview_rejects_artwork_path_escape(client):
+    """预览接口的卡图路径不得越出基准目录（绝对路径/.. 一律 422）。"""
+    body = {"type": "式神", "layout": client.get("/api/layout").json()["式神"]}
+    for bad in ("/etc/passwd.png", "C:/Windows/x.png", "../escape.png"):
+        b = dict(body, card={"artwork": {"images": [{"path": bad}]}})
+        r = client.post("/api/preview", json=b)
+        assert r.status_code == 422 and "越出基准目录" in r.json()["detail"]
+
+
 def test_put_layout_roundtrip(client, assets_dir, tmp_path):
     r = client.get("/api/layout")
     layouts = r.json()

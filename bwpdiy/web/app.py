@@ -33,13 +33,30 @@ _SAMPLE_ART = Path(__file__).parent / "sample_art.png"  # 缺图占位（与样�
 
 
 def create_app(assets_dir: Path, static_dir: Path | None = None,
-               library_dir: Path | None = None) -> FastAPI:
+               library_dir: Path | None = None,
+               loopback_guard: bool = True) -> FastAPI:
     assets_dir = Path(assets_dir)
     static_dir = Path(static_dir) if static_dir else _STATIC
     library_dir = Path(library_dir) if library_dir else default_library_dir()
     app = FastAPI(title="BWPDIY")
     app.state.assets_dir = assets_dir
     app.state.library_dir = library_dir
+
+    # Host 校验（防 DNS rebinding）：本机工具只应接受回环 Host——攻击者域名
+    # 重绑定到 127.0.0.1 时浏览器带的是攻击者域名 Host，直接 400 堵住整条链。
+    # testserver = FastAPI TestClient 默认 Host（浏览器不可能伪造该 Host 访问本机）。
+    # 用户显式 --host 0.0.0.0 时由 __main__ 关掉本校验（并打告警）。
+    _ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1", "testserver"}
+    if loopback_guard:
+        @app.middleware("http")
+        async def _host_guard(request, call_next):
+            raw = request.headers.get("host", "")
+            # IPv6 形如 [::1]:8630，先拆方括号再按冒号取主机名
+            host = raw[1:].split("]")[0] if raw.startswith("[") else raw.split(":")[0]
+            if host not in _ALLOWED_HOSTS:
+                return JSONResponse(status_code=400,
+                                    content={"detail": "非法 Host 头"})
+            return await call_next(request)
 
     # store 异常 → HTTP 状态码：按 StoreError.code 分派（not_found 404、already_exists 409，
     # 其余 invalid_name/invalid_data/forbidden/path_escape 均 422），不受消息内嵌资源名影响
@@ -205,7 +222,10 @@ def _with_artwork_fallback(card: dict, images_dir: Path) -> dict:
     if not art_path.is_file():
         ref = {k: ref[k] for k in ("offset_x", "offset_y", "scale")
                if k in ref and isinstance(ref[k], (int, float))}
-        ref["path"] = str(_SAMPLE_ART)
+        # 占位图在包内、不在项目 images/ 下：基准目录随之切到占位图所在目录，
+        # 以通过渲染层的「卡图必须位于基准目录内」校验
+        card["_base_dir"] = str(_SAMPLE_ART.parent)
+        ref["path"] = _SAMPLE_ART.name
         artwork["images"] = [ref]
     card["artwork"] = artwork
     return card

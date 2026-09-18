@@ -2,3 +2,5 @@
 
 分层约定：render 不依赖 store/web，BWPro 只 import bwpdiy.render。
 """
+
+__version__ = "0.5.0"

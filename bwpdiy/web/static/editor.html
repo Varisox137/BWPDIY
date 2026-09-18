@@ -1051,6 +1051,10 @@ document.getElementById('l-btn-save').onclick = async () => {
 document.getElementById('l-btn-preview').onclick = refreshPreview;
 
 // ================= 入口 =================
+fetch('/api/version').then(r => r.json()).then(v => {
+  document.title += ' v' + v.version;
+  document.querySelector('#topnav .brand').textContent += ' v' + v.version;
+}).catch(() => {});
 loadProjects();
 if (location.hash === '#layout') showTab('layout');  // /layout 重定向落点
 </script>

@@ -10,8 +10,10 @@ from pathlib import Path
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 
+from bwpdiy import __version__
 from bwpdiy.render.layout import load_layouts
 from bwpdiy.render.pipeline import TYPE_FRAME_CODE, render_card
+from bwpdiy.resources import default_library_dir
 from bwpdiy.store import (
     SchemaError,
     StoreError,
@@ -27,15 +29,14 @@ from bwpdiy.store import (
 from bwpdiy.web.sample_cards import SAMPLE_CARDS
 
 _STATIC = Path(__file__).parent / "static"
-_ROOT = Path(__file__).resolve().parent.parent.parent
-_SAMPLE_ART = _ROOT / "tests" / "fixtures" / "sample_art.png"  # 缺图占位（与样卡机制一致）
+_SAMPLE_ART = Path(__file__).parent / "sample_art.png"  # 缺图占位（与样卡机制一致）
 
 
 def create_app(assets_dir: Path, static_dir: Path | None = None,
                library_dir: Path | None = None) -> FastAPI:
     assets_dir = Path(assets_dir)
     static_dir = Path(static_dir) if static_dir else _STATIC
-    library_dir = Path(library_dir) if library_dir else _ROOT / "library"
+    library_dir = Path(library_dir) if library_dir else default_library_dir()
     app = FastAPI(title="BWPDIY")
     app.state.assets_dir = assets_dir
     app.state.library_dir = library_dir
@@ -89,6 +90,10 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         except OSError as e:
             raise HTTPException(422, f"布局写盘失败: {e}") from e
         return {"ok": True}
+
+    @app.get("/api/version")
+    def get_version():
+        return {"version": __version__}
 
     @app.get("/api/samples")
     def get_samples():

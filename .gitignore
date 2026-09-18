@@ -9,6 +9,9 @@ build/
 # 用户 DIY 卡牌库（个人创作数据，不入库）
 library/
 
+# PyInstaller 打包产物
+releases/
+
 # 旧版半成品（只读封存参考，不进本仓库）
 legacy/
 

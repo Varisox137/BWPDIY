@@ -2,12 +2,12 @@
 
 卡名/式神名/描述/数值抄自 BWPro 原版卡牌数据文档 card_data_raw.md（唯一事实来源），
 描述中的 [关键词]/{效果} 标记为文档记号，游戏内不显示，抄录时去除。
-卡图统一用 tests/fixtures/sample_art.png（仅作布局预览底图）。
+卡图统一用包内 sample_art.png（仅作布局预览底图）。
 """
 
 from pathlib import Path
 
-_ART = Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "sample_art.png"
+_ART = Path(__file__).parent / "sample_art.png"
 
 SAMPLE_CARDS: dict[str, dict] = {
     # 100307 山风 苍叶 3/4（20200624）；level=1 仅供预览等级组件（式神布局默认停用）

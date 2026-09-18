@@ -7,12 +7,13 @@ import shutil
 from io import BytesIO
 from pathlib import Path
 
-from fastapi import Body, FastAPI, HTTPException
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from PIL import Image
 
 from bwpdiy import __version__
 from bwpdiy.render.layout import load_layouts
-from bwpdiy.render.pipeline import TYPE_FRAME_CODE, render_card
+from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
 from bwpdiy.resources import default_library_dir
 from bwpdiy.store import (
     SchemaError,
@@ -187,6 +188,13 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     @app.post("/api/projects/{project}/cards/{card}/preview")
     async def preview_project_card(project: str, card: str, request: dict = Body(None)):
         card_data = load_card(library_dir, project, card)  # 卡牌不存在 → StoreError → 404
+        override = (request or {}).get("card")
+        if override is not None:
+            # 编辑期实时预览：整体替换为表单数据（含未保存修改与 artwork offset/scale），
+            # 卡图路径仍受 _with_artwork_fallback 的 images/ 基准目录约束，越界由渲染层拒绝
+            if not isinstance(override, dict):
+                raise HTTPException(400, "card 必须是对象")
+            card_data = copy.deepcopy(override)
         card_data = _with_artwork_fallback(card_data, library_dir / project / "images")
         try:
             img = render_card(card_data, assets_dir,
@@ -196,6 +204,60 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         buf = BytesIO()
         img.save(buf, "PNG")
         return Response(buf.getvalue(), media_type="image/png")
+
+    _ART_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+
+    @app.post("/api/projects/{project}/cards/{card}/artwork")
+    async def post_artwork(project: str, card: str, request: Request):
+        """上传卡图：裸字节 body + filename 查询参数（只取扩展名，落盘名固定为 <卡名><ext>）。
+
+        图片真实性/像素上限在写盘前校验；写盘后走 save_card 更新 artwork.images[0].path
+        （保留已有 offset/scale），schema 不过则删图回滚。
+        """
+        ext = Path(request.query_params.get("filename", "")).suffix.lower()
+        if ext not in _ART_EXTS:
+            raise HTTPException(422, f"不支持的图片格式「{ext or '无扩展名'}」，支持 png/jpg/jpeg/webp")
+        data = await request.body()
+        if not data:
+            raise HTTPException(422, "上传内容为空")
+        try:
+            img = Image.open(BytesIO(data))
+            if img.width * img.height > ARTWORK_MAX_PIXELS:
+                raise HTTPException(422, f"图片过大: {img.width}×{img.height} 超像素上限")
+            img.load()  # 全量解码，拒绝伪造/截断图片
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(422, f"不是有效的图片文件: {e}") from e
+        card_data = load_card(library_dir, project, card)  # 卡牌不存在 → 404；卡名合法性在此校验
+        raw_artwork = card_data.get("artwork")
+        artwork = dict(raw_artwork) if isinstance(raw_artwork, dict) else {}
+        raw_images = artwork.get("images")
+        old_images = raw_images if isinstance(raw_images, list) else []
+        first = dict(old_images[0]) if old_images and isinstance(old_images[0], dict) else {}
+        old_path = first.get("path")
+        filename = f"{card}{ext}"
+        first["path"] = filename
+        artwork["images"] = [first, *old_images[1:]]
+        card_data["artwork"] = artwork
+        images_dir = library_dir / project / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
+        target = images_dir / filename
+        target.write_bytes(data)
+        try:
+            save_card(library_dir, project, card, card_data)
+        except Exception:
+            target.unlink(missing_ok=True)  # schema 不过：删图回滚，不留孤儿文件
+            raise
+        # 换扩展名/旧自定义文件名时清理旧图（仅限 images/ 内、且非占位回退缺省名以外的引用）
+        if isinstance(old_path, str) and old_path and old_path != filename:
+            old_file = images_dir / old_path
+            try:
+                if old_file.resolve().parent == images_dir.resolve() and old_file.is_file():
+                    old_file.unlink()
+            except OSError:
+                pass  # 旧图清理失败不阻塞上传
+        return {"ok": True, "path": filename}
 
     return app
 

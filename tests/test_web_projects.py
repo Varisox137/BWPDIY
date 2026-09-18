@@ -240,6 +240,25 @@ def test_preview_card_not_found_404(client, project):
     assert r.status_code == 404
 
 
+def test_preview_card_override(client, project, library_dir):
+    """编辑期实时预览：body.card 整体覆盖盘上数据，artwork 相对 images/ 解析。"""
+    shutil.copy2(SAMPLE_ART, library_dir / project / "images" / "图.png")
+    override = _battle_card("覆盖卡")
+    override["artwork"] = {"images": [{"path": "图.png", "scale": 2.0}]}
+    base = client.post(f"/api/projects/{project}/cards/shikigami/preview", json={})
+    r = client.post(f"/api/projects/{project}/cards/shikigami/preview", json={"card": override})
+    assert r.status_code == 200 and _png_size(r) == (512, 512)
+    assert r.content != base.content  # 覆盖生效（盘上 shikigami 是式神卡，覆盖为战斗卡）
+
+
+def test_preview_override_artwork_outside_images_422(client, project):
+    """覆盖 card 的 artwork 指向 images/ 外的真实文件：渲染层路径校验拒绝（不读本机任意文件）。"""
+    override = _battle_card()
+    override["artwork"] = {"images": [{"path": str(SAMPLE_ART.resolve())}]}
+    r = client.post(f"/api/projects/{project}/cards/shikigami/preview", json={"card": override})
+    assert r.status_code == 422 and "渲染失败" in r.json()["detail"]
+
+
 def test_preview_unrenderable_card_422(client, project, library_dir):
     """手写空 yaml（load 不校验）→ 渲染异常映射 422。"""
     (library_dir / project / "cards" / "空卡.yaml").write_text("", encoding="utf-8")
@@ -310,4 +329,62 @@ def test_preview_multi_images_uses_first(client, project, library_dir):
 def test_encoded_slash_in_path_rejected(client, project):
     """%2F 编码路径：Starlette 解码后多段不匹配路由（404），不会落到文件系统。"""
     r = client.get("/api/projects/a%2Fb/cards")
+    assert r.status_code == 404
+
+
+# ---------- 卡图上传 ----------
+
+def test_artwork_upload_roundtrip(client, project, library_dir):
+    """上传合法 png：落盘 images/<卡名>.png、yaml 写回 artwork.images[0].path、预览可用。"""
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=立绘.PNG",
+                    content=SAMPLE_ART.read_bytes())
+    assert r.status_code == 200 and r.json()["path"] == "测试斩.png"
+    assert (library_dir / project / "images" / "测试斩.png").is_file()
+    card = client.get(f"/api/projects/{project}/cards/测试斩").json()
+    assert card["artwork"]["images"][0]["path"] == "测试斩.png"
+    r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
+    assert r.status_code == 200 and _png_size(r) == (512, 512)
+
+
+def test_artwork_upload_preserves_offset_scale_and_cleans_old(client, project, library_dir):
+    """换扩展名重传：保留已有 offset/scale，删除旧图文件。"""
+    card = _battle_card()
+    card["artwork"] = {"images": [{"path": "测试斩.png", "offset_x": 5, "scale": 1.2}]}
+    client.put(f"/api/projects/{project}/cards/测试斩", json=card)
+    client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=a.png",
+                content=SAMPLE_ART.read_bytes())
+    assert (library_dir / project / "images" / "测试斩.png").is_file()
+    jpg = BytesIO()
+    Image.new("RGB", (8, 8)).save(jpg, "JPEG")
+    r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=b.jpg",
+                    content=jpg.getvalue())
+    assert r.status_code == 200 and r.json()["path"] == "测试斩.jpg"
+    assert not (library_dir / project / "images" / "测试斩.png").exists()  # 旧图已清理
+    assert (library_dir / project / "images" / "测试斩.jpg").is_file()
+    got = client.get(f"/api/projects/{project}/cards/测试斩").json()["artwork"]["images"][0]
+    assert got["path"] == "测试斩.jpg" and got["offset_x"] == 5 and got["scale"] == 1.2
+
+
+def test_artwork_upload_bad_ext_422(client, project, library_dir):
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=x.gif",
+                    content=SAMPLE_ART.read_bytes())
+    assert r.status_code == 422 and "格式" in r.json()["detail"]
+    assert list((library_dir / project / "images").iterdir()) == []  # 未落盘
+
+
+def test_artwork_upload_not_an_image_422(client, project, library_dir):
+    """伪造图片字节：写盘前解码校验拒绝，且 yaml 不被改动。"""
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=x.png",
+                    content="这不是图片".encode("utf-8"))
+    assert r.status_code == 422 and "图片" in r.json()["detail"]
+    assert list((library_dir / project / "images").iterdir()) == []
+    assert "artwork" not in client.get(f"/api/projects/{project}/cards/测试斩").json()
+
+
+def test_artwork_upload_card_not_found_404(client, project):
+    r = client.post(f"/api/projects/{project}/cards/不存在/artwork?filename=x.png",
+                    content=SAMPLE_ART.read_bytes())
     assert r.status_code == 404

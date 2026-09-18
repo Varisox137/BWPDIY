@@ -29,7 +29,8 @@ PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产�
 - [x] M1：render 渲染管线（卡图/蒙版/牌框/图标/纯文本排版）
 - [x] M1.5：布局配置系统 + Web 配置工具（layout.json 可视化调参/实时预览（样卡数值/式神名/子类型/描述可编辑）/按类型开关元素）
 - [x] M2+M3 骨架：store 卡牌库存取 + schema 校验；WebGUI 编辑器主体（卡牌库/布局设置双 tab——项目与卡牌 CRUD、按类型表单+即时校验+实时预览、布局可视化调参）
-  - 未做：卡图上传、预览内拖拽/滚轮定位卡图（offset/scale 写回）、单卡/批量 PNG 导出
+  - 卡图上传已支持（卡牌表单内选图上传 → 落盘项目 images/ 并写回 artwork.images[0].path，offset/scale 数字输入实时预览；不做旋转/拖拽/滚轮定位）
+  - 未做：单卡/批量 PNG 导出
 - [x] v1.0：PSD 官方素材全面替换（四类型×四框品牌框/勾玉等级标/按类型数值角标/贴图正负号/裁单枚花标稀有度）；
   新合成管线（卡图→叠框→裁框外→元素→tightest bbox 导出，masks 废弃）；框品字段 frame_variant；
   顶栏「扩展选项」（布局编辑/N 稀有度默认不开放）；exe 启动自动开浏览器；旧素材归档 assets/legacy/

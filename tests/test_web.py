@@ -175,7 +175,8 @@ def _run_node(tmp_path, driver: str):
     import subprocess
     src = tmp_path / "driver.js"
     src.write_text(driver, encoding="utf-8")
-    r = subprocess.run([NODE, str(src)], capture_output=True, text=True)
+    r = subprocess.run([NODE, str(src)], capture_output=True, text=True,
+                       encoding="utf-8")  # node 输出 UTF-8；默认 locale(GBK) 解码中文会炸
     assert r.returncode == 0, r.stderr
     assert "OK" in r.stdout
 
@@ -285,3 +286,48 @@ assert.deepStrictEqual(statInputs(), [["health", "生命"]]);
 console.log("OK");
 """
     _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_js_constants_parity_with_python(tmp_path):
+    """editor.html 的共享常量与 Python 两侧（store/schema.py、render/badges.py）对账。
+
+    JS 是第三份拷贝（Python 两侧已有 test_stat_matrix_parity_with_render 对账），
+    漂移时本测试显式失败而非静默。
+    """
+    script = _script()
+    start = script.index("const TYPES =")
+    end = script.index(";", script.index("const EVOLVE_TYPES =")) + 1
+    consts = script[start:end]
+    driver = consts + """
+console.log(JSON.stringify({
+  TYPES, FACTIONS, RARITIES, LEVELS, STATS_BY_TYPE, SIGNED_STATS,
+  STAT_MATRIX, NONNEG_TYPES: [...NONNEG_TYPES], EVOLVE_TYPES: [...EVOLVE_TYPES],
+}));
+"""
+    import json
+    import subprocess
+    src = tmp_path / "driver.js"
+    src.write_text(driver, encoding="utf-8")
+    r = subprocess.run([NODE, str(src)], capture_output=True, text=True,
+                       encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    js = json.loads(r.stdout)
+
+    from bwpdiy.render.badges import _STAT_MATRIX
+    from bwpdiy.store import schema
+
+    assert js["TYPES"] == list(schema.CARD_TYPES)
+    assert js["FACTIONS"] == list(schema.FACTIONS)
+    assert js["RARITIES"] == list(schema.RARITIES)
+    assert js["LEVELS"] == list(schema.LEVELS)
+    assert js["STATS_BY_TYPE"] == {k: list(v) for k, v in schema._STATS_BY_TYPE.items()}
+    assert js["SIGNED_STATS"] == list(schema._SIGNED_STATS)
+    assert sorted(js["EVOLVE_TYPES"]) == sorted(schema._EVOLVE_TYPES)
+    # STAT_MATRIX 的 (type, field) 键集与 render 矩阵一致；标签值非空
+    js_keys = {(t, f) for t, fields in js["STAT_MATRIX"].items() for f in fields}
+    assert js_keys == set(_STAT_MATRIX)
+    assert all(label for fields in js["STAT_MATRIX"].values() for label in fields.values())
+    # 非负类型 = 矩阵中 plain（无符号）类型
+    plain_types = {t for (t, _f), mode in _STAT_MATRIX.items() if mode == "plain"}
+    assert sorted(js["NONNEG_TYPES"]) == sorted(plain_types)

@@ -253,7 +253,7 @@ async function selectCard(name, force = false) {
   const seq = ++selectSeq;
   let r;
   try { r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(name)}`); }
-  catch (e) { if (seq === selectSeq) listErr(['卡牌读取请求失败: ' + e]); return; }
+  catch (e) { if (seq === selectSeq) { clearCard(); listErr(['卡牌读取请求失败: ' + e]); } return; }
   if (seq !== selectSeq) return;  // 期间又选了别的卡，丢弃本次慢响应
   if (!r.ok) { clearCard(); listErr(await parseErrorDetail(r)); return; }
   cardData = await r.json();

@@ -13,7 +13,7 @@ library/
 releases/
 
 # 旧版半成品（只读封存参考，不进本仓库）
-legacy/
+/legacy/
 
 # 示例卡渲染输出（仅本地，不入库）
 examples/

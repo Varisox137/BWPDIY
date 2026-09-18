@@ -959,10 +959,11 @@ function draw() {
     const active = sel && sel.name === name;
     ctx.strokeStyle = active ? '#ff4' : '#4f4';
     ctx.strokeRect(r.center[0] - r.width / 2, r.center[1] - r.height / 2, r.width, r.height);
-    handle(r.center, active ? '#ff4' : '#4f4', 5, true);
-    // 居中锚点（center + center_offset）：橙色圆点，与区域中心绿色方块区分
+    // 文本框中心：稍大的绿点（6px）；居中锚点（center + center_offset）：
+    // 稍小的橙点（4px）后画、压在绿点之上
+    handle(r.center, active ? '#ff4' : '#4f4', 6);
     const off = r.center_offset || [0, 0];
-    handle([r.center[0] + off[0], r.center[1] + off[1]], active ? '#ff4' : '#f80');
+    handle([r.center[0] + off[0], r.center[1] + off[1]], active ? '#ff4' : '#f80', 4);
   }
 }
 function handle([x, y], color, s = 6, square = false) {

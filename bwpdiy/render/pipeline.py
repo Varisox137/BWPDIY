@@ -21,7 +21,7 @@ from bwpdiy.render.artwork import fit_artwork
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.badges import TYPE_FRAME_CODE, render_element, stat_rendered
 from bwpdiy.render.layout import get_type_layout, load_layouts
-from bwpdiy.render.text import FRAME_TEXT_FILL, draw_region
+from bwpdiy.render.text import FRAME_KEYWORD_FILL, FRAME_TEXT_FILL, draw_region
 
 CARD_SIZE = (512, 512)
 
@@ -178,8 +178,10 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
             obstacle_mask = layer.getchannel("A").point(
                 lambda v: 255 if v >= OBSTACLE_ALPHA else 0)
         desc_fill = FRAME_TEXT_FILL.get(variant, FRAME_TEXT_FILL["norm"])["desc"]
+        kw_fill = FRAME_KEYWORD_FILL.get(variant, FRAME_KEYWORD_FILL["norm"])
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
-                             obstacle_mask=obstacle_mask, fill=desc_fill)
+                             obstacle_mask=obstacle_mask, fill=desc_fill,
+                             keyword_fill=kw_fill)
     # 数值层最后画：描述文本避让数值（掩膜含数值墨迹），数值压在文本之上
     for elem_name, elem in stat_elems:
         canvas = render_element(canvas, lib, elem_name, elem, card, ctx,

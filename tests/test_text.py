@@ -114,10 +114,11 @@ def test_ink_mask_avoidance_wider_than_bbox(assets_dir):
     # 直接测排版层口径（fit 层另有末行居中/锚点上移验收，与宽窄口径无关）：
     # 墨迹口径 36 号排得下；bbox 口径（右缘到 x180+4）排不下
     from bwpdiy.render.geometry import mask_row_runs
-    from bwpdiy.render.text import _layout_at_size
-    assert _layout_at_size(text, font36, region, region["wrap"],
+    from bwpdiy.render.text import _layout_at_size, _styled_chars
+    chars = _styled_chars(text)
+    assert _layout_at_size(chars, font36, region, region["wrap"],
                            mask_row_runs(ink)) is not None
-    assert _layout_at_size(text, font36, region, region["wrap"],
+    assert _layout_at_size(chars, font36, region, region["wrap"],
                            mask_row_runs(bbox)) is None
 
 
@@ -151,11 +152,12 @@ def test_obstacle_gap_field(assets_dir):
     half = font36.getlength(text) / 2
     # 触界平移是排版层（_layout_at_size）口径；fit 层会先尝试锚点上移/缩字号避免触界
     from bwpdiy.render.geometry import mask_row_runs
-    from bwpdiy.render.text import _layout_at_size
+    from bwpdiy.render.text import _layout_at_size, _styled_chars
     runs = mask_row_runs(mask)
-    lines = _layout_at_size(text, font36, dict(base), False, runs)
+    chars = _styled_chars(text)
+    lines = _layout_at_size(chars, font36, dict(base), False, runs)
     assert abs(lines[0][1] - (129 + half)) < 1e-6  # 左界 125+4
-    lines = _layout_at_size(text, font36, dict(base, obstacle_gap=10), False, runs)
+    lines = _layout_at_size(chars, font36, dict(base, obstacle_gap=10), False, runs)
     assert abs(lines[0][1] - (135 + half)) < 1e-6  # 左界 125+10
 
 
@@ -215,7 +217,7 @@ def test_fit_lifts_anchor_to_recenter_last_line(assets_dir):
     """末行被右下角障碍挤偏时：fit 先逐 px 上移居中锚点（≤半行高）救回末行居中，
     不行才缩字号。"""
     from bwpdiy.render.geometry import mask_row_runs
-    from bwpdiy.render.text import _layout_at_size
+    from bwpdiy.render.text import _layout_at_size, _styled_chars
     lib = AssetLibrary(assets_dir)
     region = rect_region(100, 300, 400, 420)  # 中心 (250,360)
     mask = ink_mask([(300, 390, 400, 420)])  # 右下角墨迹块
@@ -224,7 +226,7 @@ def test_fit_lifts_anchor_to_recenter_last_line(assets_dir):
     assert lines is not None and len(lines) == 2
     assert abs(lines[-1][1] - 250) < 1e-6  # 末行回中
     # 同字号锚点不上移时末行被挤偏（证明确为上移救回，而非字号缩小顺带解决）
-    raw = _layout_at_size(text, font, region, region["wrap"], mask_row_runs(mask))
+    raw = _layout_at_size(_styled_chars(text), font, region, region["wrap"], mask_row_runs(mask))
     assert raw is None or abs(raw[-1][1] - 250) > 1e-6
 
 

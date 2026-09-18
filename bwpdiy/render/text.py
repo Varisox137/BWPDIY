@@ -1,4 +1,8 @@
-"""文本层：矩形文本区排版（自动换行、逐行居中、字号递减适配、掩膜墨迹避让）。"""
+"""文本层：矩形文本区排版（自动换行、逐行居中、字号递减适配、掩膜墨迹避让、关键字异色）。
+
+关键字高亮：描述文本中 [关键字] 用英文方括号标记，括号不绘制、内容按框品异色
+（FRAME_KEYWORD_FILL）。括号匹配校验在排版入口执行（parse_keyword_segments）。
+"""
 
 import re
 
@@ -20,9 +24,60 @@ FRAME_TEXT_FILL = {
             "desc": (238, 206, 209, 255)},
 }
 
+# 关键字异色按框品（norm 取色自官方卡面关键字样本：金棕；其余框品取同族高对比色）
+FRAME_KEYWORD_FILL = {
+    "norm": (176, 132, 66, 255),
+    "blue": (216, 168, 74, 255),
+    "black": (242, 158, 46, 255),
+    "red": (204, 128, 52, 255),
+}
+
 TEXT_FILL = FRAME_TEXT_FILL["norm"]["desc"]
+KEYWORD_FILL = FRAME_KEYWORD_FILL["norm"]
 
 _LINE_GAP = 6
+
+
+def parse_keyword_segments(text: str) -> list[tuple[str, bool]]:
+    """解析 [关键字] 标记 → [(文本段, 是否关键字)]；方括号本身不进入输出。
+
+    校验（均 ValueError）：'[' 未闭合、']' 无配对、'[' 嵌套、'[]' 为空。
+    """
+    segs: list[tuple[str, bool]] = []
+    plain, kw = "", None
+    for ch in text:
+        if ch == "[":
+            if kw is not None:
+                raise ValueError("描述文本方括号不匹配：'[' 内不能嵌套 '['")
+            if plain:
+                segs.append((plain, False))
+                plain = ""
+            kw = ""
+        elif ch == "]":
+            if kw is None:
+                raise ValueError("描述文本方括号不匹配：']' 缺少配对的 '['")
+            if not kw:
+                raise ValueError("描述文本方括号不匹配：'[]' 内容为空")
+            segs.append((kw, True))
+            kw = None
+        elif kw is not None:
+            kw += ch
+        else:
+            plain += ch
+    if kw is not None:
+        raise ValueError("描述文本方括号不匹配：'[' 未闭合")
+    if plain:
+        segs.append((plain, False))
+    return segs
+
+
+def _styled_chars(text: str) -> list[tuple[str, bool]]:
+    """str → [(字符, 是否关键字)]：剥离 [关键字] 标记，排版宽度按可见字符计。"""
+    return [(ch, kw) for seg, kw in parse_keyword_segments(text) for ch in seg]
+
+
+def _plain(chars: list[tuple[str, bool]]) -> str:
+    return "".join(ch for ch, _ in chars)
 
 
 def _normalize_newlines(text: str) -> str:
@@ -35,10 +90,10 @@ def _line_height(font: ImageFont.FreeTypeFont) -> float:
     return box[3] - box[1] + _LINE_GAP
 
 
-def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
+def _layout_at_size(chars: list[tuple[str, bool]], font: ImageFont.FreeTypeFont,
                     region: dict, wrap: bool,
                     row_runs: dict | None = None, dy: float = 0):
-    """按给定字号在矩形区内排版，成功返回 [(行, cx, cy)]，失败返回 None。
+    """按给定字号在矩形区内排版，成功返回 [(行字符列表, cx, cy)]，失败返回 None。
 
     文本块（行数 × 行高）在区域内水平逐行居中、竖直整体居中：
     先定字号与行数，再把文本块中心对齐居中锚点。居中锚点 =
@@ -60,47 +115,52 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
             span = clamp_span_by_mask(span, y, lh / 2, row_runs, gap)
         return span
 
-    def centered_cx(t: str, y: float) -> float:
+    def centered_cx(t: list, y: float) -> float:
         """行中心 x：默认居中锚点 acx；仅当行的实际宽度触到收窄 span 边界时
         最小平移避让（短末行不因远处角标整体偏移，保持视觉居中）。"""
         span = span_at(y)
         if span is None:
             return acx
-        half = font.getlength(t) / 2
+        half = font.getlength(_plain(t)) / 2
         return min(max(acx, span[0] + half), span[1] - half)
 
     if not wrap:
         span = span_at(acy)
-        if span is None or font.getlength(text) > span[1] - span[0]:
+        if span is None or font.getlength(_plain(chars)) > span[1] - span[0]:
             return None
-        return [(text, centered_cx(text, acy), acy)]
+        return [(chars, centered_cx(chars, acy), acy)]
 
-    paragraphs = text.split("\n")
+    paragraphs = [[]]
+    for ch in chars:
+        if ch[0] == "\n":
+            paragraphs.append([])
+        else:
+            paragraphs[-1].append(ch)
 
     def wrap_from(y: float):
-        """从行中心 y 起贪心换行，返回行文本列表；排不下（出底界/被封死）返回 None。"""
-        lines: list[str] = []
-        current = ""
+        """从行中心 y 起贪心换行，返回行字符列表；排不下（出底界/被封死）返回 None。"""
+        lines: list[list] = []
+        current: list = []
         for pi, paragraph in enumerate(paragraphs):
             for ch in paragraph:
-                trial = current + ch
+                trial = current + [ch]
                 span = span_at(y)
                 width = (span[1] - span[0]) if span else 0.0
-                if current and font.getlength(trial) > width:
+                if current and font.getlength(_plain(trial)) > width:
                     if span is None:  # 障碍封死本行：排版失败，交由字号递减/强排兜底
                         return None
                     lines.append(current)
                     y += lh
                     if y + lh / 2 > y_bottom:
                         return None
-                    current = ch
+                    current = [ch]
                 else:
                     current = trial
             if pi < len(paragraphs) - 1 or current:
                 if span_at(y) is None:
                     return None
                 lines.append(current)
-                current = ""
+                current = []
                 if pi < len(paragraphs) - 1:
                     y += lh
                     if y + lh / 2 > y_bottom:
@@ -130,7 +190,8 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
     return None
 
 
-def _fit(text: str, region: dict, lib: AssetLibrary, row_runs: dict | None):
+def _fit(chars: list[tuple[str, bool]], region: dict, lib: AssetLibrary,
+         row_runs: dict | None):
     """字号从大到小适配；每个字号上先尝试逐 px 临时上移居中锚点（1px 步进、
     至多半行高）——接受条件：排得下且末行水平居中（未被障碍挤偏）。
     当前字号所有上移量都不行才减小字号。"""
@@ -140,7 +201,7 @@ def _fit(text: str, region: dict, lib: AssetLibrary, row_runs: dict | None):
         font = lib.font(region["font"], size)
         max_dy = int(_line_height(font) / 2)
         for dy in range(0, max_dy + 1):
-            lines = _layout_at_size(text, font, region, region["wrap"], row_runs, dy=dy)
+            lines = _layout_at_size(chars, font, region, region["wrap"], row_runs, dy=dy)
             if lines is not None and abs(lines[-1][1] - acx) < 1e-6:
                 return font, lines
     return None
@@ -148,27 +209,60 @@ def _fit(text: str, region: dict, lib: AssetLibrary, row_runs: dict | None):
 
 def fit_in_region(text: str, region: dict, lib: AssetLibrary,
                   obstacle_mask: Image.Image | None = None):
-    """字号从大到小适配，返回 (font, lines)；最小字号仍排不下时返回 None。"""
+    """字号从大到小适配，返回 (font, [(行文本, cx, cy)])；最小字号仍排不下时返回 None。
+
+    [关键字] 标记在排版前剥离（宽度按可见字符计），返回的行文本为纯文本。
+    """
     text = _normalize_newlines(text)
+    chars = _styled_chars(text)
     row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None
-    return _fit(text, region, lib, row_runs)
+    fitted = _fit(chars, region, lib, row_runs)
+    if fitted is None:
+        return None
+    font, lines = fitted
+    return font, [(_plain(line), cx, cy) for line, cx, cy in lines]
 
 
 def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
                 region: dict, obstacle_mask: Image.Image | None = None,
-                fill=TEXT_FILL) -> Image.Image:
+                fill=TEXT_FILL, keyword_fill=None) -> Image.Image:
+    """排版并绘制文本。[关键字] 段用 keyword_fill 异色绘制（None 时与正文同色）。"""
     text = _normalize_newlines(text)
+    chars = _styled_chars(text)
     row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None
-    fitted = _fit(text, region, lib, row_runs)
+    fitted = _fit(chars, region, lib, row_runs)
     if fitted is None:
         font = lib.font(region["font"], region["font_range"][1])
-        lines = _layout_at_size(text, font, region, region["wrap"], row_runs)
+        lines = _layout_at_size(chars, font, region, region["wrap"], row_runs)
         if lines is None:  # 强排兜底：nowrap 超宽，或 wrap 最小字号仍排不下（含障碍封死）
-            lines = [(text, region["center"][0], region["center"][1])]
+            lines = [(chars, region["center"][0], region["center"][1])]
         fitted = (font, lines)
     font, lines = fitted
     out = canvas.copy()
     draw = ImageDraw.Draw(out)
     for line, cx, cy in lines:
-        draw.text((cx, cy), line, font=font, anchor="mm", fill=fill)
+        _draw_styled_line(draw, line, cx, cy, font, fill, keyword_fill)
     return out
+
+
+def _draw_styled_line(draw: ImageDraw.ImageDraw, line: list[tuple[str, bool]],
+                      cx: float, cy: float, font: ImageFont.FreeTypeFont,
+                      fill, keyword_fill) -> None:
+    """无关键字段时整行 anchor=mm 一次绘制；含关键字段时按段异色、anchor=lm 横向推进。"""
+    if not line:
+        return
+    if keyword_fill is None or not any(kw for _, kw in line):
+        draw.text((cx, cy), _plain(line), font=font, anchor="mm", fill=fill)
+        return
+    x = cx - font.getlength(_plain(line)) / 2
+    run, run_kw = [], line[0][1]
+    for ch, kw in line:
+        if kw != run_kw:
+            s = _plain(run)
+            draw.text((x, cy), s, font=font, anchor="lm",
+                      fill=keyword_fill if run_kw else fill)
+            x += font.getlength(s)
+            run, run_kw = [], kw
+        run.append((ch, kw))
+    s = _plain(run)
+    draw.text((x, cy), s, font=font, anchor="lm", fill=keyword_fill if run_kw else fill)

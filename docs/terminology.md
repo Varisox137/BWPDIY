@@ -1,6 +1,6 @@
 # BWPDIY 术语表
 
-定稿日期：2026-09-14。v1.0 修订：2026-09-18（PSD 素材替换/四框品/新合成管线/扩展选项）。新增/变更术语须同步本表。
+定稿日期：2026-09-14。修订：v1.0（2026-09-18，PSD 素材替换/四框品/新合成管线/扩展选项）；v1.2（描述文本关键字高亮）。新增/变更术语须同步本表。
 
 ## 渲染层级（自底向上合成顺序）
 
@@ -19,7 +19,7 @@
 | 派系标 | faction_mark | 红莲 red/苍叶 green/青岚 blue/紫岩 purple/无相；式神卡大标沿用 legacy 三变体 `factions/{color}_{1,2,3}.png`（style 默认 2）；`icons/faction_{color}{,_black}.png` 小标为二期内嵌图标备用 |
 | 数值标 | stat | 力量(power)/生命(health)/战斗牌护甲加成(shield)/幻境耐久(intensity)；角标贴图 `stats/{stem}.png`（力量/生命全类型共用 `power.png`/`health.png`；护甲 `combat_shield.png`，负护甲自动换 `stats/combat_fragile_2.png` 破甲图，变体 1/2 可选默认 2；耐久 `field_intensity.png`）；正负号贴图 `signs/{plus,minus}.png`（不经数字字体）；适用矩阵见「元素」行 |
 | 卡名 | name_text | 田氏颜体大字库 |
-| 描述文本 | desc_text | 方正北魏楷书，自动排版（从大到小试字号、自动换行、逐行居中、文本块竖直居中）；文字颜色按框品（`FRAME_TEXT_FILL`，取色自官方模板文字样本：norm 深色/black 金色/blue·red 浅色） |
+| 描述文本 | desc_text | 方正北魏楷书，自动排版（从大到小试字号、自动换行、逐行居中、文本块竖直居中）；文字颜色按框品（`FRAME_TEXT_FILL`，取色自官方模板文字样本：norm 深色/black 金色/blue·red 浅色）；**关键字高亮**（v1.2）：`[关键字]` 英文方括号标记，括号不绘制、内容按框品异色（`FRAME_KEYWORD_FILL`，norm 金棕取色自官方卡面关键字样本，blue/red 同族金橙、black 亮橙以对金色正文保持区分）；括号配对校验（未闭合/无配对/嵌套/空 `[]` 均报错，渲染层 ValueError + GUI 表单即时校验） |
 | 成品导出 | 512 顶格适配 | 最终卡图按整卡 tightest alpha bbox 裁剪后等比缩放至高 512（**上下顶格、左右居中留白**）贴回 512×512 导出（宽溢出则退为按宽适配、上下留白）；布局预览（crop=False）仍返回 512 全画布合成结果 |
 | 轮廓裁剪 | silhouette clip | 叠框前牌框先做 alpha 阈值清理（`FRAME_ALPHA_THRESHOLD=192`，删去 PSD 导出框缘外/窗内低透明度散点，v1.0.2；经 T=0/32/64/128/192 对比，差异仅为边缘 1-2px 抗锯齿，不伤内部装饰），再删去**牌框实际形状**之外的所有像素（框 alpha==0 且与画布边缘连通的区域；卡图窗被框缘完整包围不受影响）——矩形 bbox 裁剪会残留框形外卡图（v1.0.1 修复）；元素在轮廓裁剪之后绘制，探出框缘的等级标等不受影响 |
 

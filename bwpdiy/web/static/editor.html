@@ -750,6 +750,22 @@ function validateCardJS(d) {
     if (!Number.isInteger(d[f])) errors.push(`字段 ${f}：必须是整数`);
     else if (!SIGNED_STATS.includes(f) && d[f] < 0) errors.push(`字段 ${f}：必须是非负整数`);
   }
+  // [关键字] 方括号配对校验（口径对齐渲染层 parse_keyword_segments）
+  if (typeof d.description === 'string') {
+    let open = false, inner = false, bad = null;
+    for (const ch of d.description) {
+      if (ch === '[') {
+        if (open) { bad = "'[' 内不能嵌套 '['"; break; }
+        open = true; inner = false;
+      } else if (ch === ']') {
+        if (!open) { bad = "']' 缺少配对的 '['"; break; }
+        if (!inner) { bad = "'[]' 内容为空"; break; }
+        open = false;
+      } else if (open) inner = true;
+    }
+    if (!bad && open) bad = "'[' 未闭合";
+    if (bad) errors.push(`字段 description：方括号不匹配（${bad}）`);
+  }
   return errors;
 }
 

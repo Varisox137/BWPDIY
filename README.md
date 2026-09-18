@@ -42,11 +42,12 @@ PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产�
   文本避让碰撞轮廓阈值化+竖直 1px、行触界才平移、居中锚点偏移（center_offset，GUI 可拖拽橙点）、
   自适应先上移锚点再缩字号；破甲分离配置与样式变体；等级 0 不绘制（启用开关移除）；
   stats 资源去重；中立牌脚注；未保存关闭提示；GUI 卡牌内容栏重排、文本区并入元素列表
-- [ ] M4：HTTP API + BWPro 集成文档
-- [x] 未发布（下一版）：卡牌库卡图上传（选图落盘项目 `images/` + 写回 `artwork.images[0].path`，
+- [x] v1.2：卡牌库卡图上传（选图落盘项目 `images/` + 写回 `artwork.images[0].path`，
   offset_x/offset_y/scale 数字调参实时预览，不做旋转/拖拽/滚轮）；
-  exe 自动更新（页面加载检查 GitHub latest release，横幅提示 + 一键下载替换重启，开发模式仅给下载链接）
-- 二期：`[关键词]`/`#图标` 富文本、勾玉四色（黄/青/紫/红，BWPro 对战四位己方式神用）、协战双式神头像框、多牌框版型
+  exe 自动更新（页面加载检查 GitHub latest release，横幅提示 + 一键下载替换重启，开发模式仅给下载链接）；
+  描述文本关键字高亮（`[关键字]` 按框品异色，括号配对校验渲染层+GUI 双重）
+- [ ] M4：HTTP API + BWPro 集成文档
+- 二期：`#图标` 描述内嵌小图标、勾玉四色（黄/青/紫/红，BWPro 对战四位己方式神用）、协战双式神头像框、多牌框版型
 
 ## 美术资源来源与权利说明
 

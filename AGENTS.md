@@ -12,6 +12,7 @@
 ## 数据纪律
 
 - 卡牌 yaml 分引擎段（与 BWPro 口径对齐，按类型分字段）与渲染段（`artwork.images` 列表，全可缺省）。schema 字段只增不改。
+- 描述文本（description）支持 `[关键字]` 高亮标记（英文方括号、括号不绘制、按框品异色；配对校验见 `render/text.py` parse_keyword_segments）。
 - 机制未实现不进数据；字段/枚举变更须同步设计文档与术语表。
 
 ## 工程纪律

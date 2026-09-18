@@ -1,7 +1,8 @@
 """文本层：矩形文本区排版（自动换行、逐行居中、字号递减适配、掩膜墨迹避让、关键字异色）。
 
-关键字高亮：描述文本中 [关键字] 用英文方括号标记，括号不绘制、内容按框品异色
-（FRAME_KEYWORD_FILL）。括号匹配校验在排版入口执行（parse_keyword_segments）。
+关键字高亮：描述文本中 [[关键字]] 用双英文方括号标记（v1.2.1 起；单 [ ] 为字面字符），
+括号不绘制、内容按框品异色（FRAME_KEYWORD_FILL）。括号匹配校验在排版入口执行
+（parse_keyword_segments）。
 """
 
 import re
@@ -39,40 +40,48 @@ _LINE_GAP = 6
 
 
 def parse_keyword_segments(text: str) -> list[tuple[str, bool]]:
-    """解析 [关键字] 标记 → [(文本段, 是否关键字)]；方括号本身不进入输出。
+    """解析 [[关键字]] 双括号标记 → [(文本段, 是否关键字)]；标记本身不进入输出。
 
-    校验（均 ValueError）：'[' 未闭合、']' 无配对、'[' 嵌套、'[]' 为空。
+    单 [ / ] 为字面字符（可正常输入）。校验（均 ValueError）：
+    '[[' 未闭合、']]' 无配对、'[[' 嵌套、'[[]]' 为空。
+    连续三个以上括号按贪心解析：'[[[' = 开标记 + 字面 '['，']]]' = 闭标记 + 字面 ']'。
     """
     segs: list[tuple[str, bool]] = []
     plain, kw = "", None
-    for ch in text:
-        if ch == "[":
+    i = 0
+    while i < len(text):
+        pair = text[i:i + 2]
+        if pair == "[[":
             if kw is not None:
-                raise ValueError("描述文本方括号不匹配：'[' 内不能嵌套 '['")
+                raise ValueError("描述文本方括号不匹配：'[[' 内不能嵌套 '[['")
             if plain:
                 segs.append((plain, False))
                 plain = ""
             kw = ""
-        elif ch == "]":
+            i += 2
+        elif pair == "]]":
             if kw is None:
-                raise ValueError("描述文本方括号不匹配：']' 缺少配对的 '['")
+                raise ValueError("描述文本方括号不匹配：']]' 缺少配对的 '[['")
             if not kw:
-                raise ValueError("描述文本方括号不匹配：'[]' 内容为空")
+                raise ValueError("描述文本方括号不匹配：'[[]]' 内容为空")
             segs.append((kw, True))
             kw = None
-        elif kw is not None:
-            kw += ch
+            i += 2
         else:
-            plain += ch
+            if kw is not None:
+                kw += text[i]
+            else:
+                plain += text[i]
+            i += 1
     if kw is not None:
-        raise ValueError("描述文本方括号不匹配：'[' 未闭合")
+        raise ValueError("描述文本方括号不匹配：'[[' 未闭合")
     if plain:
         segs.append((plain, False))
     return segs
 
 
 def _styled_chars(text: str) -> list[tuple[str, bool]]:
-    """str → [(字符, 是否关键字)]：剥离 [关键字] 标记，排版宽度按可见字符计。"""
+    """str → [(字符, 是否关键字)]：剥离 [[关键字]] 标记，排版宽度按可见字符计。"""
     return [(ch, kw) for seg, kw in parse_keyword_segments(text) for ch in seg]
 
 
@@ -211,7 +220,7 @@ def fit_in_region(text: str, region: dict, lib: AssetLibrary,
                   obstacle_mask: Image.Image | None = None):
     """字号从大到小适配，返回 (font, [(行文本, cx, cy)])；最小字号仍排不下时返回 None。
 
-    [关键字] 标记在排版前剥离（宽度按可见字符计），返回的行文本为纯文本。
+    [[关键字]] 标记在排版前剥离（宽度按可见字符计），返回的行文本为纯文本。
     """
     text = _normalize_newlines(text)
     chars = _styled_chars(text)
@@ -226,7 +235,7 @@ def fit_in_region(text: str, region: dict, lib: AssetLibrary,
 def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
                 region: dict, obstacle_mask: Image.Image | None = None,
                 fill=TEXT_FILL, keyword_fill=None) -> Image.Image:
-    """排版并绘制文本。[关键字] 段用 keyword_fill 异色绘制（None 时与正文同色）。"""
+    """排版并绘制文本。[[关键字]] 段用 keyword_fill 异色绘制（None 时与正文同色）。"""
     text = _normalize_newlines(text)
     chars = _styled_chars(text)
     row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None

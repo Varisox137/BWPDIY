@@ -3,8 +3,11 @@
 方案（用户定案「检查+一键更新」）：
 - 页面加载时 GET /api/update/check（服务端拉 GitHub API，避免前端跨域/限流口径分散）；
 - 有新版时界面出横幅，点「一键更新」→ POST /api/update/apply：
-  服务端重新拉取 release 信息（不信前端传的 URL），下载 exe 到临时目录，
-  生成 updater bat（等本进程退出 → move 覆盖 → 重启 → 自删），spawn 后本进程退出。
+  服务端重新拉取 release 信息（不信前端传的 URL），下载新 exe 到当前运行目录
+  （目录不可写则回退临时目录 + move 覆盖），生成 updater bat
+  （删旧 exe 的等待循环兼作进程退出检测 → 启动新版 → 自删），spawn 后本进程退出。
+- 启动时 __main__ 探测目标端口已有实例：同版本直接打开浏览器复用；
+  异版本提示先保存再关闭旧程序。
 - 仅 frozen（PyInstaller 打包）模式可执行替换；开发模式只提示、不允许 apply。
 
 安全口径：固定仓库常量；资产名必须匹配 BWPDIY-vX.Y.Z.exe；下载仅 HTTPS；
@@ -92,39 +95,71 @@ def _download(url: str, dest: Path) -> None:
             raise ValueError("下载产物不是有效的 exe")
 
 
-def _write_updater_bat(old_exe: Path, new_exe: Path, pid: int) -> Path:
-    """生成替换脚本：等本进程退出（文件锁释放）→ move 覆盖 → 重启 → 自删。"""
-    bat = Path(tempfile.gettempdir()) / f"bwpdiy_update_{pid}.bat"
-    bat.write_text(
-        "@echo off\r\n"
-        "set retries=60\r\n"
-        ":loop\r\n"
-        f'move /y "{new_exe}" "{old_exe}" >nul 2>&1\r\n'
-        "if %errorlevel%==0 goto done\r\n"
-        "timeout /t 1 /nobreak >nul\r\n"
-        "set /a retries-=1\r\n"
-        "if %retries% gtr 0 goto loop\r\n"
-        "exit /b 1\r\n"
-        ":done\r\n"
-        f'start "" "{old_exe}"\r\n'
-        'del "%~f0"\r\n',
-        encoding="gbk",  # cmd 批处理按 ANSI 解析；路径含中文时 gbk 才不误码
-    )
+def _write_updater_bat(old_exe: Path, new_exe: Path, inplace: bool) -> Path:
+    """生成替换脚本（cmd 批处理按 ANSI 解析，路径含中文时用 gbk 编码防误码）。
+
+    inplace=False（首选，新版与旧版同目录并存）：删除旧 exe 的等待循环兼作
+    进程退出检测（运行中文件被锁删不掉）→ 启动新版 → 自删。
+    inplace=True（回退，目录不可写/同名）：move 覆盖旧 exe → 启动 → 自删。
+    """
+    bat = Path(tempfile.gettempdir()) / f"bwpdiy_update_{os.getpid()}.bat"
+    if inplace:
+        body = (
+            "set retries=60\r\n"
+            ":loop\r\n"
+            f'move /y "{new_exe}" "{old_exe}" >nul 2>&1\r\n'
+            "if %errorlevel%==0 goto done\r\n"
+            "timeout /t 1 /nobreak >nul\r\n"
+            "set /a retries-=1\r\n"
+            "if %retries% gtr 0 goto loop\r\n"
+            "exit /b 1\r\n"
+            ":done\r\n"
+            f'start "" "{old_exe}"\r\n'
+        )
+    else:
+        body = (
+            "set retries=60\r\n"
+            ":loop\r\n"
+            f'del "{old_exe}" >nul 2>&1\r\n'
+            f'if not exist "{old_exe}" goto done\r\n'
+            "timeout /t 1 /nobreak >nul\r\n"
+            "set /a retries-=1\r\n"
+            "if %retries% gtr 0 goto loop\r\n"
+            "exit /b 1\r\n"
+            ":done\r\n"
+            f'start "" "{new_exe}"\r\n'
+        )
+    bat.write_text("@echo off\r\n" + body + 'del "%~f0"\r\n', encoding="gbk")
     return bat
+
+
+def _dir_writable(d: Path) -> bool:
+    try:
+        probe = d / f".bwpdiy_probe_{os.getpid()}"
+        probe.write_bytes(b"")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
 
 
 def download_and_schedule_restart(info: dict) -> str:
     """下载新版 exe 并安排替换重启（仅 frozen）。返回新版本 tag。
 
+    首选直接下载到当前运行目录（新版 exe 与旧版并存，退出后删旧启新）；
+    目录不可写或与运行中 exe 同名时回退临时目录 + move 覆盖。
     非 frozen 直接 ValueError（开发模式不替换脚本自身）。退出用 Timer 延迟
     os._exit：先让 HTTP 响应发回浏览器，再杀进程放文件锁。
     """
     if not is_frozen():
         raise ValueError("开发模式（非 exe）不支持一键更新")
     old_exe = Path(sys.executable).resolve()
-    new_exe = Path(tempfile.gettempdir()) / info["asset_name"]
-    _download(info["asset_url"], new_exe)
-    bat = _write_updater_bat(old_exe, new_exe, os.getpid())
+    dest = old_exe.parent / info["asset_name"]
+    inplace = dest == old_exe or not _dir_writable(old_exe.parent)
+    if inplace:
+        dest = Path(tempfile.gettempdir()) / info["asset_name"]
+    _download(info["asset_url"], dest)
+    bat = _write_updater_bat(old_exe, dest, inplace)
     subprocess.Popen(["cmd.exe", "/c", str(bat)],
                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     timer = threading.Timer(0.8, os._exit, args=(0,))

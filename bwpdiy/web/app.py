@@ -301,7 +301,7 @@ def _with_artwork_fallback(card: dict, images_dir: Path) -> dict:
     if not art_path.is_absolute():
         art_path = images_dir / art_path
     if not art_path.is_file():
-        ref = {k: ref[k] for k in ("offset_x", "offset_y", "scale")
+        ref = {k: ref[k] for k in ("offset_x", "offset_y", "scale", "rotate")
                if k in ref and isinstance(ref[k], (int, float))}
         # 占位图在包内、不在项目 images/ 下：基准目录随之切到占位图所在目录，
         # 以通过渲染层的「卡图必须位于基准目录内」校验

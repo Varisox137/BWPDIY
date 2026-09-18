@@ -143,7 +143,7 @@ def _validate_artwork(artwork) -> list[str]:
             continue
         if "path" in item and not isinstance(item["path"], str):
             errors.append(f"字段 artwork.images[{i}].path：必须是字符串")
-        for field in ("offset_x", "offset_y"):
+        for field in ("offset_x", "offset_y", "rotate"):
             if field in item and not _is_num(item[field]):
                 errors.append(f"字段 artwork.images[{i}].{field}：必须是数字")
         if "scale" in item and (not _is_num(item["scale"]) or item["scale"] <= 0):

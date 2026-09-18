@@ -139,3 +139,64 @@ def test_update_apply_download_failure_422(client, monkeypatch):
     monkeypatch.setattr(updater, "download_and_schedule_restart", boom)
     r = client.post("/api/update/apply")
     assert r.status_code == 422 and "更新失败" in r.json()["detail"]
+
+
+# ---------- updater bat 与启动探测 ----------
+
+def test_updater_bat_inplace_move(tmp_path):
+    """回退模式（目录不可写/同名）：bat 为 move 覆盖 + 启动旧路径。"""
+    from bwpdiy.updater import _write_updater_bat
+    old = tmp_path / "旧版.exe"
+    new = tmp_path / "新版.exe"
+    bat = _write_updater_bat(old, new, inplace=True)
+    body = bat.read_text(encoding="gbk")
+    assert f'move /y "{new}" "{old}"' in body and f'start "" "{old}"' in body
+    bat.unlink()
+
+
+def test_updater_bat_side_by_side(tmp_path):
+    """首选模式（同目录并存）：bat 为删旧（等待循环）+ 启动新版。"""
+    from bwpdiy.updater import _write_updater_bat
+    old = tmp_path / "BWPDIY-v1.2.0.exe"
+    new = tmp_path / "BWPDIY-v1.2.1.exe"
+    bat = _write_updater_bat(old, new, inplace=False)
+    body = bat.read_text(encoding="gbk")
+    assert f'del "{old}"' in body and f'start "" "{new}"' in body
+    assert "move" not in body
+    bat.unlink()
+
+
+def _mock_probe(monkeypatch, payload=None, exc=None):
+    from bwpdiy import __main__ as m
+    class Resp:
+        def read(self):
+            return json.dumps(payload).encode("utf-8")
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+    def fake(url, timeout=None):
+        if exc:
+            raise exc
+        return Resp()
+    monkeypatch.setattr(m.urllib.request, "urlopen", fake)
+
+
+def test_probe_running_bwpdiy(monkeypatch):
+    from bwpdiy.__main__ import _probe_running
+    _mock_probe(monkeypatch, {"version": "1.1.3"})
+    assert _probe_running("127.0.0.1", 8630) == "1.1.3"
+
+
+def test_probe_running_free_port(monkeypatch):
+    from bwpdiy.__main__ import _probe_running
+    _mock_probe(monkeypatch, exc=OSError("connection refused"))
+    assert _probe_running("127.0.0.1", 8630) is None
+
+
+def test_probe_running_foreign_service(monkeypatch):
+    import urllib.error
+    from bwpdiy.__main__ import _probe_running
+    _mock_probe(monkeypatch, exc=urllib.error.HTTPError(
+        "http://x", 404, "Not Found", None, None))
+    assert _probe_running("127.0.0.1", 8630) == "?"

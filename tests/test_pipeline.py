@@ -86,7 +86,6 @@ def test_footer_with_special_type(assets_dir, sample_art):
 
 def test_artwork_path_escape_rejected(assets_dir, sample_art, monkeypatch):
     """卡图路径必须位于基准目录内：目录外绝对路径/.. 越界 → ValueError；像素超限 → ValueError。"""
-    import bwpdiy.render.pipeline as pipe
     card = {"type": "法术", "name": "sample_art", "level": 1, "rarity": "N",
             "_base_dir": str(sample_art.parent)}
     for bad in ("/etc/passwd.png", "../outside.png"):
@@ -96,8 +95,9 @@ def test_artwork_path_escape_rejected(assets_dir, sample_art, monkeypatch):
     # 基准目录内的绝对路径合法
     ok = dict(card, artwork={"images": [{"path": str(sample_art.resolve())}]})
     assert render_card(ok, assets_dir).mode == "RGBA"
-    # 像素上限（monkeypatch 调低，避免真造大图）
-    monkeypatch.setattr(pipe, "ARTWORK_MAX_PIXELS", 10)
+    # 像素上限（monkeypatch 调低，避免真造大图；校验在 AssetLibrary.artwork 加载缓存时）
+    import bwpdiy.render.artwork as aw
+    monkeypatch.setattr(aw, "ARTWORK_MAX_PIXELS", 10)
     with pytest.raises(ValueError, match="超像素上限"):
         render_card(card, assets_dir)
 
@@ -265,3 +265,14 @@ def test_desc_ink_keeps_gap_from_stat_ink(assets_dir, sample_art):
             for sx0, sx1 in stat_runs.get(y + dy, ()):
                 for tx0, tx1 in truns:
                     assert tx1 + gap <= sx0 or sx1 + gap <= tx0
+
+
+def test_artwork_rotate_changes_render(assets_dir, sample_art):
+    """artwork rotate（v1.2.1）：绕中心旋转参与合成，输出与未旋转不同。"""
+    base = render_card(make_card(sample_art.parent, "法术", level=1, rarity="R",
+                                 evolve=True), assets_dir, crop=False)
+    rotated = render_card(make_card(sample_art.parent, "法术", level=1, rarity="R",
+                                    evolve=True, artwork={"images": [
+                                        {"path": "sample_art.png", "rotate": 37}]}),
+                          assets_dir, crop=False)
+    assert list(base.getdata()) != list(rotated.getdata())

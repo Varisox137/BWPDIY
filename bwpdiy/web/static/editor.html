@@ -192,7 +192,10 @@ function showTab(name) {
   document.getElementById('tab-cards').classList.toggle('active', name === 'cards');
   document.getElementById('tab-layout').classList.toggle('active', name === 'layout');
   history.replaceState(null, '', name === 'layout' ? '#layout' : '#cards');
-  if (name === 'layout') layoutBoot();  // 布局 tab 懒初始化（首次进入才拉取样卡/渲染预览）
+  if (name === 'layout') {
+    captureLayoutSnapshot();  // 每次进入都尝试记录快照（dirty 时跳过，保住本轮编辑前的基准）
+    layoutBoot();  // 布局 tab 懒初始化（首次进入才拉取样卡/渲染预览）
+  }
 }
 document.querySelectorAll('.navtab').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
@@ -600,13 +603,14 @@ function buildForm() {
   curArtRow.id = 'c-cur-art';
   curArtRow.textContent = `当前卡图：${curArt || `（缺省 ${formData.name ?? curCard}.png）`}`;
   div.appendChild(curArtRow);
-  // 卡图定位：仅 dx/dy/scale 数字输入（不做旋转/拖拽/滚轮），改动走保存按钮
+  // 卡图定位：dx/dy/scale/旋转数字输入（旋转绕图片中心、画布自动扩展；不做拖拽/滚轮），改动走保存按钮
   if (curArt) {
     const artFirst = formData.artwork.images[0];
     const setArt = (k, v) => { artFirst[k] = v; afterEdit(); };
     numRowArt(div, '卡图偏移X', artFirst.offset_x ?? 0, v => setArt('offset_x', v));
     numRowArt(div, '卡图偏移Y', artFirst.offset_y ?? 0, v => setArt('offset_y', v));
     numRowArt(div, '卡图缩放', artFirst.scale ?? 1, v => setArt('scale', v), 0.05, 0.01);
+    numRowArt(div, '卡图旋转(°)', artFirst.rotate ?? 0, v => setArt('rotate', v), 5);
   }
   const row = document.createElement('div');
   row.style.marginTop = '10px';
@@ -750,20 +754,22 @@ function validateCardJS(d) {
     if (!Number.isInteger(d[f])) errors.push(`字段 ${f}：必须是整数`);
     else if (!SIGNED_STATS.includes(f) && d[f] < 0) errors.push(`字段 ${f}：必须是非负整数`);
   }
-  // [关键字] 方括号配对校验（口径对齐渲染层 parse_keyword_segments）
+  // [[关键字]] 双括号配对校验（口径对齐渲染层 parse_keyword_segments；单 [ ] 为字面字符）
   if (typeof d.description === 'string') {
     let open = false, inner = false, bad = null;
-    for (const ch of d.description) {
-      if (ch === '[') {
-        if (open) { bad = "'[' 内不能嵌套 '['"; break; }
-        open = true; inner = false;
-      } else if (ch === ']') {
-        if (!open) { bad = "']' 缺少配对的 '['"; break; }
-        if (!inner) { bad = "'[]' 内容为空"; break; }
-        open = false;
+    const s = d.description;
+    for (let i = 0; i < s.length; i++) {
+      const pair = s.slice(i, i + 2);
+      if (pair === '[[') {
+        if (open) { bad = "'[[' 内不能嵌套 '[['"; break; }
+        open = true; inner = false; i++;
+      } else if (pair === ']]') {
+        if (!open) { bad = "']]' 缺少配对的 '[['"; break; }
+        if (!inner) { bad = "'[[]]' 内容为空"; break; }
+        open = false; i++;
       } else if (open) inner = true;
     }
-    if (!bad && open) bad = "'[' 未闭合";
+    if (!bad && open) bad = "'[[' 未闭合";
     if (bad) errors.push(`字段 description：方括号不匹配（${bad}）`);
   }
   return errors;
@@ -827,6 +833,7 @@ document.querySelectorAll('#l-frame-variants .fv').forEach(b => b.onclick = () =
 });
 let sel = null;              // {kind:'element'|'region', name}
 let dirty = false;
+let layoutSnapshot = null;   // 本轮布局编辑前的已保存快照（「还原」基准；dirty 时不再覆写）
 const canvas = document.getElementById('l-preview');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('l-status');
@@ -840,6 +847,7 @@ async function layoutBoot() {
   try {
     await ensureLayouts();
     samples = await (await fetch('/api/samples')).json();
+    captureLayoutSnapshot();  // 首次进入：showTab 时 layouts 尚未拉取，加载成功后补记快照
   } catch (e) {
     layoutInited = false;
     statusEl.textContent = '布局加载失败: ' + e;
@@ -849,6 +857,49 @@ async function layoutBoot() {
 }
 function typeLayout() { return layouts[curType]; }
 function markDirty() { dirty = true; }
+// 快照记录：仅在无未保存修改时覆写，保证快照恒为本轮编辑前的已保存状态
+function captureLayoutSnapshot() {
+  if (layouts && !dirty) layoutSnapshot = deepCopy(layouts);
+}
+// 递归差异比较：返回「元素名.键路径」列表（如 elements.name.pos）；键缺失或值不同均计为一处
+function layoutDiffs(a, b) {
+  const out = [];
+  const walk = (x, y, p) => {
+    const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (isObj(x) && isObj(y)) {
+      for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {
+        const kp = p ? p + '.' + k : k;
+        if (!(k in x) || !(k in y)) out.push(kp);
+        else walk(x[k], y[k], kp);
+      }
+    } else if (JSON.stringify(x) !== JSON.stringify(y)) out.push(p);
+  };
+  walk(a, b, '');
+  return out;
+}
+// 差异列表展示：最多列前 10 条，超出截断为「…等 N 处」
+function formatDiffs(diffs) {
+  const shown = diffs.slice(0, 10).join('、');
+  return diffs.length > 10 ? `${shown} 等 ${diffs.length} 处` : shown;
+}
+// 还原：all=false 仅还原当前类型，true 还原六类型；还原本身计入未保存修改（markDirty）
+function restoreLayout(all) {
+  if (!layoutSnapshot) { statusEl.textContent = '布局尚未加载'; return; }
+  const targets = all ? TYPES : [curType];
+  const parts = [];
+  for (const t of targets) {
+    const d = layoutDiffs(layouts[t] || {}, layoutSnapshot[t] || {});
+    if (d.length) parts.push(`类型 ${t}：${formatDiffs(d)}`);
+  }
+  if (!parts.length) { statusEl.textContent = '无更改可还原'; return; }
+  if (!confirm('将还原以下布局更改：\n' + parts.join('\n'))) return;
+  for (const t of targets) {
+    if (t in layoutSnapshot) layouts[t] = deepCopy(layoutSnapshot[t]);
+  }
+  markDirty();
+  selectType(curType);  // 全套重建（列表/属性/卡牌内容）并刷新预览
+  statusEl.textContent = '已还原（未保存）';
+}
 // 当前类型卡牌内容：样卡字段 + 用户覆盖（覆盖优先；不改的不传，后端深拷贝合并）
 function cardField(name) {
   const ov = cardOverrides[curType] || {};
@@ -891,6 +942,18 @@ function buildTypes() {
     b.onclick = () => selectType(t);
     div.appendChild(b);
   }
+  // 还原按钮：无 .tab class，不参与 selectType 的 active 切换
+  const row = document.createElement('div');
+  row.className = 'btnrow';
+  const bAll = document.createElement('button');
+  bAll.textContent = '还原所有更改';
+  bAll.onclick = () => restoreLayout(true);
+  const bCur = document.createElement('button');
+  bCur.textContent = '还原当前类型更改';
+  bCur.onclick = () => restoreLayout(false);
+  row.appendChild(bAll);
+  row.appendChild(bCur);
+  div.appendChild(row);
 }
 function selectType(t) {
   curType = t; sel = null; previewImg = null;  // 清旧图，避免与新类型覆盖层短暂共存
@@ -1265,7 +1328,7 @@ document.getElementById('l-btn-save').onclick = async () => {
     statusEl.textContent = '保存请求失败: ' + e;
     return;
   }
-  if (r.ok) { dirty = false; statusEl.textContent = '已保存'; }
+  if (r.ok) { dirty = false; layoutSnapshot = deepCopy(layouts); statusEl.textContent = '已保存'; }
   else statusEl.textContent = '保存失败: ' + (await r.json()).detail;
 };
 document.getElementById('l-btn-preview').onclick = refreshPreview;

@@ -280,7 +280,7 @@ def test_save_card_validates_schema(lib):
     ASSIST,
     {**FIGHT, "artwork": {"images": [
         {"path": "a.png"},
-        {"path": "b.png", "offset_x": 0, "offset_y": -12, "scale": 1.15},
+        {"path": "b.png", "offset_x": 0, "offset_y": -12, "scale": 1.15, "rotate": 30},
         {},
     ]}},
     {"type": "法术", "name": "最简", "rarity": "N"},
@@ -324,6 +324,7 @@ def test_validate_ok(card):
     ({**FIGHT, "artwork": {"images": [{"path": 1}]}}, "path"),
     ({**FIGHT, "artwork": {"images": [{"offset_x": "左"}]}}, "offset_x"),
     ({**FIGHT, "artwork": {"images": [{"scale": 0}]}}, "scale"),
+    ({**FIGHT, "artwork": {"images": [{"rotate": "九十"}]}}, "rotate"),
 ])
 def test_validate_rejects(card, needle):
     errors = validate_card(card)

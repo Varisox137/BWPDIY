@@ -2,6 +2,17 @@
 
 from PIL import Image
 
+# 卡图像素上限（防解压炸弹：用户供图全量解码后才缩放/旋转）
+ARTWORK_MAX_PIXELS = 64_000_000  # 8000×8000
+
+
+def rotate_artwork(img: Image.Image, rotate: float) -> Image.Image:
+    """绕图片中心旋转（正值=顺时针），画布扩展至容纳旋转结果（锚点恒为中心）。"""
+    if rotate % 360:
+        # PIL rotate 正值为逆时针，取负使用户语义为顺时针
+        img = img.rotate(-rotate, expand=True, resample=Image.BICUBIC)
+    return img
+
 
 def fit_artwork(img: Image.Image, target_size: tuple[int, int],
                 offset_x: float = 0, offset_y: float = 0,

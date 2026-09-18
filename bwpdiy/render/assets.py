@@ -65,6 +65,19 @@ class AssetLibrary:
     def icon(self, name: str) -> Image.Image:
         return self._img(f"icons/{name}.png")
 
+    def artwork(self, path: Path, rotate: float = 0) -> Image.Image:
+        """用户卡图：按（路径, mtime, 旋转角）缓存；加载即绕中心旋转并扩展画布，
+        后续缩放/偏移（fit_artwork）对缓存图进行，锚点始终为图片中心。"""
+        from bwpdiy.render.artwork import ARTWORK_MAX_PIXELS, rotate_artwork
+        path = Path(path)
+        key = ("artwork", str(path), path.stat().st_mtime, rotate)
+        if key not in self._cache:
+            img = Image.open(path)
+            if img.width * img.height > ARTWORK_MAX_PIXELS:
+                raise ValueError(f"卡图过大: {img.width}×{img.height} 超像素上限")
+            self._cache[key] = rotate_artwork(img.convert("RGBA"), rotate)
+        return self._cache[key]
+
     def font(self, kind: str, size: int) -> ImageFont.FreeTypeFont:
         assert kind in FONT_FILES, f"未知字体种类: {kind}"
         key = ("font", kind, size)

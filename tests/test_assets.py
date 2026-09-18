@@ -79,3 +79,31 @@ def test_missing_resource_raises(assets_dir):
         lib.stat_badge("xx")
     with pytest.raises(FileNotFoundError):
         lib.sign("tilde")
+
+
+# ---------- 用户卡图缓存（v1.2.1 旋转支持） ----------
+
+def test_artwork_cache_by_path_rotate(tmp_path):
+    """缓存键 = (路径, mtime, 旋转角)：同参复用同对象，异角/改文件各自重载。"""
+    import os
+    p = tmp_path / "图.png"
+    Image.new("RGB", (100, 50), (200, 100, 50)).save(p)
+    lib = AssetLibrary(tmp_path)
+    a = lib.artwork(p)
+    assert a.mode == "RGBA" and a.size == (100, 50)
+    assert lib.artwork(p) is a                      # 同参命中缓存
+    r = lib.artwork(p, 90)
+    assert r is not a and r.size == (50, 100)       # 旋转扩展画布
+    os.utime(p, (p.stat().st_mtime + 10, p.stat().st_mtime + 10))
+    assert lib.artwork(p) is not a                  # mtime 变化重载
+
+
+def test_artwork_pixel_limit(tmp_path, monkeypatch):
+    """超像素上限的用户供图在加载缓存时拒绝（防解压炸弹口径）。"""
+    from bwpdiy.render import artwork as aw
+    big = tmp_path / "big.png"
+    Image.new("RGB", (100, 100)).save(big)
+    monkeypatch.setattr(aw, "ARTWORK_MAX_PIXELS", 99)  # artwork() 调用时才 import 该名，补丁生效
+    with pytest.raises(ValueError, match="像素上限"):
+        AssetLibrary(tmp_path).artwork(big)
+

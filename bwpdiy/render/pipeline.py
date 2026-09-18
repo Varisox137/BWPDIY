@@ -17,7 +17,9 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-from bwpdiy.render.artwork import fit_artwork
+from bwpdiy.render.artwork import ARTWORK_MAX_PIXELS, fit_artwork
+
+__all__ = ["ARTWORK_MAX_PIXELS", "TYPE_FRAME_CODE", "render_card"]
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.badges import TYPE_FRAME_CODE, render_element, stat_rendered
 from bwpdiy.render.layout import get_type_layout, load_layouts
@@ -33,9 +35,6 @@ FRAME_CONTOUR_ERODE = 2  # px
 # 文本避让掩膜：角标等障碍元素的碰撞轮廓按 alpha≥阈值考察（仿牌框阈值预处理，
 # 不用原始 alpha box——抗锯齿淡边缘不算墨迹，避免文本无谓避让）。
 OBSTACLE_ALPHA = 128
-
-# 卡图像素上限（防解压炸弹：用户供图全量解码后才缩放）
-ARTWORK_MAX_PIXELS = 64_000_000  # 8000×8000
 
 
 def _normalize_frame(frame: Image.Image) -> Image.Image:
@@ -85,6 +84,7 @@ def _artwork_ref(card: dict) -> dict:
     ref.setdefault("offset_x", 0)
     ref.setdefault("offset_y", 0)
     ref.setdefault("scale", 1.0)
+    ref.setdefault("rotate", 0)
     return ref
 
 
@@ -119,10 +119,8 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         raise ValueError(f"卡图路径越出基准目录: {ref['path']}") from None
     if not art_path.is_file():
         raise FileNotFoundError(f"卡图缺失: {art_path}")
-    art = Image.open(art_path)
-    if art.width * art.height > ARTWORK_MAX_PIXELS:
-        raise ValueError(f"卡图过大: {art.width}×{art.height} 超像素上限")
-    art = art.convert("RGBA")
+    # 加载即缓存（键含 mtime 与旋转角）：绕中心旋转并扩展画布，缩放/偏移对缓存图进行
+    art = lib.artwork(art_path, ref["rotate"])
     art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"])
     # 卡图按轮廓预裁剪（框实心区内缩 2px），框缘半透明带下无卡图、不洇色
     art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))

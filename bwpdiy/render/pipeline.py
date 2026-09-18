@@ -1,31 +1,25 @@
 """卡面渲染管线总装。
 
 合成顺序（自底向上，术语见 docs/terminology.md）：
-牌框 frame → 卡图 artwork（蒙版裁切）→ 布局元素（等级标/稀有度双标/派系标/
-数值标/卡名/脚注点文本，由 assets/layout.json 驱动）→ 描述文本。
-一期固定：版型 low、框品 norm、等级数字 yellow。
+卡图 artwork（fit 至 512 画布）→ 牌框 frame（在上，卡图区透明无需蒙版）→
+裁到框 alpha bbox（去框外卡图）→ 布局元素（等级标/稀有度双标/派系标/
+数值标/卡名/脚注点文本，由 assets/layout.json 驱动）→ 描述文本 →
+最终导出按整卡合成结果 alpha bbox 裁剪（探出框缘的元素包含在内；
+crop=False 布局预览模式返回 512 全画布）。
+框品：card["frame_variant"]（缺省 norm），协战恒 norm。
 """
 
 from pathlib import Path
 
 from PIL import Image
 
-from bwpdiy.render.artwork import apply_mask, fit_artwork
+from bwpdiy.render.artwork import fit_artwork
 from bwpdiy.render.assets import AssetLibrary
-from bwpdiy.render.badges import render_element, stat_rendered
+from bwpdiy.render.badges import TYPE_FRAME_CODE, render_element, stat_rendered
 from bwpdiy.render.layout import get_type_layout, load_layouts
-from bwpdiy.render.text import draw_region
+from bwpdiy.render.text import FRAME_TEXT_FILL, draw_region
 
 CARD_SIZE = (512, 512)
-
-TYPE_FRAME_CODE = {
-    "式神": "xt",   # 式神卡外观形状同形态牌
-    "形态": "xt",
-    "战斗": "zd",
-    "法术": "fs",
-    "幻境": "hj",
-    "协战": "xz",
-}
 
 
 def _artwork_ref(card: dict) -> dict:
@@ -49,9 +43,12 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     if card_type not in TYPE_FRAME_CODE:
         raise ValueError(f"未知卡牌类型: {card_type}")
     code = TYPE_FRAME_CODE[card_type]
+    variant = card.get("frame_variant", "norm")
+    if card_type == "协战":
+        variant = "norm"  # 协战框仅 norm 一种框品
     lib = AssetLibrary(assets_dir)
 
-    frame = lib.frame(code)  # 一期固定 norm/low
+    frame = lib.frame(code, variant)
     ref = _artwork_ref(card)
     art_path = Path(ref["path"])
     if not art_path.is_absolute():
@@ -60,8 +57,13 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         raise FileNotFoundError(f"卡图缺失: {art_path}")
     art = Image.open(art_path).convert("RGBA")
     art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"])
-    art = apply_mask(art, lib.mask(code))
-    canvas = Image.alpha_composite(frame, art)
+    canvas = Image.alpha_composite(art, frame)  # 牌框在上：卡图区透明，无需蒙版
+    # 裁到框 alpha bbox（去框外卡图），贴回 512 画布原位（布局坐标不变）
+    fbbox = frame.getchannel("A").getbbox()
+    if fbbox and fbbox != (0, 0, *CARD_SIZE):
+        body = canvas.crop(fbbox)
+        canvas = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
+        canvas.paste(body, fbbox[:2])
 
     type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
     elements = type_layout["elements"]
@@ -95,14 +97,11 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
                 layer = render_element(layer, lib, f"stat_{i}", e, card, ctx,
                                        composite=True)
             obstacle_mask = layer.getchannel("A")
+        desc_fill = FRAME_TEXT_FILL.get(variant, FRAME_TEXT_FILL["norm"])["desc"]
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
-                             obstacle_mask=obstacle_mask)
-    # 裁剪掉整画布四周的透明边（bbox 取自合成图 alpha，等级标等溢出元素自然包含）
+                             obstacle_mask=obstacle_mask, fill=desc_fill)
+    # 裁剪掉整画布四周的透明边（bbox 取自合成图 alpha，探出框缘的元素自然包含）
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
-    if not bbox:
-        return canvas
-    # 水平以牌框中心 x=256 为基准对称裁剪/补边：元素单侧探出（如等级标）不再带偏内容
-    half = max(256 - bbox[0], bbox[2] - 256)
-    return canvas.crop((256 - half, bbox[1], 256 + half, bbox[3]))
+    return canvas.crop(bbox) if bbox else canvas

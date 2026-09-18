@@ -52,18 +52,23 @@ def test_expected_elements_per_type():
 
 
 def _stat(font_size):
-    return {"kind": "stat", "field": "power+", "icon": "ll", "pos": [160, 485],
+    return {"kind": "stat", "field": "power+", "pos": [160, 485],
             "icon_size": 32, "num_offset": [22, 0], "font_size": font_size}
 
 
 def test_shipped_layouts_schema_current():
-    """出厂与包内默认布局：signed 键已删除；rarity_flank 具备 gap/margin 新口径。"""
+    """出厂与包内默认布局：signed/icon/icon_neg 键已删除；stat 具备 sign_offset/sign_size。"""
     for path in (Path("assets"), Path("bwpdiy/render")):
         layouts = layout.load_layouts(path)
         for t in TYPES:
             elems = layouts[t]["elements"]
             for name, elem in elems.items():
                 assert "signed" not in elem, f"{path}/{t}/{name} 仍含 signed"
+                assert "icon" not in elem and "icon_neg" not in elem, \
+                    f"{path}/{t}/{name} 仍含 icon/icon_neg"
+                if elem["kind"] == "stat":
+                    assert isinstance(elem.get("sign_offset"), list)
+                    assert elem.get("sign_size", 0) > 0
             rarity = elems.get("rarity")
             if rarity is not None:
                 assert rarity["gap"] > 0 and rarity["margin"] > 0

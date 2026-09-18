@@ -75,16 +75,45 @@ def test_footer_with_special_type(assets_dir, sample_art):
     assert img.mode == "RGBA"
 
 
-def test_crop_symmetric_around_frame_center(assets_dir, sample_art):
-    """合成输出以牌框中心 x=256 为基准水平对称裁剪/补边（元素探出牌框不再导致内容偏移）。"""
+def test_crop_tightest_alpha_bbox(assets_dir, sample_art):
+    """导出裁剪 = 整卡合成结果的 tightest alpha bbox：小于 512×512，且探出框缘的
+    元素（如左上角探出的等级标）包含在内（bbox 宽于框体自身）。"""
     card = make_card(sample_art.parent, "战斗", **{"level": 1, "rarity": "R", "power+": 1, "shield+": 1})
     full = render_card(card, assets_dir, crop=False)
     bbox = full.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
-    half = max(256 - bbox[0], bbox[2] - 256)
-    expected = full.crop((256 - half, bbox[1], 256 + half, bbox[3]))
+    expected = full.crop(bbox)
     out = render_card(card, assets_dir, crop=True)
     assert out.size == expected.size
+    assert out.size[0] < 512 and out.size[1] <= 512
     assert list(out.getdata()) == list(expected.getdata())
+    # 探出元素包含：合成 bbox 比框体 alpha bbox 更宽（等级标探出左缘）
+    from bwpdiy.render.assets import AssetLibrary
+    frame = AssetLibrary(assets_dir).frame("combat", "norm")
+    fbbox = frame.getchannel("A").getbbox()
+    assert bbox[0] < fbbox[0]  # 左缘探出（等级标）
+    assert bbox[2] - bbox[0] >= fbbox[2] - fbbox[0]
+
+
+@pytest.mark.parametrize("card_type", ["式神", "战斗", "法术", "形态", "幻境", "协战"])
+@pytest.mark.parametrize("variant", ["norm", "black"])
+def test_render_frame_variants_smoke(assets_dir, sample_art, card_type, variant):
+    """四框品冒烟：每类型 × norm/black（协战恒 norm，variant 字段被忽略）。"""
+    card = make_card(sample_art.parent, card_type, **{
+        "level": 2, "rarity": "SR", "faction": "红莲", "power": 3, "health": 4,
+        "power+": 1, "health+": 1, "shield+": -1, "durability": 5, "evolve": True,
+        "frame_variant": variant,
+        "description": "框品冒烟测试描述文本。"})
+    img = render_card(card, assets_dir)
+    assert img.mode == "RGBA" and img.size[0] > 0
+
+
+def test_frame_variant_changes_pixels(assets_dir, sample_art):
+    """frame_variant 生效：同卡 black 与 norm 渲染像素不同。"""
+    card = make_card(sample_art.parent, "法术", **{"level": 1, "rarity": "R",
+                                                  "description": "框品对比。"})
+    norm = render_card(card, assets_dir)
+    black = render_card(dict(card, frame_variant="black"), assets_dir)
+    assert list(norm.getdata()) != list(black.getdata())
 
 
 def test_desc_avoids_stat_obstacles(assets_dir, sample_art):

@@ -3,6 +3,9 @@
 stat 数值字段口径与 render/badges.py `_STAT_MATRIX` 对齐（store 不 import render，手工同步）：
 式神/形态 power+health、幻境 durability 为非负整数（plain）；
 战斗 power+/shield+、觉醒法术 power+/health+ 为整数（signed）；表外组合一律非法。
+
+框品 frame_variant（norm/blue/black/red）仅战斗/法术/形态/幻境可携带（可选，缺省 norm）；
+式神/协战携带属白名单之外字段。
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ CARD_TYPES = ("式神", "战斗", "法术", "形态", "幻境", "协战")
 FACTIONS = ("红莲", "苍叶", "青岚", "紫岩", "无相")
 RARITIES = ("N", "R", "SR", "SSR")
 LEVELS = (1, 2, 3)
+FRAME_VARIANTS = ("norm", "blue", "black", "red")
 
 _COMMON_FIELDS = ("type", "name", "description")
 _SHIKIGAMI_ONLY = ("faction",)
@@ -53,6 +57,7 @@ def _allowed_fields(ctype: str) -> set[str]:
         allowed |= set(_NON_SHIKIGAMI_FIELDS) | set(_STATS_BY_TYPE[ctype])
         if ctype in _EVOLVE_TYPES:
             allowed.add("evolve")
+            allowed.add("frame_variant")
     return allowed
 
 
@@ -94,6 +99,10 @@ def validate_card(data) -> list[str]:
             errors.append(f"字段 level：等级必须是整数 {'/'.join(map(str, LEVELS))} 之一")
         if "evolve" in data and not isinstance(data["evolve"], bool):
             errors.append("字段 evolve：必须是布尔值（true/false）")
+        if "frame_variant" in data and data["frame_variant"] not in FRAME_VARIANTS:
+            errors.append(
+                f"字段 frame_variant：非法框品「{data['frame_variant']}」，"
+                f"须为 {'/'.join(FRAME_VARIANTS)} 之一")
         for field in ("shikigami", "special_type", "description"):
             if field in data and not isinstance(data[field], str):
                 errors.append(f"字段 {field}：必须是字符串")

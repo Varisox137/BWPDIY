@@ -4,7 +4,17 @@ from PIL import Image, ImageDraw
 
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.common import paste_centered
-from bwpdiy.render.text import TEXT_FILL
+from bwpdiy.render.text import FRAME_TEXT_FILL
+
+# 卡牌类型 → 牌框/角标资源代码（web/app.py 经 pipeline 转引此表，勿改名）
+TYPE_FRAME_CODE = {
+    "式神": "form",   # 式神卡外观形状同形态牌
+    "形态": "form",
+    "战斗": "combat",
+    "法术": "spell",
+    "幻境": "field",
+    "协战": "reinforce",
+}
 
 FACTION_COLOR = {
     "红莲": "red",
@@ -13,6 +23,24 @@ FACTION_COLOR = {
     "紫岩": "purple",
     # 无相：无派系标，跳过
 }
+
+# 战斗牌护甲负值换破甲贴图：stats/combat_fragile_{1,2}.png，默认深红变体 2
+FRAGILE_VARIANT = 2
+
+# stat 字段 → stats/ 贴图文件名段（{code}_{field}.png）
+_FIELD_BADGE = {
+    "power+": "power", "power": "power",
+    "health+": "health", "health": "health",
+    "shield+": "shield",
+    "durability": "intensity",
+}
+
+
+def _frame_variant(card: dict) -> str:
+    """框品：协战恒 norm（无其他框品资源），其余读 card["frame_variant"]。"""
+    if card.get("type") == "协战":
+        return "norm"
+    return card.get("frame_variant", "norm")
 
 
 def _paste_element(canvas: Image.Image, img: Image.Image,
@@ -52,10 +80,6 @@ def _render_ink(text: str, font, stroke_width: int = 2):
     return img.crop(bbox), (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
 
 
-# 官方卡图正负号明显窄于数字（约半宽 0.55）；田氏颜体 +/- 是全宽字形，水平压缩补偿。
-# 用户裁定比官方口径稍大一点
-_SIGN_X_SCALE = 0.65
-
 # stat 适用矩阵（用户裁定唯一口径，渲染/文本避让/GUI 输入同表）：
 # (type, field) -> "signed"（带 ± 号，0 不绘制：战斗、法术觉醒）/ "plain"（无符号，0 照常绘制）
 # 表外组合即使 card 带该字段也不绘制；协战/非觉醒法术无任何 stat
@@ -84,6 +108,18 @@ def stat_rendered(elem: dict, card: dict) -> bool:
     return not (card[elem["field"]] == 0 and mode == "signed")
 
 
+def _render_sign(lib: AssetLibrary, name: str, size: int) -> Image.Image:
+    """正负号贴图：裁 alpha bbox 后等比 contain 进 size 见方框（与元素贴图同口径）。"""
+    img = lib.sign(name)
+    bbox = img.getchannel("A").getbbox()
+    if bbox:
+        img = img.crop(bbox)
+    scale = min(size / img.width, size / img.height)
+    return img.resize((max(1, round(img.width * scale)),
+                       max(1, round(img.height * scale))),
+                      Image.Resampling.LANCZOS)
+
+
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                    elem: dict, card: dict, ctx: dict | None = None,
                    composite: bool = False) -> Image.Image:
@@ -103,7 +139,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         if card.get("evolve", False):
             out = _paste_element(out, lib.level_star(), elem["pos"],
                                  (elem["star_size"], elem["star_size"]))
-        return _paste_element(out, lib.level_num("yellow", card["level"]),
+        return _paste_element(out, lib.level_num(card["level"]),
                               elem["pos"], (elem["num_size"], elem["num_size"]))
     if kind == "rarity_flank":
         rarity = card.get("rarity", "R")  # 缺省默认 R
@@ -111,7 +147,8 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         name_width = (ctx or {}).get("name_width", 0)
         # gap=默认半间距（短名静态固定 pos±gap）；仅卡名超宽时按与卡名缘固定 margin 外移
         offset = round(max(elem["gap"], name_width / 2 + elem.get("margin", 8)))
-        mark = lib.rarity(rarity)
+        variant = "reinforce" if card.get("type") == "协战" else _frame_variant(card)
+        mark = lib.rarity(rarity, variant)
         out = _paste_element(canvas, mark, (cx - offset, y),
                              (elem["size"], elem["size"]))
         # 偶数尺寸右标右移 1px：与左标保持关于 cx 的像素级镜像
@@ -127,41 +164,38 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         if not stat_rendered(elem, card):
             return canvas
         value = card[elem["field"]]
-        icon = elem["icon"]
-        if value < 0 and elem.get("icon_neg"):
-            icon = elem["icon_neg"]  # 负值换贴图（战斗护甲→破甲，按当前值自动选择）
-        out = _paste_element(canvas, lib.icon(icon, "l"), elem["pos"],
+        code = TYPE_FRAME_CODE[card["type"]]
+        badge_field = _FIELD_BADGE[elem["field"]]
+        if value < 0 and code == "combat" and elem["field"] == "shield+":
+            badge_field = f"fragile_{FRAGILE_VARIANT}"  # 负护甲→破甲，按当前值自动选择
+        out = _paste_element(canvas, lib.stat_badge(code, badge_field), elem["pos"],
                              (elem["icon_size"], elem["icon_size"]),
                              composite=composite)
         pos = elem["pos"]
         num_pos = (pos[0] + elem["num_offset"][0], pos[1] + elem["num_offset"][1])
         font = lib.font("name", elem["font_size"])
-        # signed 模式（战斗/法术觉醒）按实际正负拼 +/-，负值同走 0.65 压缩符号路径
-        sign = ""
-        if _stat_mode(elem, card) == "signed":
-            sign = "+" if value >= 0 else "-"
-        digits = str(abs(value)) if sign else str(value)
-        # 符号（如有）+ 数字作为一个整体块，块的视觉中心对齐 num_pos。
-        # 符号与数字分别离屏渲染取真墨迹：同一字体中 +/- 墨迹中心与数字不一致，
-        # 整串 mm 锚点会错位；符号水平压至 0.65 宽后与数字墨迹中心竖直对齐贴入。
-        digit_ink = _render_ink(digits, font)
+        stroke_width = elem.get("stroke_width", 2)
+        signed = _stat_mode(elem, card) == "signed"
+        digits = str(abs(value)) if signed else str(value)
+        # 符号贴图（如有）+ 数字作为一个整体块，块的视觉中心对齐 num_pos；
+        # sign_offset 为符号相对数字块的微调偏移
+        digit_ink = _render_ink(digits, font, stroke_width)
         if digit_ink is None:
             return out
         digit_img = digit_ink[0]
         sign_img = None
-        if sign:
-            sign_ink = _render_ink(sign, font)
-            if sign_ink is not None:
-                sign_img = sign_ink[0].resize(
-                    (max(1, round(sign_ink[0].width * _SIGN_X_SCALE)),
-                     sign_ink[0].height),
-                    Image.LANCZOS)
+        if signed:
+            sign_img = _render_sign(lib, "plus" if value >= 0 else "minus",
+                                    elem.get("sign_size", round(elem["font_size"] * 0.5)))
         sign_w = sign_img.width if sign_img is not None else 0
         gap = 2 if sign_img is not None else 0
         left = round(num_pos[0] - (sign_w + gap + digit_img.width) / 2)
         out = out.copy()
         if sign_img is not None:
-            out.alpha_composite(sign_img, (left, round(num_pos[1] - sign_img.height / 2)))
+            sx, sy = elem.get("sign_offset", [0, 0])
+            out.alpha_composite(sign_img,
+                                (left + round(sx),
+                                 round(num_pos[1] - sign_img.height / 2 + sy)))
         out.alpha_composite(digit_img,
                             (left + sign_w + gap, round(num_pos[1] - digit_img.height / 2)))
         return out
@@ -170,10 +204,11 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         text = card.get(name)
         if not text:
             return canvas
+        fills = FRAME_TEXT_FILL.get(_frame_variant(card), FRAME_TEXT_FILL["norm"])
         out = canvas.copy()
         draw = ImageDraw.Draw(out)
         draw.text(tuple(elem["pos"]), str(text),
                   font=lib.font(elem.get("font", "name"), elem["font_size"]),
-                  anchor="mm", fill=TEXT_FILL)
+                  anchor="mm", fill=fills.get(name, fills["desc"]))
         return out
     raise ValueError(f"未知元素 kind: {kind}")

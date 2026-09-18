@@ -1,6 +1,6 @@
-"""卡图（artwork）变换与蒙版裁切。"""
+"""卡图（artwork）变换。"""
 
-from PIL import Image, ImageFilter
+from PIL import Image
 
 
 def fit_artwork(img: Image.Image, target_size: tuple[int, int],
@@ -20,12 +20,3 @@ def fit_artwork(img: Image.Image, target_size: tuple[int, int],
     left = min(max(round(left), 0), max(nw - tw, 0))
     top = min(max(round(top), 0), max(nh - th, 0))
     return resized.crop((left, top, left + tw, top + th)).convert("RGBA")
-
-
-def apply_mask(img: Image.Image, mask: Image.Image,
-               blur_radius: float = 1.0) -> Image.Image:
-    """蒙版高斯平滑（radius=1 沿用 legacy 观感）后作为 img 的 alpha。"""
-    smoothed = mask.filter(ImageFilter.GaussianBlur(blur_radius))
-    out = img.copy()
-    out.putalpha(smoothed)
-    return out

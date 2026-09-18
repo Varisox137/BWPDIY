@@ -87,10 +87,10 @@ def test_faction(assets_dir):
 
 def test_stat_signed_and_offset(assets_dir):
     lib = AssetLibrary(assets_dir)
-    elem = {"kind": "stat", "field": "power+", "icon": "ll", "pos": [160, 485],
+    elem = {"kind": "stat", "field": "power+", "pos": [160, 485],
             "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
     img = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": 1})
-    assert opaque(img) > 100  # 图标+数字两处像素
+    assert opaque(img) > 100  # 图标+符号+数字像素
     # 缺字段跳过
     assert opaque(render_element(canvas(), lib, "power", elem, {"type": "战斗"})) == 0
 
@@ -125,15 +125,17 @@ def _cy(bbox):
 
 @pytest.mark.parametrize("value", [3, -3, -12])
 def test_stat_signed_block_centered(assets_dir, value):
-    """带号 stat（战斗）：符号+数字整体块的视觉中心对齐 num_pos（容差 1px）。
+    """带号 stat（战斗）：符号贴图+数字整体块的视觉中心对齐 num_pos（容差 1px）。
 
-    覆盖 + 与 -：田氏颜体 `-` 字形预测 bbox 虚报底边，按预测口径对齐会错位（审查回归）。
+    覆盖 + 与 -：符号为 signs/plus|minus.png 贴图（裁 bbox 等比 contain 进
+    sign_size 见方框），与数字墨迹中心竖直对齐组成整体块。
     """
     from bwpdiy.render.badges import _render_ink
     lib = AssetLibrary(assets_dir)
     # num_offset 拉大，使数字带与图标像素分离便于测量；num_pos=(160,485)
-    elem = {"kind": "stat", "field": "power+", "icon": "ll", "pos": [100, 485],
-            "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
+    elem = {"kind": "stat", "field": "power+", "pos": [100, 485],
+            "icon_size": 32, "num_offset": [60, 0], "font_size": 30,
+            "sign_size": 12}
     signed = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": value})
     # 整体块：num_pos=(160,485) 附近（图标在 x≤116，不进带）
     block = _band_bbox(signed, 120, 260)
@@ -144,16 +146,16 @@ def test_stat_signed_block_centered(assets_dir, value):
     dw = _render_ink(str(abs(value)), font)[0].width
     s_digits = _band_bbox(signed, block[2] - dw, block[2])
     s_sign = _band_bbox(signed, block[0], block[2] - dw - 1)
-    assert s_digits and s_sign
+    assert s_digits and s_sign  # alpha 含符号区（贴图）与数字区
     assert abs(_cy(s_sign) - _cy(s_digits)) <= 1
-    # 符号半宽化：符号明显窄于数字（田氏颜体 +/- 为全宽字形，须水平压缩；用户裁定 0.65）
+    # 符号贴图明显窄于数字块
     assert (s_sign[2] - s_sign[0]) < (s_digits[2] - s_digits[0])
 
 
 def test_stat_unsigned_block_centered(assets_dir):
     """不带号 stat（式神/形态/幻境等其余类型）：数字视觉中心对齐 num_pos。"""
     lib = AssetLibrary(assets_dir)
-    elem = {"kind": "stat", "field": "power", "icon": "ll", "pos": [100, 485],
+    elem = {"kind": "stat", "field": "power", "pos": [100, 485],
             "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
     img = render_element(canvas(), lib, "power", elem, {"type": "式神", "power": 12})
     block = _band_bbox(img, 120, 260)
@@ -164,12 +166,13 @@ def test_stat_unsigned_block_centered(assets_dir):
 def test_stat_sign_derived_by_type(assets_dir):
     """符号规则按 stat 适用矩阵：战斗/法术觉醒 ±，式神/形态/幻境不带号。
 
-    法术觉醒与战斗共用同一 signed 路径（含负值压缩符号），同值渲染逐像素一致——
-    钉死审查遗留的"法术负值走全宽 - 路径"不一致。
+    法术觉醒与战斗共用同一 signed 贴图路径（含负值 minus.png），数字带逐像素一致——
+    钉死审查遗留的"法术负值走全宽 - 路径"不一致（图标按类型不同，只比数字带）。
     """
     lib = AssetLibrary(assets_dir)
-    elem = {"kind": "stat", "field": "power+", "icon": "ll", "pos": [100, 485],
-            "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
+    elem = {"kind": "stat", "field": "power+", "pos": [100, 485],
+            "icon_size": 32, "num_offset": [60, 0], "font_size": 30,
+            "sign_size": 12}
 
     def digit_band(card):
         img = render_element(canvas(), lib, "power", elem, card)
@@ -178,16 +181,14 @@ def test_stat_sign_derived_by_type(assets_dir):
     spell = digit_band({"type": "法术", "evolve": True, "power+": 3})  # 法术觉醒：+
     combat = digit_band({"type": "战斗", "power+": -3})  # 战斗：+/-
     assert spell and combat
-    # 法术觉醒 +3 与战斗 +3 逐像素一致（同一 signed 路径）
-    combat_pos = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": 3})
-    spell_img = render_element(canvas(), lib, "power", elem,
-                               {"type": "法术", "evolve": True, "power+": 3})
-    assert list(combat_pos.getdata()) == list(spell_img.getdata())
-    # 法术觉醒 -3 与战斗 -3 逐像素一致：负值同走 0.65 压缩符号路径
-    combat_neg = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": -3})
-    spell_neg = render_element(canvas(), lib, "power", elem,
-                               {"type": "法术", "evolve": True, "power+": -3})
-    assert list(combat_neg.getdata()) == list(spell_neg.getdata())
+    # 法术觉醒与战斗同值渲染的数字带（符号+数字块）逐像素一致（同一 signed 路径）
+    for value in (3, -3):
+        combat_img = render_element(canvas(), lib, "power", elem,
+                                    {"type": "战斗", "power+": value})
+        spell_img = render_element(canvas(), lib, "power", elem,
+                                   {"type": "法术", "evolve": True, "power+": value})
+        assert (combat_img.crop((120, 400, 260, 512)).tobytes()
+                == spell_img.crop((120, 400, 260, 512)).tobytes())
 
 
 @pytest.mark.parametrize("card", [
@@ -202,7 +203,7 @@ def test_stat_matrix_off_whitelist_skipped(assets_dir, card):
     """适用矩阵表外组合即使 card 带该字段也不绘制。"""
     lib = AssetLibrary(assets_dir)
     field = "shield+" if "shield+" in card else "power+"
-    elem = {"kind": "stat", "field": field, "icon": "ll", "pos": [160, 485],
+    elem = {"kind": "stat", "field": field, "pos": [160, 485],
             "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
     assert opaque(render_element(canvas(), lib, "stat", elem, card)) == 0
 
@@ -212,7 +213,7 @@ def test_stat_matrix_off_whitelist_skipped(assets_dir, card):
 def test_stat_zero_skipped_for_combat_evolve_spell(assets_dir, card_type, field):
     """战斗/法术觉醒的加成 stat 值为 0 时整个角标（图标+数字）不渲染。"""
     lib = AssetLibrary(assets_dir)
-    elem = {"kind": "stat", "field": field, "icon": "ll", "pos": [160, 485],
+    elem = {"kind": "stat", "field": field, "pos": [160, 485],
             "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
     card = {field: 0, "type": card_type, "evolve": True}
     assert opaque(render_element(canvas(), lib, "stat", elem, card)) == 0
@@ -225,7 +226,7 @@ def test_stat_zero_skipped_for_combat_evolve_spell(assets_dir, card_type, field)
 def test_stat_zero_rendered_for_body_types(assets_dir, card_type, field):
     """式神/形态/幻境的 stat 值为 0 也照常渲染。"""
     lib = AssetLibrary(assets_dir)
-    elem = {"kind": "stat", "field": field, "icon": "ll", "pos": [160, 485],
+    elem = {"kind": "stat", "field": field, "pos": [160, 485],
             "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
     assert opaque(render_element(canvas(), lib, "stat", elem, {field: 0, "type": card_type})) > 0
 
@@ -262,15 +263,21 @@ def test_level_badge_disabled(assets_dir):
     assert opaque(render_element(canvas(), lib, "level", elem, {"level": 2})) > 0
 
 
-def test_stat_icon_neg(assets_dir):
+def test_stat_negative_shield_uses_fragile_badge(assets_dir):
+    """战斗护甲按当前值自动选贴图：值 < 0 用破甲（combat_fragile_2），否则护甲。"""
     lib = AssetLibrary(assets_dir)
-    elem = {"kind": "stat", "field": "shield+", "icon": "hj", "icon_neg": "pj",
-            "pos": [360, 485], "icon_size": 32, "num_offset": [22, 0],
-            "font_size": 30}
-    # 战斗护甲按当前值自动选贴图：值 < 0 用破甲 pj，否则护甲 hj
+    elem = {"kind": "stat", "field": "shield+", "pos": [360, 485],
+            "icon_size": 32, "num_offset": [40, 0], "font_size": 30}  # 数字远移，图标区纯净
     pos_img = render_element(canvas(), lib, "shield", elem, {"type": "战斗", "shield+": 1})
     neg_img = render_element(canvas(), lib, "shield", elem, {"type": "战斗", "shield+": -1})
     assert list(pos_img.getdata()) != list(neg_img.getdata())  # 负值换用破甲贴图
+    # 负值图标区与 fragile_2 贴图直贴一致（钉死负值贴图来源）
+    from bwpdiy.render.badges import FRAGILE_VARIANT, _paste_element
+    direct = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+    direct = _paste_element(direct, lib.stat_badge("combat", f"fragile_{FRAGILE_VARIANT}"),
+                            (360, 485), (32, 32))
+    icon_box = (344, 469, 376, 501)
+    assert (neg_img.crop(icon_box).tobytes() == direct.crop(icon_box).tobytes())
 
 
 # ---------- 掩膜采集：composite 贴图保真（P1 修复） ----------
@@ -297,8 +304,8 @@ def test_stat_mask_composite_covers_faint_edges(assets_dir):
     d = ImageDraw.Draw(icon)
     d.rectangle((8, 8, 23, 23), fill=(10, 10, 10, 255))
     d.rectangle((4, 4, 27, 27), outline=(10, 10, 10, 20), width=4)
-    fake_lib = SimpleNamespace(icon=lambda *a, **k: icon, font=lib.font)
-    elem = {"kind": "stat", "field": "power", "icon": "ll",
+    fake_lib = SimpleNamespace(stat_badge=lambda *a, **k: icon, font=lib.font)
+    elem = {"kind": "stat", "field": "power",
             "pos": [100, 100], "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
     card = {"type": "式神", "power": 3}
     default_runs = mask_row_runs(render_element(canvas(), fake_lib, "power", elem, card)

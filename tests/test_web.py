@@ -133,6 +133,16 @@ def test_preview_card_override_invalid(client):
     assert r.status_code == 400
 
 
+def test_preview_frame_variant_passthrough(client):
+    """预览请求 card 覆盖的 frame_variant 无白名单过滤、透传渲染（样卡本身不携带该字段）。"""
+    tl = _battle_layout(client)
+    r = client.post("/api/preview", json={
+        "type": "战斗", "layout": tl, "card": {"frame_variant": "blue"}})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    base = client.post("/api/preview", json={"type": "战斗", "layout": tl})
+    assert base.status_code == 200  # 覆盖不污染样卡（SAMPLE_CARDS 深拷贝）
+
+
 def test_samples_api(client):
     """GET /api/samples：六类型样卡字段（剥内部键），供 GUI 内容输入框预填。"""
     r = client.get("/api/samples")

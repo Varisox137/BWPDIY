@@ -1,6 +1,6 @@
 from PIL import Image
 
-from bwpdiy.render.artwork import apply_mask, fit_artwork
+from bwpdiy.render.artwork import fit_artwork
 
 
 def make_art(w=800, h=600):
@@ -34,14 +34,3 @@ def test_fit_offset_shifts_window():
 def test_fit_offset_clamped():
     out = fit_artwork(make_art(600, 600), (512, 512), offset_x=99999)
     assert out.size == (512, 512)  # 钳制不抛异常
-
-
-def test_apply_mask_alpha():
-    img = make_art(512, 512)
-    mask = Image.new("L", (512, 512), 0)
-    for y in range(100, 200):
-        for x in range(100, 200):
-            mask.putpixel((x, y), 255)
-    out = apply_mask(img, mask, blur_radius=0)
-    assert out.getpixel((150, 150))[3] == 255
-    assert out.getpixel((10, 10))[3] == 0

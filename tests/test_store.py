@@ -270,6 +270,10 @@ def test_save_card_validates_schema(lib):
     {**FORM, "evolve": True},                           # 形态可觉醒
     {**FIELD, "evolve": True},                          # 幻境可觉醒
     {**SPELL, "special_type": "衍生"},
+    {**FIGHT, "frame_variant": "norm"},                 # 框品：战斗可携带
+    {**SPELL, "frame_variant": "blue"},                 # 琉璃
+    {**FORM, "frame_variant": "black"},                 # 墨染
+    {**FIELD, "frame_variant": "red"},                  # 百炼
     FORM,
     FIELD,
     ASSIST,
@@ -297,6 +301,10 @@ def test_validate_ok(card):
     ({**FIGHT, "evolve": "是"}, "evolve"),
     ({**ASSIST, "evolve": True}, "evolve"),             # 协战不可觉醒（白名单之外）
     ({**SHIKIGAMI, "evolve": True}, "evolve"),          # 式神不可觉醒
+    ({**FIGHT, "frame_variant": "gold"}, "frame_variant"),   # 非法框品
+    ({**FIGHT, "frame_variant": 1}, "frame_variant"),
+    ({**SHIKIGAMI, "frame_variant": "blue"}, "frame_variant"),  # 式神无框品（白名单之外）
+    ({**ASSIST, "frame_variant": "blue"}, "frame_variant"),     # 协战无框品（白名单之外）
     ({**SHIKIGAMI, "power": True}, "power"),          # bool 不算 int
     ({**SHIKIGAMI, "health": -1}, "health"),          # 非负
     ({**FIGHT, "power+": "1"}, "power+"),

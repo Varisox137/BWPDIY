@@ -24,7 +24,6 @@
       "power": {
         "kind": "stat",
         "field": "power",
-        "icon": "ll",
         "pos": [
           151,
           482
@@ -34,12 +33,16 @@
           2,
           3
         ],
-        "font_size": 56
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "sign_size": 28
       },
       "health": {
         "kind": "stat",
         "field": "health",
-        "icon": "sm",
         "pos": [
           360,
           481
@@ -49,7 +52,12 @@
           0,
           4
         ],
-        "font_size": 56
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "sign_size": 28
       },
       "name": {
         "kind": "text",
@@ -112,7 +120,6 @@
       "power": {
         "kind": "stat",
         "field": "power+",
-        "icon": "ll",
         "pos": [
           151,
           481
@@ -122,13 +129,16 @@
           2,
           3
         ],
-        "font_size": 56
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "sign_size": 28
       },
       "shield": {
         "kind": "stat",
         "field": "shield+",
-        "icon": "hj",
-        "icon_neg": "pj",
         "pos": [
           360,
           478
@@ -138,7 +148,12 @@
           2,
           2
         ],
-        "font_size": 56
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "sign_size": 28
       },
       "name": {
         "kind": "text",
@@ -201,7 +216,6 @@
       "power": {
         "kind": "stat",
         "field": "power+",
-        "icon": "ll",
         "pos": [
           145,
           481
@@ -211,12 +225,16 @@
           2,
           3
         ],
-        "font_size": 56
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "sign_size": 28
       },
       "health": {
         "kind": "stat",
         "field": "health+",
-        "icon": "sm",
         "pos": [
           367,
           480
@@ -226,7 +244,12 @@
           0,
           4
         ],
-        "font_size": 56
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "sign_size": 28
       },
       "name": {
         "kind": "text",
@@ -289,7 +312,6 @@
       "power": {
         "kind": "stat",
         "field": "power",
-        "icon": "ll",
         "pos": [
           151,
           482
@@ -299,12 +321,16 @@
           2,
           3
         ],
-        "font_size": 56
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "sign_size": 28
       },
       "health": {
         "kind": "stat",
         "field": "health",
-        "icon": "sm",
         "pos": [
           360,
           481
@@ -314,7 +340,12 @@
           0,
           4
         ],
-        "font_size": 56
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "sign_size": 28
       },
       "name": {
         "kind": "text",
@@ -367,7 +398,7 @@
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
-          248,
+          256,
           344
         ],
         "gap": 90,
@@ -377,7 +408,6 @@
       "durability": {
         "kind": "stat",
         "field": "durability",
-        "icon": "nj",
         "pos": [
           361,
           483
@@ -387,12 +417,17 @@
           0,
           5
         ],
-        "font_size": 50
+        "font_size": 50,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "sign_size": 25
       },
       "name": {
         "kind": "text",
         "pos": [
-          248,
+          256,
           342
         ],
         "font_size": 24,
@@ -401,7 +436,7 @@
       "footer": {
         "kind": "text",
         "pos": [
-          248,
+          256,
           500
         ],
         "font_size": 15,
@@ -411,7 +446,7 @@
     "text_regions": {
       "desc": {
         "center": [
-          246,
+          256,
           421
         ],
         "width": 250,

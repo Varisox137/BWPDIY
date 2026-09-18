@@ -7,7 +7,7 @@
 - 单包分层：`bwpdiy/render`（纯 PIL 渲染库）← `bwpdiy/store`（卡牌库+校验）← `bwpdiy/web`（FastAPI 编辑器）。**render 不得 import store/web**（BWPro 只 import `bwpdiy.render`，不能拖入 FastAPI）。
 - `legacy/` 只读封存参考（旧版半成品源码与资源，无版本控制），任何情况下不修改、不删除。
 - `library/` 是用户创作数据，gitignore，不提交。
-- `assets/` 美术资源来自 legacy `basics/`，命名约定（牌框 `frames/frame_{zd/fs/xt/hj/xz}_{框品}_{版型}.png` 一期仅收 `*_norm_low.png`、蒙版 `masks/mask_*_low.png`，high 版型与 blue/black/red 框品原图留存 `frames/unprocessed/`）改动须同步 `docs/terminology.md`。
+- `assets/` 美术资源来自 legacy `basics/` 与 PSD 导出（`scripts/import_psd_assets.py` 生成）：命名约定牌框 `frames/{form,combat,spell,field,reinforce}_{框品}.png`（协战仅 norm）、等级 `levels/{base,evolve_star,level_{1,2,3}_yellow}.png`、稀有度 `rarity/{R,SR,SSR}{,_blue,_red}.png`+`reinforce_*`+`N.png`、数值标 `stats/{code}_{field}.png`、正负号 `signs/{plus,minus}.png`；masks 已废弃；旧位图资产封存 `assets/legacy/`。改动须同步 `docs/terminology.md`。
 
 ## 数据纪律
 

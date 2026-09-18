@@ -7,7 +7,20 @@ from PIL import Image, ImageDraw, ImageFont
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.geometry import clamp_span_by_mask, mask_row_runs
 
-TEXT_FILL = (60, 45, 30, 255)
+# 文字颜色按框品（取色来源见 T1 资产报告：文字位图不透明像素主色）：
+# name 卡名 / footer 脚注 / desc 描述
+FRAME_TEXT_FILL = {
+    "norm": {"name": (61, 68, 75, 255), "footer": (61, 68, 75, 255),
+             "desc": (92, 112, 126, 255)},
+    "blue": {"name": (233, 244, 254, 255), "footer": (201, 218, 238, 255),
+             "desc": (202, 219, 239, 255)},
+    "black": {"name": (187, 175, 151, 255), "footer": (187, 169, 129, 255),
+              "desc": (218, 194, 146, 255)},
+    "red": {"name": (251, 234, 237, 255), "footer": (217, 161, 170, 255),
+            "desc": (238, 206, 209, 255)},
+}
+
+TEXT_FILL = FRAME_TEXT_FILL["norm"]["desc"]
 
 _LINE_GAP = 6
 

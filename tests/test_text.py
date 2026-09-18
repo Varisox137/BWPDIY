@@ -111,10 +111,14 @@ def test_ink_mask_avoidance_wider_than_bbox(assets_dir):
     assert 216 < font36.getlength(text) <= 271, "字体度量变化导致窗口失效，需重选窗口"
     ink = ink_mask([(105, 360, 125, 400)])
     bbox = ink_mask([(100, 360, 180, 400)])
-    fitted_ink = fit_in_region(text, region, lib, obstacle_mask=ink)
-    fitted_bbox = fit_in_region(text, region, lib, obstacle_mask=bbox)
-    assert fitted_ink[0].size == 36  # 墨迹口径：最大字号即可放下
-    assert fitted_bbox[0].size < fitted_ink[0].size  # bbox 口径：必须缩字号
+    # 直接测排版层口径（fit 层另有末行居中/锚点上移验收，与宽窄口径无关）：
+    # 墨迹口径 36 号排得下；bbox 口径（右缘到 x180+4）排不下
+    from bwpdiy.render.geometry import mask_row_runs
+    from bwpdiy.render.text import _layout_at_size
+    assert _layout_at_size(text, font36, region, region["wrap"],
+                           mask_row_runs(ink)) is not None
+    assert _layout_at_size(text, font36, region, region["wrap"],
+                           mask_row_runs(bbox)) is None
 
 
 def test_no_obstacle_mask_keeps_full_width(assets_dir):
@@ -145,9 +149,13 @@ def test_obstacle_gap_field(assets_dir):
     text += "测"
     assert 242 < font36.getlength(text) <= 265, "字体度量变化导致窗口失效，需重选窗口"
     half = font36.getlength(text) / 2
-    font, lines = fit_in_region(text, dict(base), lib, obstacle_mask=mask)
+    # 触界平移是排版层（_layout_at_size）口径；fit 层会先尝试锚点上移/缩字号避免触界
+    from bwpdiy.render.geometry import mask_row_runs
+    from bwpdiy.render.text import _layout_at_size
+    runs = mask_row_runs(mask)
+    lines = _layout_at_size(text, font36, dict(base), False, runs)
     assert abs(lines[0][1] - (129 + half)) < 1e-6  # 左界 125+4
-    font, lines = fit_in_region(text, dict(base, obstacle_gap=10), lib, obstacle_mask=mask)
+    lines = _layout_at_size(text, font36, dict(base, obstacle_gap=10), False, runs)
     assert abs(lines[0][1] - (135 + half)) < 1e-6  # 左界 125+10
 
 
@@ -203,12 +211,30 @@ def test_center_offset_shifts_anchor(assets_dir):
     assert fit_in_region("短句", dict(region, center_offset=[0, 60]), lib) is None
 
 
+def test_fit_lifts_anchor_to_recenter_last_line(assets_dir):
+    """末行被右下角障碍挤偏时：fit 先逐 px 上移居中锚点（≤半行高）救回末行居中，
+    不行才缩字号。"""
+    from bwpdiy.render.geometry import mask_row_runs
+    from bwpdiy.render.text import _layout_at_size
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(100, 300, 400, 420)  # 中心 (250,360)
+    mask = ink_mask([(300, 390, 400, 420)])  # 右下角墨迹块
+    text = "第一行文本内容\n第二行居中验证"
+    font, lines = fit_in_region(text, region, lib, obstacle_mask=mask)
+    assert lines is not None and len(lines) == 2
+    assert abs(lines[-1][1] - 250) < 1e-6  # 末行回中
+    # 同字号锚点不上移时末行被挤偏（证明确为上移救回，而非字号缩小顺带解决）
+    raw = _layout_at_size(text, font, region, region["wrap"], mask_row_runs(mask))
+    assert raw is None or abs(raw[-1][1] - 250) > 1e-6
+
+
 def test_vertical_center_with_obstacles(assets_dir):
-    """有角标墨迹时文本块仍竖直居中（收窄只影响行宽与行数）。"""
+    """有角标墨迹时：末行须保持水平居中（锚点按需自动上移），块整体不出区域。"""
     lib = AssetLibrary(assets_dir)
     text = "这是一段用于验证竖直居中的长描述文本，需要排很多行才能放下。" * 3
     region = rect_region(100, 100, 400, 400)
     mask = ink_mask([(100, 350, 160, 400), (340, 350, 400, 400)])
     font, lines = fit_in_region(text, region, lib, obstacle_mask=mask)
     assert len(lines) > 1
-    assert abs((lines[0][2] + lines[-1][2]) / 2 - 250) <= 1
+    assert abs(lines[-1][1] - 250) < 1e-6  # 末行水平居中（锚点已按需上移）
+    assert lines[0][2] >= 100 and lines[-1][2] <= 400  # 块不出区域

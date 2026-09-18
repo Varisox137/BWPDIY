@@ -37,18 +37,18 @@ def _line_height(font: ImageFont.FreeTypeFont) -> float:
 
 def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
                     region: dict, wrap: bool,
-                    row_runs: dict | None = None):
+                    row_runs: dict | None = None, dy: float = 0):
     """按给定字号在矩形区内排版，成功返回 [(行, cx, cy)]，失败返回 None。
 
     文本块（行数 × 行高）在区域内水平逐行居中、竖直整体居中：
-    先定字号与行数，再把文本块中心对齐区域中心。居中锚点可用
-    `center_offset`（缺省 [0,0]，per-type 键）平移——区域边界与行宽不变，
-    只移动视觉居中基准（如右下角大数字时左移锚点让触界行视觉居中）。
+    先定字号与行数，再把文本块中心对齐居中锚点。居中锚点 =
+    区域中心 + `center_offset`（缺省 [0,0]，per-type 键）- 临时上移 dy
+    （_fit 的自适应尝试用，见 _fit）；区域边界与行宽不变。
     行可用宽度按掩膜墨迹（row_runs）逐行收窄，间距字段 obstacle_gap（缺省 4）。
     """
     cx, cy = region["center"]
     ox, oy = region.get("center_offset", [0, 0])
-    acx, acy = cx + ox, cy + oy  # 居中锚点
+    acx, acy = cx + ox, cy + oy - dy  # 居中锚点（dy=自适应临时上移量）
     half_w, half_h = region["width"] / 2, region["height"] / 2
     y_top, y_bottom = cy - half_h, cy + half_h
     lh = _line_height(font)
@@ -131,12 +131,18 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
 
 
 def _fit(text: str, region: dict, lib: AssetLibrary, row_runs: dict | None):
+    """字号从大到小适配；每个字号上先尝试逐 px 临时上移居中锚点（1px 步进、
+    至多半行高）——接受条件：排得下且末行水平居中（未被障碍挤偏）。
+    当前字号所有上移量都不行才减小字号。"""
     max_size, min_size = region["font_range"]
+    acx = region["center"][0] + region.get("center_offset", [0, 0])[0]
     for size in range(max_size, min_size - 1, -1):
         font = lib.font(region["font"], size)
-        lines = _layout_at_size(text, font, region, region["wrap"], row_runs)
-        if lines is not None:
-            return font, lines
+        max_dy = int(_line_height(font) / 2)
+        for dy in range(0, max_dy + 1):
+            lines = _layout_at_size(text, font, region, region["wrap"], row_runs, dy=dy)
+            if lines is not None and abs(lines[-1][1] - acx) < 1e-6:
+                return font, lines
     return None
 
 

@@ -24,7 +24,9 @@ CARD_SIZE = (512, 512)
 
 # 牌框 alpha 清理阈值：alpha < 此值的像素视为杂点删去（PSD 导出在框缘外
 # 留有低透明度散点，会挂住卡图造成出框残留）；同时影响轮廓裁剪的框形判定。
-FRAME_ALPHA_THRESHOLD = 64
+# 192 为激进档（用户定稿，后续可能手修牌框资源）：削掉边缘 1-2px 抗锯齿，
+# 实测不伤内部装饰（差异全部位为边缘抗锯齿线）。
+FRAME_ALPHA_THRESHOLD = 192
 
 
 def _clean_frame(frame: Image.Image) -> Image.Image:

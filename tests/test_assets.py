@@ -8,9 +8,11 @@ def test_load_frame(assets_dir):
     lib = AssetLibrary(assets_dir)
     for code in ("form", "combat", "spell", "field", "reinforce"):
         frame = lib.frame(code)
-        assert frame.mode == "RGBA" and frame.size == (512, 512)
+        # 素材为手工修整的紧致裁剪图：RGBA、不超过 512 画布（居中贴回由管线负责）
+        assert frame.mode == "RGBA"
+        assert 0 < frame.width <= 512 and 0 < frame.height <= 512
     for variant in ("blue", "red", "black"):
-        assert lib.frame("combat", variant).size == (512, 512)
+        assert lib.frame("combat", variant).mode == "RGBA"
 
 
 def test_load_levels_and_rarity(assets_dir):
@@ -40,11 +42,19 @@ def test_rarity_reinforce(assets_dir):
 
 def test_load_stat_badge_and_sign(assets_dir):
     lib = AssetLibrary(assets_dir)
-    assert lib.stat_badge("combat", "power").mode == "RGBA"
-    assert lib.stat_badge("combat", "fragile_2").mode == "RGBA"
-    assert lib.stat_badge("field", "intensity").mode == "RGBA"
+    assert lib.stat_badge("power").mode == "RGBA"
+    assert lib.stat_badge("combat_fragile_2").mode == "RGBA"
+    assert lib.stat_badge("field_intensity").mode == "RGBA"
     assert lib.sign("plus").mode == "RGBA"
     assert lib.sign("minus").mode == "RGBA"
+
+
+def test_stats_dir_no_duplicate_assets(assets_dir):
+    """stats/ 文件集合钉死：力量/生命全类型共用，不允许 form_/spell_/combat_ 前缀重复资源回归。"""
+    files = sorted(p.name for p in (assets_dir / "stats").glob("*.png"))
+    assert files == ["combat_fragile_1.png", "combat_fragile_2.png",
+                     "combat_shield.png", "field_intensity.png",
+                     "health.png", "power.png"]
 
 
 def test_load_faction_and_icon(assets_dir):
@@ -66,6 +76,6 @@ def test_missing_resource_raises(assets_dir):
         lib.frame("xx")
     assert "xx_norm.png" in str(e.value)
     with pytest.raises(FileNotFoundError):
-        lib.stat_badge("xx", "power")
+        lib.stat_badge("xx")
     with pytest.raises(FileNotFoundError):
         lib.sign("tilde")

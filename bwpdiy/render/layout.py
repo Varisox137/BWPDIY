@@ -11,8 +11,12 @@ from pathlib import Path
 _DEFAULT = Path(__file__).with_name("default_layout.json")
 
 # 可按类型不同的键（位置/内容类）；其余数值字段为尺寸类，跨类型必须一致
+# group_offset：四类带符号数值的符号数字整体偏移，按类型×角标各自微调，不归一
+# fragile_pos：战斗破甲角标坐标（与护甲分离，位置类不归一）
+# center_offset：desc 文本区居中锚点偏移（视觉居中基准平移，区域边界不变），per-type
 _PER_TYPE_KEYS = {"pos", "center", "kind", "field",
-                  "style", "font", "wrap"}
+                  "style", "font", "wrap", "group_offset", "fragile_pos",
+                  "center_offset"}
 
 
 def _freeze(value):

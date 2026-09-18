@@ -5,12 +5,20 @@
         "kind": "level_badge",
         "pos": [
           128,
-          63
+          64
         ],
-        "base_size": 56,
-        "star_size": 72,
-        "num_size": 45,
-        "enabled": true
+        "base_size": 58,
+        "star_size": 76,
+        "num_size": 40,
+        "enabled": true,
+        "star_offset": [
+          0,
+          -4
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "faction": {
         "kind": "faction",
@@ -25,12 +33,33 @@
         "kind": "stat",
         "field": "power",
         "pos": [
-          151,
-          482
+          158,
+          479
         ],
-        "icon_size": 74,
+        "icon_size": 72,
         "num_offset": [
-          2,
+          -1,
+          2
+        ],
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 28,
+        "sign_size_minus": 16
+      },
+      "health": {
+        "kind": "stat",
+        "field": "health",
+        "pos": [
+          358,
+          478
+        ],
+        "icon_size": 76,
+        "num_offset": [
+          0,
           3
         ],
         "font_size": 56,
@@ -38,26 +67,8 @@
           0,
           0
         ],
-        "sign_size": 28
-      },
-      "health": {
-        "kind": "stat",
-        "field": "health",
-        "pos": [
-          360,
-          481
-        ],
-        "icon_size": 102,
-        "num_offset": [
-          0,
-          4
-        ],
-        "font_size": 56,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "sign_size": 28
+        "sign_size_plus": 28,
+        "sign_size_minus": 16
       },
       "name": {
         "kind": "text",
@@ -72,7 +83,7 @@
         "kind": "text",
         "pos": [
           256,
-          498
+          499
         ],
         "font_size": 15,
         "font": "desc"
@@ -80,9 +91,13 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
-          417
+          416
         ],
         "width": 250,
         "height": 125,
@@ -103,9 +118,17 @@
           128,
           64
         ],
-        "base_size": 56,
-        "star_size": 72,
-        "num_size": 45
+        "base_size": 58,
+        "star_size": 76,
+        "num_size": 40,
+        "star_offset": [
+          0,
+          -4
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -121,31 +144,12 @@
         "kind": "stat",
         "field": "power+",
         "pos": [
-          151,
-          481
+          156,
+          479
         ],
-        "icon_size": 74,
+        "icon_size": 72,
         "num_offset": [
-          2,
-          3
-        ],
-        "font_size": 56,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "sign_size": 28
-      },
-      "shield": {
-        "kind": "stat",
-        "field": "shield+",
-        "pos": [
-          360,
-          478
-        ],
-        "icon_size": 66,
-        "num_offset": [
-          2,
+          -1,
           2
         ],
         "font_size": 56,
@@ -153,7 +157,51 @@
           0,
           0
         ],
-        "sign_size": 28
+        "stroke_width": 2,
+        "group_offset": [
+          -1,
+          0
+        ],
+        "sign_size_plus": 28,
+        "sign_size_minus": 16
+      },
+      "shield": {
+        "kind": "stat",
+        "field": "shield+",
+        "pos": [
+          360,
+          480
+        ],
+        "icon_size": 70,
+        "num_offset": [
+          1,
+          1
+        ],
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 28,
+        "sign_size_minus": 16,
+        "fragile_pos": [
+          360,
+          478
+        ],
+        "fragile_icon_size": 70,
+        "fragile_num_offset": [
+          1,
+          2
+        ],
+        "fragile_sign_offset": [
+          0,
+          0
+        ]
       },
       "name": {
         "kind": "text",
@@ -176,6 +224,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           418
@@ -196,12 +248,20 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          126,
-          42
+          124,
+          64
         ],
-        "base_size": 56,
-        "star_size": 72,
-        "num_size": 45
+        "base_size": 58,
+        "star_size": 76,
+        "num_size": 40,
+        "star_offset": [
+          0,
+          -4
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -217,12 +277,37 @@
         "kind": "stat",
         "field": "power+",
         "pos": [
-          145,
-          481
+          152,
+          479
         ],
-        "icon_size": 74,
+        "icon_size": 72,
         "num_offset": [
-          2,
+          -1,
+          2
+        ],
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "group_offset": [
+          -2,
+          0
+        ],
+        "sign_size_plus": 28,
+        "sign_size_minus": 16
+      },
+      "health": {
+        "kind": "stat",
+        "field": "health+",
+        "pos": [
+          365,
+          478
+        ],
+        "icon_size": 76,
+        "num_offset": [
+          0,
           3
         ],
         "font_size": 56,
@@ -230,26 +315,12 @@
           0,
           0
         ],
-        "sign_size": 28
-      },
-      "health": {
-        "kind": "stat",
-        "field": "health+",
-        "pos": [
-          367,
-          480
-        ],
-        "icon_size": 102,
-        "num_offset": [
-          0,
-          4
-        ],
-        "font_size": 56,
-        "sign_offset": [
-          0,
+        "group_offset": [
+          -1,
           0
         ],
-        "sign_size": 28
+        "sign_size_plus": 28,
+        "sign_size_minus": 16
       },
       "name": {
         "kind": "text",
@@ -264,7 +335,7 @@
         "kind": "text",
         "pos": [
           256,
-          497
+          498
         ],
         "font_size": 15,
         "font": "desc"
@@ -272,6 +343,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           418
@@ -293,11 +368,19 @@
         "kind": "level_badge",
         "pos": [
           128,
-          63
+          64
         ],
-        "base_size": 56,
-        "star_size": 72,
-        "num_size": 45
+        "base_size": 58,
+        "star_size": 76,
+        "num_size": 40,
+        "star_offset": [
+          0,
+          -4
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -313,12 +396,33 @@
         "kind": "stat",
         "field": "power",
         "pos": [
-          151,
-          482
+          158,
+          479
         ],
-        "icon_size": 74,
+        "icon_size": 72,
         "num_offset": [
-          2,
+          -1,
+          2
+        ],
+        "font_size": 56,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 28,
+        "sign_size_minus": 16
+      },
+      "health": {
+        "kind": "stat",
+        "field": "health",
+        "pos": [
+          358,
+          478
+        ],
+        "icon_size": 76,
+        "num_offset": [
+          0,
           3
         ],
         "font_size": 56,
@@ -326,26 +430,8 @@
           0,
           0
         ],
-        "sign_size": 28
-      },
-      "health": {
-        "kind": "stat",
-        "field": "health",
-        "pos": [
-          360,
-          481
-        ],
-        "icon_size": 102,
-        "num_offset": [
-          0,
-          4
-        ],
-        "font_size": 56,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "sign_size": 28
+        "sign_size_plus": 28,
+        "sign_size_minus": 16
       },
       "name": {
         "kind": "text",
@@ -360,7 +446,7 @@
         "kind": "text",
         "pos": [
           256,
-          498
+          499
         ],
         "font_size": 15,
         "font": "desc"
@@ -368,9 +454,13 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
-          418
+          416
         ],
         "width": 250,
         "height": 125,
@@ -388,12 +478,20 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          120,
-          58
+          126,
+          64
         ],
-        "base_size": 56,
-        "star_size": 72,
-        "num_size": 45
+        "base_size": 58,
+        "star_size": 76,
+        "num_size": 40,
+        "star_offset": [
+          0,
+          -4
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -414,7 +512,7 @@
         ],
         "icon_size": 68,
         "num_offset": [
-          0,
+          2,
           5
         ],
         "font_size": 50,
@@ -422,7 +520,8 @@
           0,
           0
         ],
-        "sign_size": 25
+        "sign_size_plus": 25,
+        "sign_size_minus": 25
       },
       "name": {
         "kind": "text",
@@ -445,6 +544,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           421
@@ -468,15 +571,23 @@
           128,
           64
         ],
-        "base_size": 56,
-        "star_size": 72,
-        "num_size": 45
+        "base_size": 58,
+        "star_size": 76,
+        "num_size": 40,
+        "star_offset": [
+          0,
+          -4
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
           256,
-          348
+          346
         ],
         "gap": 90,
         "margin": 8,
@@ -486,7 +597,7 @@
         "kind": "text",
         "pos": [
           256,
-          346
+          344
         ],
         "font_size": 24,
         "font": "name"
@@ -503,6 +614,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           424

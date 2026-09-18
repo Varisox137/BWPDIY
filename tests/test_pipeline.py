@@ -84,6 +84,20 @@ def test_footer_with_special_type(assets_dir, sample_art):
     assert img.mode == "RGBA"
 
 
+def test_footer_neutral_card(assets_dir, sample_art):
+    """中立牌（无所属式神）脚注兜底 = 类型[/子类型]，无「所属式神-」前缀；
+    式神卡无所属式神字段时回退卡名。"""
+    base = {"type": "战斗", "name": "sample_art", "level": 1, "rarity": "N",
+            "_base_dir": str(sample_art.parent)}
+    assert (list(render_card(base, assets_dir, crop=False).getdata())
+            == list(render_card(dict(base, footer="战斗"), assets_dir, crop=False).getdata()))
+    assert (list(render_card(dict(base, special_type="惊雷"), assets_dir, crop=False).getdata())
+            == list(render_card(dict(base, footer="战斗/惊雷"), assets_dir, crop=False).getdata()))
+    body = dict(base, type="式神", power=3, health=4)
+    assert (list(render_card(body, assets_dir, crop=False).getdata())
+            == list(render_card(dict(body, footer="sample_art-式神"), assets_dir, crop=False).getdata()))
+
+
 def test_export_fit_512_top_bottom_flush(assets_dir, sample_art):
     """导出适配：恒 512×512，内容上下顶格、水平居中（左右留白对称）。"""
     card = make_card(sample_art.parent, "战斗", **{"level": 1, "rarity": "R", "power+": 1, "shield+": 1})
@@ -94,59 +108,66 @@ def test_export_fit_512_top_bottom_flush(assets_dir, sample_art):
     assert abs(bbox[0] - (512 - bbox[2])) <= 1  # 水平居中
 
 
-def test_artwork_clipped_to_frame_silhouette(assets_dir, sample_art):
-    """轮廓裁剪：牌框实际形状之外（含矩形 bbox 内、框形外的区域）无卡图残留。
+def test_artwork_clipped_to_eroded_contour(assets_dir, sample_art, tmp_path):
+    """卡图轮廓预裁剪：卡图墨迹全部在「框 alpha≥128 实心区内缩 2px」轮廓内。
 
-    回归：旧版按框 alpha 矩形 bbox 裁剪，框形外但 bbox 内的卡图会残留。
-    元素在轮廓裁剪之后绘制，探出框缘的等级标不受影响。
+    框缘半透明带（轮廓外、框形内）之下没有卡图——与全透明卡图渲染对比，
+    轮廓外区域两者必须逐像素一致（卡图零贡献）；轮廓内两者必不同（卡图在画）。
     """
-    from PIL import ImageChops
+    from PIL import Image, ImageChops
 
     from bwpdiy.render.assets import AssetLibrary
-    from bwpdiy.render.pipeline import _clean_frame, _outside_frame_mask
+    from bwpdiy.render.pipeline import _art_clip_contour, _normalize_frame
 
     lib = AssetLibrary(assets_dir)
-    # 无等级/稀有度/脚注的极简卡：画布 = 卡图+牌框轮廓裁剪结果（卡名在框内）
+    # 全透明卡图对照组
+    Image.new("RGBA", (64, 64), (0, 0, 0, 0)).save(tmp_path / "blank.png")
     card = make_card(sample_art.parent, "法术", footer=" ")
+    blank_card = dict(card, _base_dir=str(tmp_path),
+                      artwork={"images": [{"path": "blank.png"}]})
     for variant in ("norm", "black", "blue", "red"):
-        canvas = render_card(dict(card, frame_variant=variant), assets_dir, crop=False)
-        alpha = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0)
-        # 与管线同口径：阈值清理后的框再算轮廓（原框的低 alpha 散点不算框体）
-        outside = _outside_frame_mask(_clean_frame(lib.frame("spell", variant)))
-        assert outside.getbbox() is not None  # 确实存在框外区域（测试有效性）
-        # alpha 与 outside 同为 255 的像素 = 框外残留 → 必须为零
-        assert ImageChops.darker(alpha, outside).getbbox() is None
-    # 等级标探出框缘：裁剪只针对卡图，元素墨迹保留在框外
-    badge = render_card(dict(card, level=1), assets_dir, crop=False)
-    alpha = badge.getchannel("A").point(lambda v: 255 if v > 10 else 0)
-    outside = _outside_frame_mask(_clean_frame(lib.frame("spell", "norm")))
-    assert ImageChops.darker(alpha, outside).getbbox() is not None
+        kw = {"frame_variant": variant}
+        # 合成到品红底再比 RGB（alpha=0 区域的 RGB 残留不参与比较）
+        def on_bg(img):
+            bg = Image.new("RGBA", img.size, (255, 0, 255, 255))
+            bg.alpha_composite(img)
+            return bg.convert("RGB")
+        with_art = on_bg(render_card(dict(card, **kw), assets_dir, crop=False))
+        without_art = on_bg(render_card(dict(blank_card, **kw), assets_dir, crop=False))
+        diff = ImageChops.difference(with_art, without_art)
+        diff = diff.convert("L").point(lambda v: 255 if v > 10 else 0)
+        # 与管线同口径：轮廓基于归一化（512 画布）后的框
+        contour = _art_clip_contour(_normalize_frame(lib.frame("spell", variant)))
+        outside = contour.point(lambda v: 255 if v == 0 else 0)
+        assert outside.getbbox() is not None  # 确实存在轮廓外区域（测试有效性）
+        # 轮廓外卡图零贡献
+        assert ImageChops.darker(diff, outside).getbbox() is None
+        # 轮廓内卡图确实在画（对照有效性）
+        assert ImageChops.darker(diff, contour).getbbox() is not None
 
 
-def test_frame_alpha_threshold_removes_junk_islands(assets_dir):
-    """阈值清理：牌框 PSD 导出的低透明度散点（框缘外杂点孤岛）被删去。
-
-    回归：v1.0.1 之前杂点 alpha>0 被算作框体，轮廓裁剪后仍挂住卡图出框。
-    清理后的框在自身轮廓之外不得有任何像素（孤岛全灭）。
-    """
+def test_art_clip_contour_properties(assets_dir):
+    """轮廓掩膜性质：包含框实心区（腐蚀单调性）、画布四边全为 0（框外排除）、非空。"""
     from bwpdiy.render.assets import AssetLibrary
-    from bwpdiy.render.pipeline import FRAME_ALPHA_THRESHOLD, _clean_frame, _outside_frame_mask
+    from bwpdiy.render.pipeline import (
+        FRAME_CONTOUR_ALPHA, FRAME_CONTOUR_ERODE, _art_clip_contour, _normalize_frame)
 
-    assert FRAME_ALPHA_THRESHOLD > 0
+    assert FRAME_CONTOUR_ALPHA == 128 and FRAME_CONTOUR_ERODE == 2
     lib = AssetLibrary(assets_dir)
     for frame_path in sorted((assets_dir / "frames").glob("*.png")):
-        raw = lib.frame(frame_path.stem.rsplit("_", 1)[0], frame_path.stem.rsplit("_", 1)[1])
-        cleaned = _clean_frame(raw)
-        assert cleaned is not raw  # 不改缓存原图
-        ca = cleaned.getchannel("A")
-        # 清理后无 (0, T) 区间像素
-        lo = ca.point(lambda v: 255 if 0 < v < FRAME_ALPHA_THRESHOLD else 0)
-        assert lo.getbbox() is None, frame_path.name
-        # 轮廓外零像素（杂点孤岛已清除）
-        outside = _outside_frame_mask(cleaned)
-        solid = ca.point(lambda v: 255 if v > 0 else 0)
-        from PIL import ImageChops
-        assert ImageChops.darker(solid, outside).getbbox() is None, frame_path.name
+        frame = _normalize_frame(lib.frame(frame_path.stem.rsplit("_", 1)[0],
+                                           frame_path.stem.rsplit("_", 1)[1]))
+        contour = _art_clip_contour(frame)
+        assert contour.getbbox() is not None, frame_path.name
+        # 画布左右两边（框外）全排除（竖版框上下顶格，顶/底边不强制）
+        px = contour.load()
+        assert not any(px[0, y] or px[511, y] for y in range(512)), frame_path.name
+        # 外轮廓 ⊇ 实心区（卡图窗被纳入），腐蚀后仍 ⊇ 实心区腐蚀（单调性）
+        from PIL import ImageChops, ImageFilter
+        solid = frame.getchannel("A").point(
+            lambda v: 255 if v >= FRAME_CONTOUR_ALPHA else 0)
+        solid_eroded = solid.filter(ImageFilter.MinFilter(2 * FRAME_CONTOUR_ERODE + 1))
+        assert ImageChops.subtract(solid_eroded, contour).getbbox() is None, frame_path.name
 
 
 @pytest.mark.parametrize("card_type", ["式神", "战斗", "法术", "形态", "幻境", "协战"])
@@ -182,7 +203,8 @@ def test_desc_avoids_stat_obstacles(assets_dir, sample_art):
 
 
 def test_desc_ink_keeps_gap_from_stat_ink(assets_dir, sample_art):
-    """端到端：描述墨迹与 stat 角标真实墨迹（图标+数字）相距 ≥ obstacle_gap（缺省 4）。"""
+    """端到端：竖直贴邻（≤1px）的行之间，描述墨迹与 stat 角标碰撞轮廓
+    （图标+数字，alpha≥128）横向相距 ≥ obstacle_gap（缺省 4）。"""
     from pathlib import Path
 
     from PIL import Image, ImageChops, ImageFilter
@@ -204,16 +226,24 @@ def test_desc_ink_keeps_gap_from_stat_ink(assets_dir, sample_art):
     diff = ImageChops.difference(with_desc.convert("RGB"), without_desc.convert("RGB"))
     text_ink = diff.convert("L").point(lambda v: 255 if v > 10 else 0)
 
-    # 角标墨迹 = 与管线同口径：stat_rendered 元素在透明层渲染取 alpha
+    # 角标墨迹 = 与管线同口径：stat_rendered 元素在透明层渲染，取 alpha≥128 碰撞轮廓
+    from bwpdiy.render.pipeline import OBSTACLE_ALPHA
     lib = AssetLibrary(assets_dir)
     layer = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
     i = 0
     for e in tl["elements"].values():
         if e["kind"] == "stat" and e.get("enabled", True) and stat_rendered(e, card):
-            layer = render_element(layer, lib, f"stat_{i}", e, card, {"name_width": 0})
+            layer = render_element(layer, lib, f"stat_{i}", e, card, {"name_width": 0},
+                                   composite=True)  # 与管线掩膜采集同口径
             i += 1
     assert i > 0
-    stat_ink = layer.getchannel("A").point(lambda v: 255 if v > 10 else 0)
-    # 角标墨迹外扩 gap-1 px 后与描述墨迹零重叠 ⇔ 两者距离 ≥ gap
-    dilated = stat_ink.filter(ImageFilter.MaxFilter(2 * gap - 1))
-    assert ImageChops.darker(text_ink, dilated).getbbox() is None
+    stat_ink = layer.getchannel("A").point(lambda v: 255 if v >= OBSTACLE_ALPHA else 0)
+    # 逐行验证：竖直距离 ≤1px 的行对之间，横向区间间距 ≥ gap
+    from bwpdiy.render.geometry import mask_row_runs
+    text_runs = mask_row_runs(text_ink)
+    stat_runs = mask_row_runs(stat_ink)
+    for y, truns in text_runs.items():
+        for dy in (-1, 0, 1):
+            for sx0, sx1 in stat_runs.get(y + dy, ()):
+                for tx0, tx1 in truns:
+                    assert tx1 + gap <= sx0 or sx1 + gap <= tx0

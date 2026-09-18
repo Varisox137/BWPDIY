@@ -24,6 +24,28 @@ def test_level_badge(assets_dir):
         opaque(render_element(canvas(), lib, "level", elem, {})) == 0
 
 
+def test_level_badge_layer_offsets(assets_dir):
+    """星标/勾玉偏移：相对底座 pos 位移生效（偏移层墨迹移出原位），缺省 [0,0] 不变。"""
+    elem = {"kind": "level_badge", "pos": [120, 65], "base_size": 72,
+            "star_size": 60, "num_size": 40}
+    base = render_element(canvas(), AssetLibrary(assets_dir), "level",
+                          elem, {"level": 2, "evolve": True})
+    moved = render_element(canvas(), AssetLibrary(assets_dir), "level",
+                           dict(elem, star_offset=[-20, -15], num_offset=[18, 12]),
+                           {"level": 2, "evolve": True})
+    assert list(base.getdata()) != list(moved.getdata())
+    # 底座不动：底座圆盘左缘像素两版一致有墨迹
+    assert base.getpixel((120 - 36 + 2, 65))[3] > 0
+    assert moved.getpixel((120 - 36 + 2, 65))[3] > 0
+    # 勾玉层右上移至 (138,77)：移动版该点有墨迹，原版同点相对墨迹更少（星/勾玉均不在此中心）
+    assert moved.getpixel((138, 77))[3] > 0
+    # 缺省偏移与显式 [0,0] 等价
+    explicit = render_element(canvas(), AssetLibrary(assets_dir), "level",
+                              dict(elem, star_offset=[0, 0], num_offset=[0, 0]),
+                              {"level": 2, "evolve": True})
+    assert list(base.getdata()) == list(explicit.getdata())
+
+
 def _flank_elem():
     return {"kind": "rarity_flank", "pos": [256, 358], "gap": 32, "size": 24, "margin": 8}
 
@@ -95,6 +117,31 @@ def test_stat_signed_and_offset(assets_dir):
     assert opaque(render_element(canvas(), lib, "power", elem, {"type": "战斗"})) == 0
 
 
+def test_stat_group_offset_stacks_on_num_offset(assets_dir):
+    """group_offset：符号+数字整体相对角标的额外偏移，叠加在 num_offset 之上；
+    图标不动、符号随数字整体一起移动。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": "power+", "pos": [160, 485],
+            "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
+    card = {"type": "战斗", "power+": 2}
+    base = render_element(canvas(), lib, "power", elem, card)
+    moved = render_element(canvas(), lib, "power",
+                           dict(elem, group_offset=[10, -6]), card)
+    assert list(base.getdata()) != list(moved.getdata())
+    # 图标（角标）不动：图标中心像素两版一致
+    assert base.getpixel((160, 485)) == moved.getpixel((160, 485))
+    # 数字块整体位移：带符号数字带 bbox 中心移动 ≈ (10, -6)
+    bx = _band_bbox(base, 180, 512)     # 图标右侧数字带（含符号）
+    mx = _band_bbox(moved, 180, 512)
+    assert bx and mx
+    assert abs(((mx[0] + mx[2]) / 2) - ((bx[0] + bx[2]) / 2) - 10) <= 1
+    assert abs(_cy(mx) - _cy(bx) + 6) <= 1
+    # 缺省 [0,0] 与不带键等价
+    explicit = render_element(canvas(), lib, "power",
+                              dict(elem, group_offset=[0, 0]), card)
+    assert list(base.getdata()) == list(explicit.getdata())
+
+
 def test_text_element_centered(assets_dir):
     """kind=text 点元素：以 pos 为中心水平居中单行文本；字段缺失跳过。"""
     lib = AssetLibrary(assets_dir)
@@ -135,7 +182,7 @@ def test_stat_signed_block_centered(assets_dir, value):
     # num_offset 拉大，使数字带与图标像素分离便于测量；num_pos=(160,485)
     elem = {"kind": "stat", "field": "power+", "pos": [100, 485],
             "icon_size": 32, "num_offset": [60, 0], "font_size": 30,
-            "sign_size": 12}
+            "sign_size_plus": 12, "sign_size_minus": 12}
     signed = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": value})
     # 整体块：num_pos=(160,485) 附近（图标在 x≤116，不进带）
     block = _band_bbox(signed, 120, 260)
@@ -150,6 +197,31 @@ def test_stat_signed_block_centered(assets_dir, value):
     assert abs(_cy(s_sign) - _cy(s_digits)) <= 1
     # 符号贴图明显窄于数字块
     assert (s_sign[2] - s_sign[0]) < (s_digits[2] - s_digits[0])
+
+
+def test_stat_sign_size_split(assets_dir):
+    """加号/减号尺寸分开可调：sign_size_plus 只影响正值、sign_size_minus 只影响负值；
+    缺省回退 sign_size → font_size/2。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": "power+", "pos": [100, 485],
+            "icon_size": 32, "num_offset": [60, 0], "font_size": 30,
+            "sign_size_plus": 8, "sign_size_minus": 20}
+    pos_img = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": 2})
+    neg_img = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": -2})
+    # 符号带宽度：加号 8px 档明显窄于减号 20px 档（数字部分等宽，比较整块左缘）
+    pos_block = _band_bbox(pos_img, 120, 260)
+    neg_block = _band_bbox(neg_img, 120, 260)
+    assert pos_block and neg_block
+    assert (neg_block[2] - neg_block[0]) - (pos_block[2] - pos_block[0]) >= 8
+    # 旧数据回退：sign_size 同时喂给加/减号
+    legacy = {"kind": "stat", "field": "power+", "pos": [100, 485],
+              "icon_size": 32, "num_offset": [60, 0], "font_size": 30, "sign_size": 12}
+    new_default = dict(legacy, sign_size_plus=12, sign_size_minus=12)
+    del new_default["sign_size"]
+    for v in (2, -2):
+        a = render_element(canvas(), lib, "power", legacy, {"type": "战斗", "power+": v})
+        b = render_element(canvas(), lib, "power", new_default, {"type": "战斗", "power+": v})
+        assert list(a.getdata()) == list(b.getdata())
 
 
 def test_stat_unsigned_block_centered(assets_dir):
@@ -172,7 +244,7 @@ def test_stat_sign_derived_by_type(assets_dir):
     lib = AssetLibrary(assets_dir)
     elem = {"kind": "stat", "field": "power+", "pos": [100, 485],
             "icon_size": 32, "num_offset": [60, 0], "font_size": 30,
-            "sign_size": 12}
+            "sign_size_plus": 12, "sign_size_minus": 12}
 
     def digit_band(card):
         img = render_element(canvas(), lib, "power", elem, card)
@@ -274,10 +346,79 @@ def test_stat_negative_shield_uses_fragile_badge(assets_dir):
     # 负值图标区与 fragile_2 贴图直贴一致（钉死负值贴图来源）
     from bwpdiy.render.badges import FRAGILE_VARIANT, _paste_element
     direct = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-    direct = _paste_element(direct, lib.stat_badge("combat", f"fragile_{FRAGILE_VARIANT}"),
+    direct = _paste_element(direct, lib.stat_badge(f"combat_fragile_{FRAGILE_VARIANT}"),
                             (360, 485), (32, 32))
     icon_box = (344, 469, 376, 501)
     assert (neg_img.crop(icon_box).tobytes() == direct.crop(icon_box).tobytes())
+
+
+def test_stat_fragile_separate_layout_keys(assets_dir):
+    """战斗负护甲读 fragile_* 四键（坐标/图标大小/数字偏移/符号偏移），缺省回退基础键。"""
+    from bwpdiy.render.badges import FRAGILE_VARIANT, _paste_element
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": "shield+", "pos": [360, 485],
+            "icon_size": 32, "num_offset": [22, 0], "font_size": 30,
+            "fragile_pos": [200, 200], "fragile_icon_size": 20,
+            "fragile_num_offset": [60, 0]}  # 数字远移，图标区纯净
+    card = {"type": "战斗", "shield+": -1}
+    out = render_element(canvas(), lib, "shield", elem, card)
+    # 破甲图标出现在 fragile_pos（200,200）尺寸 fragile_icon_size（20），与直贴一致
+    direct = _paste_element(Image.new("RGBA", (512, 512), (0, 0, 0, 0)),
+                            lib.stat_badge(f"combat_fragile_{FRAGILE_VARIANT}"),
+                            (200, 200), (20, 20))
+    icon_box = (190, 190, 210, 210)
+    assert out.crop(icon_box).tobytes() == direct.crop(icon_box).tobytes()
+    # 基础 pos（360,485）处不再有破甲图标
+    assert out.getchannel("A").crop((344, 469, 376, 501)).getbbox() is None
+    # 正值仍用基础键：图标在基础 pos
+    pos_img = render_element(canvas(), lib, "shield", elem, {"type": "战斗", "shield+": 1})
+    assert pos_img.getchannel("A").crop((344, 469, 376, 501)).getbbox() is not None
+    assert pos_img.getchannel("A").crop((190, 190, 210, 210)).getbbox() is None
+    # 缺省 fragile_* 键回退基础键：与无键元素渲染一致
+    bare = {k: v for k, v in elem.items() if not k.startswith("fragile_")}
+    assert (render_element(canvas(), lib, "shield", bare, card).tobytes()
+            == render_element(canvas(), lib, "shield",
+                              dict(bare, fragile_pos=bare["pos"],
+                                   fragile_icon_size=bare["icon_size"],
+                                   fragile_num_offset=bare["num_offset"]),
+                              card).tobytes())
+
+
+def test_stat_fragile_variant_selectable(assets_dir):
+    """破甲贴图变体可配：fragile_variant=1 用 combat_fragile_1，缺省为 2。"""
+    from bwpdiy.render.badges import FRAGILE_VARIANT, _paste_element
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": "shield+", "pos": [360, 485],
+            "icon_size": 32, "num_offset": [40, 0], "font_size": 30}
+    card = {"type": "战斗", "shield+": -1}
+    v1 = render_element(canvas(), lib, "shield", dict(elem, fragile_variant=1), card)
+    direct = _paste_element(Image.new("RGBA", (512, 512), (0, 0, 0, 0)),
+                            lib.stat_badge("combat_fragile_1"), (360, 485), (32, 32))
+    icon_box = (344, 469, 376, 501)
+    assert v1.crop(icon_box).tobytes() == direct.crop(icon_box).tobytes()
+    default = render_element(canvas(), lib, "shield", elem, card)
+    direct2 = _paste_element(Image.new("RGBA", (512, 512), (0, 0, 0, 0)),
+                             lib.stat_badge(f"combat_fragile_{FRAGILE_VARIANT}"),
+                             (360, 485), (32, 32))
+    assert default.crop(icon_box).tobytes() == direct2.crop(icon_box).tobytes()
+    assert list(v1.getdata()) != list(default.getdata())  # 两变体视觉不同
+
+
+def test_stat_part_split(assets_dir):
+    """stat 分层绘制：icon 层只画角标图标、number 层只画符号+数字，
+    两层顺序叠加与完整渲染逐像素一致（pipeline 描述文本后压数值层的依据）。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": "power+", "pos": [160, 485],
+            "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
+    card = {"type": "战斗", "power+": -2}
+    full = render_element(canvas(), lib, "power", elem, card)
+    icon_only = render_element(canvas(), lib, "power", elem, card, stat_part="icon")
+    number_only = render_element(canvas(), lib, "power", elem, card, stat_part="number")
+    layered = render_element(icon_only, lib, "power", elem, card, stat_part="number")
+    assert layered.tobytes() == full.tobytes()
+    # number 层不带图标：图标中心（160,485）在 number_only 上无墨迹，full 上有
+    assert number_only.getchannel("A").getpixel((160, 485)) == 0
+    assert full.getchannel("A").getpixel((160, 485)) > 0
 
 
 # ---------- 掩膜采集：composite 贴图保真（P1 修复） ----------

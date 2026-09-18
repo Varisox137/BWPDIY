@@ -57,7 +57,8 @@ def _stat(font_size):
 
 
 def test_shipped_layouts_schema_current():
-    """出厂与包内默认布局：signed/icon/icon_neg 键已删除；stat 具备 sign_offset/sign_size。"""
+    """出厂与包内默认布局：signed/icon/icon_neg 键已删除；stat 具备 sign_offset/sign_size_plus/sign_size_minus；
+    四类带符号数值（战斗力量/护破甲、法术觉醒力量/生命）具备 group_offset。"""
     for path in (Path("assets"), Path("bwpdiy/render")):
         layouts = layout.load_layouts(path)
         for t in TYPES:
@@ -68,7 +69,11 @@ def test_shipped_layouts_schema_current():
                     f"{path}/{t}/{name} 仍含 icon/icon_neg"
                 if elem["kind"] == "stat":
                     assert isinstance(elem.get("sign_offset"), list)
-                    assert elem.get("sign_size", 0) > 0
+                    assert elem.get("sign_size_plus", 0) > 0
+                    assert elem.get("sign_size_minus", 0) > 0
+                    if elem["field"] in ("power+", "shield+", "health+"):
+                        assert isinstance(elem.get("group_offset"), list), \
+                            f"{path}/{t}/{name} 缺 group_offset"
             rarity = elems.get("rarity")
             if rarity is not None:
                 assert rarity["gap"] > 0 and rarity["margin"] > 0
@@ -145,6 +150,20 @@ def test_normalize_mixed_types_no_crash(tmp_path):
         layouts = layout.load_layouts(tmp_path)
     assert layouts["战斗"]["elements"]["power"]["font_size"] == 30
     assert layouts["法术"]["elements"]["power"]["font_size"] == [30]  # 归一写回保持原形态
+
+
+def test_group_offset_not_normalized(tmp_path):
+    """group_offset 是 per-type 键：跨类型不一致不归一、不告警。"""
+    custom = {t: {"elements": {"power": _stat(30)}, "text_regions": {}} for t in TYPES}
+    custom["战斗"]["elements"]["power"]["group_offset"] = [5, -3]
+    custom["法术"]["elements"]["power"]["group_offset"] = [-4, 2]
+    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        layouts = layout.load_layouts(tmp_path)
+    assert not [w for w in caught if issubclass(w.category, UserWarning)]
+    assert layouts["战斗"]["elements"]["power"]["group_offset"] == [5, -3]
+    assert layouts["法术"]["elements"]["power"]["group_offset"] == [-4, 2]
 
 
 def test_normalize_skips_bool_fields(tmp_path):

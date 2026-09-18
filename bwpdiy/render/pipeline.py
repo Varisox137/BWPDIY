@@ -1,18 +1,21 @@
 """卡面渲染管线总装。
 
 合成顺序（自底向上，术语见 docs/terminology.md）：
-卡图 artwork（fit 至 512 画布）→ 牌框 frame（在上，卡图区透明无需蒙版）→
-轮廓裁剪（删去牌框实际形状之外的所有像素，框缘包围的卡图窗不受影响）→
-布局元素（等级标/稀有度双标/派系标/数值标/卡名/脚注点文本，由 assets/layout.json
-驱动，探出框缘的元素在轮廓裁剪之后绘制、不受影响）→ 描述文本 →
+底层卡图 artwork（fit 至 512 画布，按外轮廓裁剪：框 alpha≥128 区+被包围
+卡图窗构成的外轮廓向内腐蚀 2px，框缘半透明带下不再有卡图、杜绝洇色）→
+牌框 frame 叠加在上（素材为紧致裁剪图，等比缩放至高 512、左右居中贴回 512 画布）→
+框内静态部分（卡名/稀有度双标/脚注点文本）→ 框上叠加（等级标/派系标/stat 角标图标）→
+描述文本（避让掩膜取 stat 图标+数值全量墨迹的碰撞轮廓）→
+stat 数值层（符号+数字，压在描述文本之上）→
 最终导出按整卡 tightest alpha bbox 裁剪后等比缩放至高 512（上下顶格、
 左右居中留白）贴回 512×512；crop=False 布局预览模式返回 512 全画布。
+布局元素由 assets/layout.json 驱动，探出框缘的元素不受影响。
 框品：card["frame_variant"]（缺省 norm），协战恒 norm。
 """
 
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from bwpdiy.render.artwork import fit_artwork
 from bwpdiy.render.assets import AssetLibrary
@@ -22,31 +25,42 @@ from bwpdiy.render.text import FRAME_TEXT_FILL, draw_region
 
 CARD_SIZE = (512, 512)
 
-# 牌框 alpha 清理阈值：alpha < 此值的像素视为杂点删去（PSD 导出在框缘外
-# 留有低透明度散点，会挂住卡图造成出框残留）；同时影响轮廓裁剪的框形判定。
-# 192 为激进档（用户定稿，后续可能手修牌框资源）：削掉边缘 1-2px 抗锯齿，
-# 实测不伤内部装饰（差异全部位为边缘抗锯齿线）。
-FRAME_ALPHA_THRESHOLD = 192
+# 卡图裁剪轮廓：牌框 alpha≥128 的实心区向内腐蚀 2px 作为卡图可绘制区——
+# 框缘半透明带（alpha<128 与最外 2px）之下没有卡图，杜绝卡图洇出框缘。
+FRAME_CONTOUR_ALPHA = 128
+FRAME_CONTOUR_ERODE = 2  # px
+
+# 文本避让掩膜：角标等障碍元素的碰撞轮廓按 alpha≥阈值考察（仿牌框阈值预处理，
+# 不用原始 alpha box——抗锯齿淡边缘不算墨迹，避免文本无谓避让）。
+OBSTACLE_ALPHA = 128
 
 
-def _clean_frame(frame: Image.Image) -> Image.Image:
-    """牌框 alpha 清理：alpha < FRAME_ALPHA_THRESHOLD 的像素删去（PSD 导出在框缘
-    外/卡图窗内留有低透明度散点，会挂住卡图造成出框残留）。返回副本，不改原图。"""
-    if FRAME_ALPHA_THRESHOLD <= 0:
-        return frame
-    frame = frame.copy()
-    frame.putalpha(frame.getchannel("A").point(
-        lambda v: 0 if v < FRAME_ALPHA_THRESHOLD else v))
-    return frame
+def _normalize_frame(frame: Image.Image) -> Image.Image:
+    """牌框归一化到 512×512 画布：等比缩放至高 512（上下顶格），左右居中。
 
-
-def _outside_frame_mask(frame: Image.Image) -> Image.Image:
-    """L 掩膜（255=牌框实际形状之外）：框 alpha==0 且与画布边缘连通的区域。
-
-    卡图窗虽 alpha==0 但被框缘完整包围、与画布边缘不连通，不受影响；
-    框缘抗锯齿半透明像素（alpha>0）视为框体保留。
+    牌框素材为手工修整的紧致裁剪图，各框尺寸不一；布局坐标以 512 画布为准。
     """
-    mask = frame.getchannel("A").point(lambda v: 255 if v == 0 else 0)
+    if frame.size == CARD_SIZE:
+        return frame
+    scale = CARD_SIZE[1] / frame.height
+    if frame.width * scale > CARD_SIZE[0]:  # 宽溢出兜底：按宽适配（正常框不会触发）
+        scale = CARD_SIZE[0] / frame.width
+    nw = max(1, round(frame.width * scale))
+    nh = max(1, round(frame.height * scale))
+    frame = frame.resize((nw, nh), Image.LANCZOS)
+    canvas = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
+    canvas.paste(frame, ((CARD_SIZE[0] - nw) // 2, (CARD_SIZE[1] - nh) // 2), frame)
+    return canvas
+
+
+def _art_clip_contour(frame: Image.Image) -> Image.Image:
+    """L 掩膜（255=卡图可绘制区）：牌框外轮廓向内腐蚀 FRAME_CONTOUR_ERODE px。
+
+    外轮廓 = 框 alpha≥FRAME_CONTOUR_ALPHA 实心区 + 被框缘完整包围的卡图窗
+    （对 alpha<阈值区域从画布四边 flood fill，够不到的地方即框形内部）。
+    """
+    mask = frame.getchannel("A").point(
+        lambda v: 255 if v < FRAME_CONTOUR_ALPHA else 0)
     w, h = mask.size
     px = mask.load()
     seeds = ([(x, 0) for x in range(w)] + [(x, h - 1) for x in range(w)]
@@ -54,7 +68,11 @@ def _outside_frame_mask(frame: Image.Image) -> Image.Image:
     for s in seeds:
         if px[s[0], s[1]] == 255:
             ImageDraw.floodfill(mask, s, 128, thresh=0)
-    return mask.point(lambda v: 255 if v == 128 else 0)
+    # 128=框外 → 其余（实心区+卡图窗）为框形内部
+    shape = mask.point(lambda v: 0 if v == 128 else 255)
+    if FRAME_CONTOUR_ERODE > 0:
+        shape = shape.filter(ImageFilter.MinFilter(2 * FRAME_CONTOUR_ERODE + 1))
+    return shape
 
 
 def _artwork_ref(card: dict) -> dict:
@@ -84,7 +102,7 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         variant = "norm"  # 协战框仅 norm 一种框品
     lib = AssetLibrary(assets_dir)
 
-    frame = _clean_frame(lib.frame(code, variant))
+    frame = _normalize_frame(lib.frame(code, variant))
     ref = _artwork_ref(card)
     art_path = Path(ref["path"])
     if not art_path.is_absolute():
@@ -93,19 +111,18 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         raise FileNotFoundError(f"卡图缺失: {art_path}")
     art = Image.open(art_path).convert("RGBA")
     art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"])
+    # 卡图按轮廓预裁剪（框实心区内缩 2px），框缘半透明带下无卡图、不洇色
+    art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))
     canvas = Image.alpha_composite(art, frame)  # 牌框在上：卡图区透明，无需蒙版
-    # 轮廓裁剪：删去牌框实际形状之外的所有像素（矩形 bbox 裁剪会残留框形外卡图）
-    outside = _outside_frame_mask(frame)
-    if outside.getbbox() is not None:
-        keep = outside.point(lambda v: 0 if v == 255 else 255)
-        canvas.putalpha(ImageChops.multiply(canvas.getchannel("A"), keep))
 
     type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
     elements = type_layout["elements"]
     card = dict(card)
-    # 脚注兜底：式神名-类型[/子类型]（footer 点元素直接读 card["footer"]）
+    # 脚注兜底：式神名-类型[/子类型]；中立牌（无所属式神）只标 类型[/子类型]
+    # （式神卡自身无所属式神字段，回退卡名）
     if not card.get("footer"):
-        card["footer"] = f"{card.get('shikigami', card['name'])}-{card_type}"
+        shikigami = card.get("shikigami") or (card["name"] if card_type == "式神" else None)
+        card["footer"] = f"{shikigami}-{card_type}" if shikigami else card_type
         if card.get("special_type"):
             card["footer"] += f"/{card['special_type']}"
     # 先测卡名宽度（rarity_flank 外移量依据；name 点元素缺失按 0）
@@ -115,26 +132,45 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         name_font = lib.font(name_elem.get("font", "name"), name_elem["font_size"])
         name_width = name_font.getlength(card["name"])
     ctx = {"name_width": name_width}
+    # 分层渲染（自底向上）：框内静态（卡名/稀有度双标/脚注点文本）→
+    # 框上叠加（等级标/派系标/stat 角标图标）→ 描述文本 → stat 数值（符号+数字）
+    _STATIC = ("text", "rarity_flank")
     for elem_name, elem in elements.items():
-        canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
+        if elem["kind"] in _STATIC:
+            canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
+    stat_elems = []
+    for elem_name, elem in elements.items():
+        if elem["kind"] in _STATIC:
+            continue
+        if elem["kind"] == "stat":
+            stat_elems.append((elem_name, elem))
+            canvas = render_element(canvas, lib, elem_name, elem, card, ctx,
+                                    stat_part="icon")
+        else:
+            canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
     regions = type_layout["text_regions"]
     if card.get("description") and "desc" in regions:
-        # 文本避让掩膜：实际渲染的 stat 元素在透明层再渲染一份，取 alpha 真墨迹
-        stat_elems = [e for e in elements.values()
-                      if e["kind"] == "stat" and e.get("enabled", True)
-                      and stat_rendered(e, card)]
+        # 文本避让掩膜：实际渲染的 stat 元素（图标+数值全量）在透明层再渲染一份，
+        # 取 alpha≥OBSTACLE_ALPHA 的碰撞轮廓（非原始 box，仿牌框阈值预处理）
+        rendered_stats = [e for _, e in stat_elems
+                          if e.get("enabled", True) and stat_rendered(e, card)]
         obstacle_mask = None
-        if stat_elems:
+        if rendered_stats:
             layer = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
-            for i, e in enumerate(stat_elems):
+            for i, e in enumerate(rendered_stats):
                 # composite=True：掩膜采集走 alpha_composite，图标源 alpha 保真
                 # （默认 paste 在透明层上平方 alpha，抗锯齿淡边缘会被掩膜阈值丢弃）
                 layer = render_element(layer, lib, f"stat_{i}", e, card, ctx,
                                        composite=True)
-            obstacle_mask = layer.getchannel("A")
+            obstacle_mask = layer.getchannel("A").point(
+                lambda v: 255 if v >= OBSTACLE_ALPHA else 0)
         desc_fill = FRAME_TEXT_FILL.get(variant, FRAME_TEXT_FILL["norm"])["desc"]
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
                              obstacle_mask=obstacle_mask, fill=desc_fill)
+    # 数值层最后画：描述文本避让数值（掩膜含数值墨迹），数值压在文本之上
+    for elem_name, elem in stat_elems:
+        canvas = render_element(canvas, lib, elem_name, elem, card, ctx,
+                                stat_part="number")
     # 导出：tightest alpha bbox 裁剪 → 等比缩放至高 512（上下顶格、左右居中留白）贴回 512×512
     if not crop:
         return canvas

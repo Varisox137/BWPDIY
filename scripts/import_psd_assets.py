@@ -44,14 +44,12 @@ LEVELS = {
 }
 
 STATS = {
-    "基础_形态-数值/基础_形态-攻击.png": "form_power.png",
-    "基础_形态-数值/基础_形态-生命.png": "form_health.png",
-    "战斗-数值/战斗-攻击.png": "combat_power.png",
+    # 力量/生命全类型共用同一资源（PSD 中各类型重复，取基础_形态版）
+    "基础_形态-数值/基础_形态-攻击.png": "power.png",
+    "基础_形态-数值/基础_形态-生命.png": "health.png",
     "战斗-数值/战斗-护甲.png": "combat_shield.png",
     "战斗-数值/战斗-破甲.png": "combat_fragile_1.png",
     "战斗-数值/战斗-破甲1.png": "combat_fragile_2.png",
-    "法术-数值/法术-攻击.png": "spell_power.png",
-    "法术-数值/法术-生命.png": "spell_health.png",
     "幻境-数值/幻境.png": "field_intensity.png",
 }
 

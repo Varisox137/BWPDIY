@@ -41,10 +41,14 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
     """按给定字号在矩形区内排版，成功返回 [(行, cx, cy)]，失败返回 None。
 
     文本块（行数 × 行高）在区域内水平逐行居中、竖直整体居中：
-    先定字号与行数，再把文本块中心对齐区域中心。行可用宽度按
-    掩膜墨迹（row_runs）逐行收窄，间距字段 obstacle_gap（缺省 4）。
+    先定字号与行数，再把文本块中心对齐区域中心。居中锚点可用
+    `center_offset`（缺省 [0,0]，per-type 键）平移——区域边界与行宽不变，
+    只移动视觉居中基准（如右下角大数字时左移锚点让触界行视觉居中）。
+    行可用宽度按掩膜墨迹（row_runs）逐行收窄，间距字段 obstacle_gap（缺省 4）。
     """
     cx, cy = region["center"]
+    ox, oy = region.get("center_offset", [0, 0])
+    acx, acy = cx + ox, cy + oy  # 居中锚点
     half_w, half_h = region["width"] / 2, region["height"] / 2
     y_top, y_bottom = cy - half_h, cy + half_h
     lh = _line_height(font)
@@ -56,11 +60,20 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
             span = clamp_span_by_mask(span, y, lh / 2, row_runs, gap)
         return span
 
+    def centered_cx(t: str, y: float) -> float:
+        """行中心 x：默认居中锚点 acx；仅当行的实际宽度触到收窄 span 边界时
+        最小平移避让（短末行不因远处角标整体偏移，保持视觉居中）。"""
+        span = span_at(y)
+        if span is None:
+            return acx
+        half = font.getlength(t) / 2
+        return min(max(acx, span[0] + half), span[1] - half)
+
     if not wrap:
-        span = span_at(cy)
+        span = span_at(acy)
         if span is None or font.getlength(text) > span[1] - span[0]:
             return None
-        return [(text, (span[0] + span[1]) / 2, cy)]
+        return [(text, centered_cx(text, acy), acy)]
 
     paragraphs = text.split("\n")
 
@@ -103,14 +116,15 @@ def _layout_at_size(text: str, font: ImageFont.FreeTypeFont,
     while len(line_texts) not in seen:
         seen.add(len(line_texts))
         n = len(line_texts)
-        y0 = cy - n * lh / 2 + lh / 2
-        if y0 - lh / 2 < y_top - 1e-6:  # 文本块高于区域
+        y0 = acy - n * lh / 2 + lh / 2
+        # 文本块须整体落在区域内（锚点偏移可能把块推出界；换行推进只检查中间行）
+        if y0 - lh / 2 < y_top - 1e-6 or acy + n * lh / 2 > y_bottom + 1e-6:
             return None
         recentered = wrap_from(y0)
         if recentered is None:
             return None
         if len(recentered) == n:
-            return [(t, (span_at(y0 + i * lh)[0] + span_at(y0 + i * lh)[1]) / 2,
+            return [(t, centered_cx(t, y0 + i * lh),
                      y0 + i * lh) for i, t in enumerate(recentered)]
         line_texts = recentered
     return None

@@ -53,8 +53,8 @@ class AssetLibrary:
             rel = f"rarity/{rarity}.png"
         return self._img(rel)
 
-    def stat_badge(self, type_code: str, field: str) -> Image.Image:
-        return self._img(f"stats/{type_code}_{field}.png")
+    def stat_badge(self, stem: str) -> Image.Image:
+        return self._img(f"stats/{stem}.png")
 
     def sign(self, name: str) -> Image.Image:
         return self._img(f"signs/{name}.png")

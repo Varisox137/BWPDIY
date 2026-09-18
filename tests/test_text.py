@@ -128,32 +128,46 @@ def test_no_obstacle_mask_keeps_full_width(assets_dir):
 
 
 def test_obstacle_gap_field(assets_dir):
-    """desc 文本区可选字段 obstacle_gap 覆盖缺省 4：gap 越大行可用区间越窄。"""
+    """desc 文本区可选字段 obstacle_gap 覆盖缺省 4：gap 越大行可用区间越窄；
+    行默认以区域中心居中，实际宽度触到收窄边界时才最小平移避让。"""
     lib = AssetLibrary(assets_dir)
     mask = ink_mask([(105, 360, 125, 400)])  # 行带内墨迹右缘 x=125
-    text = "验证间距字段"  # 收窄后仍放得下的短句
-    base = rect_region(100, 360, 400, 400, wrap=False)
-    # 缺省 = 显式 4：左界 125+4 → 行中心 (129+400)/2
+    base = rect_region(100, 360, 400, 400, wrap=False)  # 区域中心 cx=250
+    # 短行：不触界，保持区域中心居中，与 gap 无关（旧口径：收窄 span 内居中会偏移）
+    for kw in ({}, {"obstacle_gap": 4}, {"obstacle_gap": 10}):
+        font, lines = fit_in_region("验证间距", dict(base, **kw), lib, obstacle_mask=mask)
+        assert abs(lines[0][1] - 250) < 1e-6
+    # 长行：宽度顶到收窄 span 左界时按边界最小平移，gap 越大平移越多
+    font36 = lib.font("desc", 36)
+    text = ""
+    while font36.getlength(text + "测") <= 242:  # 242=触界阈值 2×(250-129)
+        text += "测"
+    text += "测"
+    assert 242 < font36.getlength(text) <= 265, "字体度量变化导致窗口失效，需重选窗口"
+    half = font36.getlength(text) / 2
     font, lines = fit_in_region(text, dict(base), lib, obstacle_mask=mask)
-    assert abs(lines[0][1] - 264.5) < 1e-6
-    font, lines = fit_in_region(text, dict(base, obstacle_gap=4), lib, obstacle_mask=mask)
-    assert abs(lines[0][1] - 264.5) < 1e-6
-    # gap=10：左界 125+10 → 行中心 (135+400)/2
+    assert abs(lines[0][1] - (129 + half)) < 1e-6  # 左界 125+4
     font, lines = fit_in_region(text, dict(base, obstacle_gap=10), lib, obstacle_mask=mask)
-    assert abs(lines[0][1] - 267.5) < 1e-6
+    assert abs(lines[0][1] - (135 + half)) < 1e-6  # 左界 125+10
 
 
 def test_gap_between_text_and_obstacle_ink(assets_dir):
-    """gap 语义：描述墨迹与角标墨迹的最近距离 ≥ obstacle_gap（缺省 4）。"""
+    """gap 语义：竖直贴邻（≤1px）的行之间，描述墨迹与角标墨迹横向相距 ≥ obstacle_gap（缺省 4）。"""
+    from bwpdiy.render.geometry import mask_row_runs
     lib = AssetLibrary(assets_dir)
     region = rect_region(100, 300, 400, 380)
     mask = ink_mask([(100, 320, 200, 380)])
     text = "描述文本避让验证需要足够长度填满收窄后的行宽。" * 2
     img = draw_region(canvas(), lib, text, region, obstacle_mask=mask)
     text_ink = img.getchannel("A").point(lambda v: 255 if v > 10 else 0)
-    # 掩膜墨迹外扩 gap-1 px 后仍与描述墨迹零重叠 ⇔ 两者距离 ≥ gap
-    dilated = mask.filter(ImageFilter.MaxFilter(2 * 4 - 1))
-    assert ImageChops.darker(text_ink, dilated).getbbox() is None
+    text_runs = mask_row_runs(text_ink)
+    obstacle_runs = mask_row_runs(mask)
+    gap = 4
+    for y, truns in text_runs.items():
+        for dy in (-1, 0, 1):  # 竖直避让 1px：只看竖直贴邻行
+            for sx0, sx1 in obstacle_runs.get(y + dy, ()):
+                for tx0, tx1 in truns:
+                    assert tx1 + gap <= sx0 or sx1 + gap <= tx0
 
 
 # ---------- 竖直居中 ----------
@@ -170,6 +184,23 @@ def test_vertical_center_multiline(assets_dir):
     font, lines = fit_in_region(text, rect_region(100, 100, 300, 300), lib)
     assert len(lines) > 1
     assert abs((lines[0][2] + lines[-1][2]) / 2 - 200) <= 1
+
+
+def test_center_offset_shifts_anchor(assets_dir):
+    """desc 文本区 center_offset：平移居中锚点（水平逐行居中与竖直整体居中的基准），
+    区域边界/行宽不变——缺省 [0,0] 与无键行为一致。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(100, 100, 400, 200)  # 中心 (250, 150)
+    font, lines = fit_in_region("短句", region, lib)
+    assert abs(lines[0][1] - 250) < 1e-6 and abs(lines[0][2] - 150) < 1e-6
+    # 锚点右移 20、下移 10：单行中心随之平移
+    shifted = fit_in_region("短句", dict(region, center_offset=[20, 10]), lib)
+    assert abs(shifted[1][0][1] - 270) < 1e-6 and abs(shifted[1][0][2] - 160) < 1e-6
+    # 显式 [0,0] == 缺省
+    zero = fit_in_region("短句", dict(region, center_offset=[0, 0]), lib)
+    assert abs(zero[1][0][1] - 250) < 1e-6 and abs(zero[1][0][2] - 150) < 1e-6
+    # 锚点偏移不改变区域边界：下移 60 时单行底边出底界（y_bottom=200）→ 排版失败 None
+    assert fit_in_region("短句", dict(region, center_offset=[0, 60]), lib) is None
 
 
 def test_vertical_center_with_obstacles(assets_dir):

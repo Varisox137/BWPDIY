@@ -10,7 +10,15 @@
         "base_size": 56,
         "star_size": 72,
         "num_size": 45,
-        "enabled": true
+        "enabled": true,
+        "star_offset": [
+          0,
+          0
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "faction": {
         "kind": "faction",
@@ -38,7 +46,8 @@
           0,
           0
         ],
-        "sign_size": 28
+        "sign_size_plus": 28,
+        "sign_size_minus": 28
       },
       "health": {
         "kind": "stat",
@@ -57,7 +66,8 @@
           0,
           0
         ],
-        "sign_size": 28
+        "sign_size_plus": 28,
+        "sign_size_minus": 28
       },
       "name": {
         "kind": "text",
@@ -80,6 +90,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           417
@@ -105,7 +119,15 @@
         ],
         "base_size": 56,
         "star_size": 72,
-        "num_size": 45
+        "num_size": 45,
+        "star_offset": [
+          0,
+          0
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -134,7 +156,12 @@
           0,
           0
         ],
-        "sign_size": 28
+        "group_offset": [
+          0,
+          0
+        ],
+        "sign_size_plus": 28,
+        "sign_size_minus": 28
       },
       "shield": {
         "kind": "stat",
@@ -153,7 +180,25 @@
           0,
           0
         ],
-        "sign_size": 28
+        "group_offset": [
+          0,
+          0
+        ],
+        "sign_size_plus": 28,
+        "sign_size_minus": 28,
+        "fragile_pos": [
+          360,
+          478
+        ],
+        "fragile_icon_size": 66,
+        "fragile_num_offset": [
+          2,
+          2
+        ],
+        "fragile_sign_offset": [
+          0,
+          0
+        ]
       },
       "name": {
         "kind": "text",
@@ -176,6 +221,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           418
@@ -201,7 +250,15 @@
         ],
         "base_size": 56,
         "star_size": 72,
-        "num_size": 45
+        "num_size": 45,
+        "star_offset": [
+          0,
+          0
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -230,7 +287,12 @@
           0,
           0
         ],
-        "sign_size": 28
+        "group_offset": [
+          0,
+          0
+        ],
+        "sign_size_plus": 28,
+        "sign_size_minus": 28
       },
       "health": {
         "kind": "stat",
@@ -249,7 +311,12 @@
           0,
           0
         ],
-        "sign_size": 28
+        "group_offset": [
+          0,
+          0
+        ],
+        "sign_size_plus": 28,
+        "sign_size_minus": 28
       },
       "name": {
         "kind": "text",
@@ -272,6 +339,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           418
@@ -297,7 +368,15 @@
         ],
         "base_size": 56,
         "star_size": 72,
-        "num_size": 45
+        "num_size": 45,
+        "star_offset": [
+          0,
+          0
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -326,7 +405,8 @@
           0,
           0
         ],
-        "sign_size": 28
+        "sign_size_plus": 28,
+        "sign_size_minus": 28
       },
       "health": {
         "kind": "stat",
@@ -345,7 +425,8 @@
           0,
           0
         ],
-        "sign_size": 28
+        "sign_size_plus": 28,
+        "sign_size_minus": 28
       },
       "name": {
         "kind": "text",
@@ -368,6 +449,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           418
@@ -393,7 +478,15 @@
         ],
         "base_size": 56,
         "star_size": 72,
-        "num_size": 45
+        "num_size": 45,
+        "star_offset": [
+          0,
+          0
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -422,7 +515,8 @@
           0,
           0
         ],
-        "sign_size": 25
+        "sign_size_plus": 25,
+        "sign_size_minus": 25
       },
       "name": {
         "kind": "text",
@@ -445,6 +539,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           421
@@ -470,7 +568,15 @@
         ],
         "base_size": 56,
         "star_size": 72,
-        "num_size": 45
+        "num_size": 45,
+        "star_offset": [
+          0,
+          0
+        ],
+        "num_offset": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -503,6 +609,10 @@
     },
     "text_regions": {
       "desc": {
+        "center_offset": [
+          0,
+          0
+        ],
         "center": [
           256,
           424

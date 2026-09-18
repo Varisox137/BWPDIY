@@ -91,12 +91,12 @@ assets/
 | `factions/{color}_{1,2,3}.png`（12 张） | — | **沿用**（式神卡大派系标，不用 PSD 版；PSD 大标与 _2 同形但配色略浅，留 psd_export 备用） |
 | （无） | `☆符号/派系/{4色}{,-墨染}.png`（8 枚小标） | `icons/faction_{color}{,_black}.png`（二期内嵌图标） |
 
-## E. 数值角标（stats/，按类型分图）
+## E. 数值角标（stats/，力量/生命全类型共用）
 
 | 现有资产 | PSD 素材 | 目标路径 |
 |---|---|---|
-| `icons/ll_l.png` | `基础_形态-攻击` / `战斗-攻击` / `法术-攻击` | `stats/form_power.png` / `combat_power.png` / `spell_power.png` |
-| `icons/sm_l.png` | `基础_形态-生命` / `法术-生命` | `stats/form_health.png` / `spell_health.png` |
+| `icons/ll_l.png` | `基础_形态-攻击`（战斗/法术同图重复，去重） | `stats/power.png` |
+| `icons/sm_l.png` | `基础_形态-生命`（法术同图重复，去重） | `stats/health.png` |
 | `icons/hj_l.png` | `战斗-护甲` | `stats/combat_shield.png` |
 | `icons/pj_l.png` | `战斗-破甲` + `战斗-破甲1` | `stats/combat_fragile_{1,2}.png`，**默认用 2（可换）** |
 | `icons/nj_l.png` | `幻境-数值/幻境`（鸟居） | `stats/field_intensity.png` |

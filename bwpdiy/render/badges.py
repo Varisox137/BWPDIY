@@ -27,12 +27,12 @@ FACTION_COLOR = {
 # 战斗牌护甲负值换破甲贴图：stats/combat_fragile_{1,2}.png，默认深红变体 2
 FRAGILE_VARIANT = 2
 
-# stat 字段 → stats/ 贴图文件名段（{code}_{field}.png）
+# stat 字段 → stats/ 贴图文件 stem（stats/{stem}.png；力量/生命全类型共用同一资源）
 _FIELD_BADGE = {
     "power+": "power", "power": "power",
     "health+": "health", "health": "health",
-    "shield+": "shield",
-    "durability": "intensity",
+    "shield+": "combat_shield",
+    "durability": "field_intensity",
 }
 
 
@@ -122,11 +122,13 @@ def _render_sign(lib: AssetLibrary, name: str, size: int) -> Image.Image:
 
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                    elem: dict, card: dict, ctx: dict | None = None,
-                   composite: bool = False) -> Image.Image:
+                   composite: bool = False, stat_part: str | None = None) -> Image.Image:
     """渲染单个布局元素；渲染条件不满足时原样返回 canvas。
 
     composite=True 时 stat 图标走 alpha_composite 贴图（源 alpha 保真）：
     仅供 pipeline 的文本避让掩膜采集；实卡绘制用缺省 paste 行为。
+    stat_part：stat 元素分层绘制——"icon" 只画角标图标、"number" 只画符号+数字、
+    None 两者都画（缺省）。pipeline 按 框上叠加图标层 / 描述后数值层 分两遍调用。
     """
     kind = elem["kind"]
     if not elem.get("enabled", True):
@@ -134,13 +136,17 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
     if kind == "level_badge":
         if card.get("level") is None:
             return canvas
-        out = _paste_element(canvas, lib.level_base(), elem["pos"],
+        pos = elem["pos"]
+        out = _paste_element(canvas, lib.level_base(), pos,
                              (elem["base_size"], elem["base_size"]))
         if card.get("evolve", False):
-            out = _paste_element(out, lib.level_star(), elem["pos"],
+            sx, sy = elem.get("star_offset", [0, 0])  # 觉醒星相对底座偏移
+            out = _paste_element(out, lib.level_star(), (pos[0] + sx, pos[1] + sy),
                                  (elem["star_size"], elem["star_size"]))
+        nx, ny = elem.get("num_offset", [0, 0])  # 勾玉相对底座偏移
         return _paste_element(out, lib.level_num(card["level"]),
-                              elem["pos"], (elem["num_size"], elem["num_size"]))
+                              (pos[0] + nx, pos[1] + ny),
+                              (elem["num_size"], elem["num_size"]))
     if kind == "rarity_flank":
         rarity = card.get("rarity", "R")  # 缺省默认 R
         cx, y = elem["pos"]
@@ -164,15 +170,36 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         if not stat_rendered(elem, card):
             return canvas
         value = card[elem["field"]]
-        code = TYPE_FRAME_CODE[card["type"]]
-        badge_field = _FIELD_BADGE[elem["field"]]
-        if value < 0 and code == "combat" and elem["field"] == "shield+":
-            badge_field = f"fragile_{FRAGILE_VARIANT}"  # 负护甲→破甲，按当前值自动选择
-        out = _paste_element(canvas, lib.stat_badge(code, badge_field), elem["pos"],
-                             (elem["icon_size"], elem["icon_size"]),
-                             composite=composite)
-        pos = elem["pos"]
-        num_pos = (pos[0] + elem["num_offset"][0], pos[1] + elem["num_offset"][1])
+        field = elem["field"]
+        # 破甲（战斗负护甲）四键分离：坐标/图标大小/数字偏移/符号偏移读 fragile_* 键，
+        # 缺省回退基础键；字号/描边/符号尺寸/group_offset 与护甲共享，不为破甲单设
+        fragile = (card["type"] == "战斗" and field == "shield+" and value < 0)
+        if fragile:
+            # 破甲贴图变体可配（fragile_variant 1/2，缺省 2）
+            stem = f"combat_fragile_{elem.get('fragile_variant', FRAGILE_VARIANT)}"
+            pos = tuple(elem.get("fragile_pos", elem["pos"]))
+            icon_size = elem.get("fragile_icon_size", elem["icon_size"])
+            num_offset = elem.get("fragile_num_offset", elem["num_offset"])
+            sign_offset = elem.get("fragile_sign_offset", elem.get("sign_offset", [0, 0]))
+        else:
+            stem = _FIELD_BADGE[field]
+            pos = tuple(elem["pos"])
+            icon_size = elem["icon_size"]
+            num_offset = elem["num_offset"]
+            sign_offset = elem.get("sign_offset", [0, 0])
+        if stat_part != "number":
+            out = _paste_element(canvas, lib.stat_badge(stem), pos,
+                                 (icon_size, icon_size),
+                                 composite=composite)
+        else:
+            out = canvas  # 数值层不带图标（图标层已画）
+        if stat_part == "icon":
+            return out
+        # group_offset：符号+数字整体相对角标的额外偏移（per-type 键，四类带符号
+        # 数值可各自微调；缺省 [0,0]），叠加在跨类型通用的 num_offset 之上
+        gx, gy = elem.get("group_offset", [0, 0])
+        num_pos = (pos[0] + num_offset[0] + gx,
+                   pos[1] + num_offset[1] + gy)
         font = lib.font("name", elem["font_size"])
         stroke_width = elem.get("stroke_width", 2)
         signed = _stat_mode(elem, card) == "signed"
@@ -185,14 +212,17 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         digit_img = digit_ink[0]
         sign_img = None
         if signed:
-            sign_img = _render_sign(lib, "plus" if value >= 0 else "minus",
-                                    elem.get("sign_size", round(elem["font_size"] * 0.5)))
+            # 加号/减号尺寸分开可调（sign_size 为旧数据回退）
+            sign_name = "plus" if value >= 0 else "minus"
+            sign_size = elem.get(f"sign_size_{sign_name}",
+                                 elem.get("sign_size", round(elem["font_size"] * 0.5)))
+            sign_img = _render_sign(lib, sign_name, sign_size)
         sign_w = sign_img.width if sign_img is not None else 0
         gap = 2 if sign_img is not None else 0
         left = round(num_pos[0] - (sign_w + gap + digit_img.width) / 2)
         out = out.copy()
         if sign_img is not None:
-            sx, sy = elem.get("sign_offset", [0, 0])
+            sx, sy = sign_offset
             out.alpha_composite(sign_img,
                                 (left + round(sx),
                                  round(num_pos[1] - sign_img.height / 2 + sy)))

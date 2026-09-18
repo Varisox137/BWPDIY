@@ -4,8 +4,8 @@ stat 数值字段口径与 render/badges.py `_STAT_MATRIX` 对齐（store 不 im
 式神/形态 power+health、幻境 durability 为非负整数（plain）；
 战斗 power+/shield+、觉醒法术 power+/health+ 为整数（signed）；表外组合一律非法。
 
-框品 frame_variant（norm/blue/black/red）仅战斗/法术/形态/幻境可携带（可选，缺省 norm）；
-式神/协战携带属白名单之外字段。
+框品 frame_variant（norm/blue/black/red）式神/战斗/法术/形态/幻境可携带（可选，缺省 norm；
+式神牌框同形态）；协战恒 norm，携带属白名单之外字段。
 """
 
 from __future__ import annotations
@@ -53,6 +53,7 @@ def _allowed_fields(ctype: str) -> set[str]:
     allowed = set(_COMMON_FIELDS)
     if ctype == "式神":
         allowed |= set(_SHIKIGAMI_ONLY) | set(_STATS_BY_TYPE["式神"])
+        allowed.add("frame_variant")  # 式神牌框同形态，支持四框品（无觉醒）
     else:
         allowed |= set(_NON_SHIKIGAMI_FIELDS) | set(_STATS_BY_TYPE[ctype])
         if ctype in _EVOLVE_TYPES:

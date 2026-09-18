@@ -49,9 +49,11 @@ def elem(card_type: str, name: str) -> dict:
 
 def sample(card_type: str, **overrides) -> dict:
     card = copy.deepcopy(SAMPLE_CARDS[card_type])
-    # 脚注兜底与 pipeline.render_card 同口径（render_element 不做兜底）
+    # 脚注兜底与 pipeline.render_card 同口径（render_element 不做兜底）：
+    # 无所属式神（中立牌）只标 类型[/子类型]；式神卡回退卡名
     if not card.get("footer"):
-        card["footer"] = f"{card.get('shikigami', card['name'])}-{card_type}"
+        shikigami = card.get("shikigami") or (card["name"] if card_type == "式神" else None)
+        card["footer"] = f"{shikigami}-{card_type}" if shikigami else card_type
         if card.get("special_type"):
             card["footer"] += f"/{card['special_type']}"
     card.update(overrides)

@@ -37,12 +37,14 @@ def test_clamp_span_by_mask_sides():
 
 
 def test_clamp_span_by_mask_vertical_gap():
-    # y 带（含 gap 竖直外扩）与墨迹行不相交：不受影响
-    runs = mask_row_runs(ink_mask([(110, 140, 150, 170)]))
+    # y 带竖直只外扩 VERTICAL_GAP=1px：贴邻行之外的墨迹不影响行宽（给文本更多空间）
+    runs = mask_row_runs(ink_mask([(110, 140, 150, 170)]))  # 墨迹行 y140..169
     span = (100.0, 300.0)
     assert clamp_span_by_mask(span, 100, 12, runs) == span
-    # 墨迹在 y 带下方但竖直距离 ≤ gap：同样收窄（保证墨迹间距 ≥ gap）
-    assert clamp_span_by_mask(span, 125, 12, runs) == (154.0, 300.0)
+    # 墨迹在 y 带下方、竖直距离 2px（带底 137+1 < 140）：不收窄
+    assert clamp_span_by_mask(span, 125, 12, runs) == span
+    # 竖直距离 ≤ 1px（带底 139+1 = 140 触到墨迹首行）：收窄
+    assert clamp_span_by_mask(span, 127, 12, runs) == (154.0, 300.0)
 
 
 def test_clamp_span_by_mask_custom_gap():

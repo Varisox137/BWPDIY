@@ -274,6 +274,7 @@ def test_save_card_validates_schema(lib):
     {**SPELL, "frame_variant": "blue"},                 # 琉璃
     {**FORM, "frame_variant": "black"},                 # 墨染
     {**FIELD, "frame_variant": "red"},                  # 百炼
+    {**SHIKIGAMI, "frame_variant": "black"},            # 式神可携带（牌框同形态）
     FORM,
     FIELD,
     ASSIST,
@@ -303,7 +304,6 @@ def test_validate_ok(card):
     ({**SHIKIGAMI, "evolve": True}, "evolve"),          # 式神不可觉醒
     ({**FIGHT, "frame_variant": "gold"}, "frame_variant"),   # 非法框品
     ({**FIGHT, "frame_variant": 1}, "frame_variant"),
-    ({**SHIKIGAMI, "frame_variant": "blue"}, "frame_variant"),  # 式神无框品（白名单之外）
     ({**ASSIST, "frame_variant": "blue"}, "frame_variant"),     # 协战无框品（白名单之外）
     ({**SHIKIGAMI, "power": True}, "power"),          # bool 不算 int
     ({**SHIKIGAMI, "health": -1}, "health"),          # 非负

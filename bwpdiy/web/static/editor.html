@@ -5,8 +5,9 @@
 <title>BWPDIY 编辑器</title>
 <style>
   body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
-  #topnav { display: flex; align-items: center; background: #26221c; padding: 6px 10px; }
-  #topnav .brand { color: #d9b96a; font-weight: bold; margin-right: 16px; }
+  #topnav { display: flex; align-items: center; background: #26221c; padding: 6px 10px; position: relative; }
+  #topnav .brand { color: #d9b96a; font-weight: bold; position: absolute; left: 50%; transform: translateX(-50%); }
+  #topnav .brand a { color: inherit; }
   .navtab { padding: 4px 14px; margin-right: 6px; cursor: pointer; border: 1px solid #999; background: #fff; }
   .navtab.active { background: #d9b96a; }
   #ext-options { margin-left: auto; color: #d9b96a; font-size: 12px; }
@@ -59,7 +60,7 @@
 </head>
 <body>
 <nav id="topnav">
-  <span class="brand">BWPDIY</span>
+  <span class="brand">BWPDIY <span class="ver"></span> by <a href="https://github.com/Varisox137/BWPDIY" target="_blank" rel="noopener">Varisox137</a></span>
   <button class="navtab active" data-tab="cards">卡牌库</button>
   <button class="navtab" data-tab="layout">布局设置</button>
   <span id="ext-options">
@@ -103,7 +104,6 @@
     <div id="l-types"></div>
     <h4>卡牌内容</h4><div id="l-cardprops"></div>
     <h4>元素</h4><div id="l-elems"></div>
-    <h4>文本区</h4><div id="l-regions"></div>
   </div>
   <div id="l-main">
     <div>
@@ -148,10 +148,10 @@ const STAT_MATRIX = {
 const NONNEG_TYPES = new Set(["式神", "形态", "幻境"]);
 // 觉醒（evolve）仅战斗/法术/形态/幻境；式神/协战不提供勾选框（与 store schema 同口径）
 const EVOLVE_TYPES = new Set(["战斗", "法术", "形态", "幻境"]);
-// 框品：内部值 → 中文显示名；可携带类型与 schema._EVOLVE_TYPES 同口径（式神/协战不可）
+// 框品：内部值 → 中文显示名；可携带类型 = 式神/战斗/法术/形态/幻境（式神牌框同形态；协战恒 norm 不可）
 const FRAME_VARIANTS = [["norm", "常规"], ["blue", "琉璃"], ["black", "墨染"], ["red", "百炼"]];
 const FRAME_VARIANT_VALUES = new Set(FRAME_VARIANTS.map(([v]) => v));
-const FRAME_VARIANT_TYPES = EVOLVE_TYPES;
+const FRAME_VARIANT_TYPES = new Set(["式神", "战斗", "法术", "形态", "幻境"]);
 
 let layouts = null;          // 完整布局 dict（/api/layout），两 tab 共享
 let samples = null;          // 六类型样卡字段（/api/samples），布局 tab 用
@@ -514,6 +514,10 @@ function buildForm() {
   infoRow(div, '卡名', formData.name ?? curCard);
   if (t === '式神') {
     selRowC(div, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
+    // 框品缺省常规（norm 不写进 yaml，保持字段最小化）
+    selRowC(div, '框品', FRAME_VARIANTS.map(([v]) => v), formData.frame_variant ?? 'norm',
+      v => { if (v === 'norm') delete formData.frame_variant; else formData.frame_variant = v; afterEdit(); },
+      v => FRAME_VARIANTS.find(([val]) => val === v)[1]);
   } else {
     selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
     selRowC(div, '稀有度', rarityOptions(), formData.rarity ?? 'R', v => setField('rarity', v));
@@ -530,7 +534,7 @@ function buildForm() {
         v => { if (v === 'norm') delete formData.frame_variant; else formData.frame_variant = v; afterEdit(); },
         v => FRAME_VARIANTS.find(([val]) => val === v)[1]);
     }
-    textRow(div, '式神名', formData.shikigami ?? '', v => setOptText('shikigami', v));
+    textRow(div, '所属式神', formData.shikigami ?? '', v => setOptText('shikigami', v));
     textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
   }
   // stat 数值按矩阵（法术仅觉醒；式神/形态/幻境强制非负，滚轮微调同布局页交互）
@@ -636,10 +640,11 @@ function validateCardJS(d) {
   if (!TYPES.includes(t)) return [`字段 type：非法卡牌类型「${t}」，须为 ${TYPES.join('/')} 之一`];
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   const allowed = new Set(['type', 'name', 'description', 'artwork']);
-  if (t === '式神') ['faction', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
+  if (t === '式神') ['faction', 'frame_variant', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {
     ['level', 'rarity', 'shikigami', 'special_type', ...STATS_BY_TYPE[t]].forEach(f => allowed.add(f));
-    if (EVOLVE_TYPES.has(t)) { allowed.add('evolve'); allowed.add('frame_variant'); }
+    if (EVOLVE_TYPES.has(t)) allowed.add('evolve');
+    if (FRAME_VARIANT_TYPES.has(t)) allowed.add('frame_variant');  // 协战不可
   }
   for (const k of Object.keys(d)) {
     if (!allowed.has(k)) errors.push(`字段 ${k}：类型「${t}」白名单之外的字段`);
@@ -700,7 +705,7 @@ async function saveCard() {
 // ================= 布局设置 tab =================
 // 自原 static/layout.html 迁入：DOM id 加 l- 前缀、入口改懒初始化 layoutBoot、
 // 列表选择器限定 #l-sidebar 作用域；函数名/常量名保持原样（tests/test_web.py 的 node 抽取测试依赖）
-// stat 图标由 (卡牌类型, 数值字段) 推导 stats/{code}_{field}.png，无手动选择项
+// stat 图标由数值字段推导 stats/{stem}.png（力量/生命全类型共用），无手动选择项
 const FONTS = ['name', 'desc'];
 // 内部标识 → 界面中文显示名（未收录原样显示；图标码语义见 docs/terminology.md 内嵌图标段）
 const DISP = {
@@ -728,7 +733,7 @@ function statInputs() {
 let cardOverrides = {};      // type -> {field: value} 卡牌内容覆盖（POST /api/preview 的 card）
 let curType = "战斗";
 let layoutFrameVariant = "norm";  // 预览框品切换（随「手动调整布局」扩展选项所在的布局 tab 显隐）
-// 框品按钮：点击切换并刷新预览；式神/协战无框品，切到这两类时整组禁用
+// 框品按钮：点击切换并刷新预览；协战无框品，切到该类时整组禁用
 document.querySelectorAll('#l-frame-variants .fv').forEach(b => b.onclick = () => {
   layoutFrameVariant = b.dataset.fv;
   document.querySelectorAll('#l-frame-variants .fv').forEach(x => x.classList.toggle('active', x === b));
@@ -811,10 +816,26 @@ function selectType(t) {
 }
 
 // 卡牌内容输入（预览数据可编辑；改动走防抖实时预览，不涉及布局保存）
+// 顺序固定：卡名 / 等级（0=无等级）/ 觉醒 / 所属式神 / 子类型 / 左下右下数值 / 文本描述
 function buildCardProps() {
   const div = document.getElementById('l-cardprops');
   div.innerHTML = '';
   if (!samples || !samples[curType]) return;
+  textRow(div, '卡名', cardField('name') || '', v => setCardField('name', v));
+  selRow(div, '等级', ['0', '1', '2', '3'], String(cardField('level') ?? 0),
+    v => setCardField('level', v === '0' ? null : parseInt(v, 10)));
+  if (EVOLVE_TYPES.has(curType)) {
+    const l = document.createElement('label');
+    l.textContent = '觉醒 ';
+    const i = document.createElement('input');
+    i.type = 'checkbox'; i.checked = !!cardField('evolve');
+    i.onchange = () => { setCardField('evolve', i.checked); buildCardProps(); };  // 法术 stat 输入随觉醒显隐
+    l.appendChild(i); div.appendChild(l);
+  }
+  if ('shikigami' in samples[curType]) {
+    textRow(div, '所属式神', cardField('shikigami') || '', v => setCardField('shikigami', v));
+  }
+  textRow(div, '子类型', cardField('special_type') || '', v => setCardField('special_type', v));
   const nonneg = NONNEG_TYPES.has(curType);  // 式神/形态/幻境 stat 强制非负
   for (const [field, label] of statInputs()) {
     const l = document.createElement('label');
@@ -836,18 +857,6 @@ function buildCardProps() {
     };
     l.appendChild(i); div.appendChild(l);
   }
-  if (EVOLVE_TYPES.has(curType)) {
-    const l = document.createElement('label');
-    l.textContent = '觉醒 ';
-    const i = document.createElement('input');
-    i.type = 'checkbox'; i.checked = !!cardField('evolve');
-    i.onchange = () => { setCardField('evolve', i.checked); buildCardProps(); };  // 法术 stat 输入随觉醒显隐
-    l.appendChild(i); div.appendChild(l);
-  }
-  if ('shikigami' in samples[curType]) {
-    textRow(div, '式神名', cardField('shikigami') || '', v => setCardField('shikigami', v));
-  }
-  textRow(div, '子类型', cardField('special_type') || '', v => setCardField('special_type', v));
   const l = document.createElement('label');
   l.textContent = '描述 ';
   const ta = document.createElement('textarea');
@@ -868,21 +877,30 @@ function textRow(div, label, val, set) {
 }
 
 // 左栏列表（显示中文名，内部键存 dataset.key 供选中高亮比对）
+// 元素与文本区合并为一列，固定顺序：等级 / 卡名 / 稀有度 / 描述 / 左下角组件 / 右下角组件 / 脚注
+// （左右下角组件 = stat 元素按 pos.x 升序；幻境仅右下角一个）
 function buildLists() {
   const tl = typeLayout();
   const ed = document.getElementById('l-elems'); ed.innerHTML = '';
-  for (const name of Object.keys(tl.elements)) {
-    const d = document.createElement('div');
-    d.textContent = disp(name); d.className = 'item'; d.dataset.key = name;
-    d.onclick = () => { sel = {kind: 'element', name}; refreshSel(); };
-    ed.appendChild(d);
+  const items = [];
+  for (const n of ['level', 'name', 'rarity']) {
+    if (tl.elements[n]) items.push({kind: 'element', name: n});
   }
-  const rd = document.getElementById('l-regions'); rd.innerHTML = '';
-  for (const name of Object.keys(tl.text_regions)) {
+  if ((tl.text_regions || {}).desc) items.push({kind: 'region', name: 'desc'});
+  const stats = Object.entries(tl.elements)
+    .filter(([, e]) => e.kind === 'stat')
+    .sort((a, b) => a[1].pos[0] - b[1].pos[0]);
+  for (const [n] of stats) items.push({kind: 'element', name: n});
+  if (tl.elements.footer) items.push({kind: 'element', name: 'footer'});
+  const listed = new Set(items.map(i => i.name));
+  for (const n of Object.keys(tl.elements)) {  // 兜底：未列到的元素附加在后
+    if (!listed.has(n)) items.push({kind: 'element', name: n});
+  }
+  for (const it of items) {
     const d = document.createElement('div');
-    d.textContent = disp(name); d.className = 'item'; d.dataset.key = name;
-    d.onclick = () => { sel = {kind: 'region', name}; refreshSel(); };
-    rd.appendChild(d);
+    d.textContent = disp(it.name); d.className = 'item'; d.dataset.key = it.name;
+    d.onclick = () => { sel = it; refreshSel(); };
+    ed.appendChild(d);
   }
 }
 function refreshSel() {
@@ -941,6 +959,9 @@ function draw() {
     ctx.strokeStyle = active ? '#ff4' : '#4f4';
     ctx.strokeRect(r.center[0] - r.width / 2, r.center[1] - r.height / 2, r.width, r.height);
     handle(r.center, active ? '#ff4' : '#4f4', 5, true);
+    // 居中锚点（center + center_offset）：橙色圆点，与区域中心绿色方块区分
+    const off = r.center_offset || [0, 0];
+    handle([r.center[0] + off[0], r.center[1] + off[1]], active ? '#ff4' : '#f80');
   }
 }
 function handle([x, y], color, s = 6, square = false) {
@@ -982,6 +1003,11 @@ function pick(mx, my) {
     if (near(...e.pos)) return { sel: {kind: 'element', name}, set: (x, y) => { e.pos = [x, y]; } };
   }
   for (const [name, r] of Object.entries(tl.text_regions)) {
+    const off = r.center_offset || [0, 0];
+    // 居中锚点仅在偏移非零时可拖（与中心重合时让位给中心拖拽）
+    if ((off[0] || off[1]) && near(r.center[0] + off[0], r.center[1] + off[1]))
+      return { sel: {kind: 'region', name},
+        set: (x, y) => { r.center_offset = [x - r.center[0], y - r.center[1]]; } };
     if (near(...r.center)) return { sel: {kind: 'region', name},
       set: (x, y) => { r.center = [x, y]; } };
   }
@@ -1006,7 +1032,7 @@ function buildProps() {
       numRow(div, '数字偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
       numRow(div, '数字偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
       numRow(div, '字号', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
-      // 图标由 (卡牌类型, 数值字段) 自动推导 stats/{code}_{field}.png（负护甲换破甲），不提供手动选择
+      // 图标由数值字段自动推导 stats/{stem}.png（力量/生命全类型共用；负护甲换破甲），不提供手动选择
       const n = document.createElement('div');
       n.className = 'note';
       n.textContent = '图标按类型与数值字段自动选择（负护甲换破甲）';
@@ -1014,8 +1040,33 @@ function buildProps() {
       e.sign_offset ??= [0, 0];
       numRow(div, '符号偏移 x', e.sign_offset[0], v => { e.sign_offset[0] = v; syncElemField(sel.name, 'sign_offset', [...e.sign_offset]); draw(); });
       numRow(div, '符号偏移 y', e.sign_offset[1], v => { e.sign_offset[1] = v; syncElemField(sel.name, 'sign_offset', [...e.sign_offset]); draw(); });
-      numRow(div, '符号尺寸', e.sign_size ?? Math.round(e.font_size * 0.5), v => { e.sign_size = v; syncElemField(sel.name, 'sign_size', v); });
+      numRow(div, '加号尺寸', e.sign_size_plus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => { e.sign_size_plus = v; syncElemField(sel.name, 'sign_size_plus', v); });
+      numRow(div, '减号尺寸', e.sign_size_minus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => { e.sign_size_minus = v; syncElemField(sel.name, 'sign_size_minus', v); });
       numRow(div, '描边宽度', e.stroke_width ?? 2, v => { e.stroke_width = v; syncElemField(sel.name, 'stroke_width', v); });
+      if (SIGNED_STATS.includes(e.field)) {
+        // 符号+数字整体相对角标的额外偏移：per-type 键，四类带符号数值各自微调，不跨类型同步
+        e.group_offset ??= [0, 0];
+        numRow(div, '符号数字整体偏移 x', e.group_offset[0], v => { e.group_offset[0] = v; draw(); });
+        numRow(div, '符号数字整体偏移 y', e.group_offset[1], v => { e.group_offset[1] = v; draw(); });
+      }
+      if (curType === '战斗' && e.field === 'shield+') {
+        // 破甲（负护甲）与护甲分离的四个键：坐标/图标大小/数字偏移/符号偏移；
+        // 坐标为 per-type 不同步，其余三个尺寸偏移类跨类型同步（仅战斗有该元素，同步无实际对象）
+        div.appendChild(title('破甲（负护甲）'));
+        selRow(div, '破甲样式', ['1', '2'], String(e.fragile_variant ?? 2),
+          v => { e.fragile_variant = parseInt(v, 10); syncElemField(sel.name, 'fragile_variant', e.fragile_variant); });
+        e.fragile_pos ??= [...e.pos];
+        numRow(div, '破甲位置 x', e.fragile_pos[0], v => { e.fragile_pos[0] = v; draw(); });
+        numRow(div, '破甲位置 y', e.fragile_pos[1], v => { e.fragile_pos[1] = v; draw(); });
+        e.fragile_icon_size ??= e.icon_size;
+        numRow(div, '破甲图标尺寸', e.fragile_icon_size, v => { e.fragile_icon_size = v; syncElemField(sel.name, 'fragile_icon_size', v); });
+        e.fragile_num_offset ??= [...e.num_offset];
+        numRow(div, '破甲数字偏移 x', e.fragile_num_offset[0], v => { e.fragile_num_offset[0] = v; syncElemField(sel.name, 'fragile_num_offset', [...e.fragile_num_offset]); draw(); });
+        numRow(div, '破甲数字偏移 y', e.fragile_num_offset[1], v => { e.fragile_num_offset[1] = v; syncElemField(sel.name, 'fragile_num_offset', [...e.fragile_num_offset]); draw(); });
+        e.fragile_sign_offset ??= [0, 0];
+        numRow(div, '破甲符号偏移 x', e.fragile_sign_offset[0], v => { e.fragile_sign_offset[0] = v; syncElemField(sel.name, 'fragile_sign_offset', [...e.fragile_sign_offset]); draw(); });
+        numRow(div, '破甲符号偏移 y', e.fragile_sign_offset[1], v => { e.fragile_sign_offset[1] = v; syncElemField(sel.name, 'fragile_sign_offset', [...e.fragile_sign_offset]); draw(); });
+      }
     }
     if (e.kind === 'rarity_flank') {
       numRow(div, '默认间距', e.gap, v => { e.gap = v; syncElemField(sel.name, 'gap', v); });
@@ -1031,7 +1082,13 @@ function buildProps() {
       if (curType !== '协战') checkRow(div, '启用', e.enabled !== false, v => e.enabled = v);
       numRow(div, '底座尺寸', e.base_size, v => { e.base_size = v; syncElemField(sel.name, 'base_size', v); });
       numRow(div, '星标尺寸', e.star_size, v => { e.star_size = v; syncElemField(sel.name, 'star_size', v); });
-      numRow(div, '数字尺寸', e.num_size, v => { e.num_size = v; syncElemField(sel.name, 'num_size', v); });
+      e.star_offset ??= [0, 0];
+      numRow(div, '星标偏移 x', e.star_offset[0], v => { e.star_offset[0] = v; syncElemField(sel.name, 'star_offset', [...e.star_offset]); draw(); });
+      numRow(div, '星标偏移 y', e.star_offset[1], v => { e.star_offset[1] = v; syncElemField(sel.name, 'star_offset', [...e.star_offset]); draw(); });
+      numRow(div, '勾玉尺寸', e.num_size, v => { e.num_size = v; syncElemField(sel.name, 'num_size', v); });
+      e.num_offset ??= [0, 0];
+      numRow(div, '勾玉偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
+      numRow(div, '勾玉偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
     }
     if (e.kind === 'text') {
       numRow(div, '字号', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
@@ -1042,6 +1099,10 @@ function buildProps() {
     div.appendChild(title(`${disp(sel.name)} 文本区`));
     numRow(div, '中心 x', r.center[0], v => { r.center[0] = v; draw(); });
     numRow(div, '中心 y', r.center[1], v => { r.center[1] = v; draw(); });
+    // 居中锚点偏移：per-type 键不跨类型同步；区域边界/行宽不变，只移动视觉居中基准
+    r.center_offset ??= [0, 0];
+    numRow(div, '居中点偏移 x', r.center_offset[0], v => { r.center_offset[0] = v; draw(); });
+    numRow(div, '居中点偏移 y', r.center_offset[1], v => { r.center_offset[1] = v; draw(); });
     numRow(div, '宽度', r.width, v => { r.width = v; syncRegionField(sel.name, 'width', v); draw(); });
     numRow(div, '高度', r.height, v => { r.height = v; syncRegionField(sel.name, 'height', v); draw(); });
     numRow(div, '字号上限', r.font_range[0], v => { r.font_range[0] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
@@ -1085,10 +1146,12 @@ function selRow(div, label, opts, val, set, map = null) {
 // 保存时以当前类型为准传播：同名元素的样式键镜像到所有类型（缺键不删、各自保留）。
 // 内容/结构键（kind/field/pos/enabled）一律不镜像——field 曾被跨类型覆盖
 // 造成数据污染（式神/形态 power→power+、法术 health+→health），只同步白名单内样式键。
-// 编辑期 syncElemField 调用点同样只传样式键（num_offset/sign_offset/sign_size/stroke_width/
-// icon_size/font_size/gap/margin/size/base_size/star_size/num_size），与本能保持同口径。
+// 编辑期 syncElemField 调用点同样只传样式键（num_offset/sign_offset/sign_size_plus/
+// sign_size_minus/stroke_width/icon_size/font_size/gap/margin/size/base_size/star_size/
+// num_size/star_offset），与本能保持同口径。
 const STYLE_KEYS = new Set(["size", "icon_size", "font_size", "num_offset", "sign_offset",
-                            "sign_size", "stroke_width", "gap",
+                            "sign_size_plus", "sign_size_minus", "stroke_width", "gap", "star_offset",
+                            "fragile_icon_size", "fragile_num_offset", "fragile_sign_offset", "fragile_variant",
                             "margin", "base_size", "star_size", "num_size", "font", "style"]);
 function propagateFromCurrentType() {
   const cur = typeLayout().elements || {};
@@ -1123,7 +1186,7 @@ document.getElementById('l-btn-preview').onclick = refreshPreview;
 // ================= 入口 =================
 fetch('/api/version').then(r => r.json()).then(v => {
   document.title += ' v' + v.version;
-  document.querySelector('#topnav .brand').textContent += ' v' + v.version;
+  document.querySelector('#topnav .brand .ver').textContent = 'v' + v.version;
 }).catch(() => {});
 applyExtOptions();  // 扩展选项恢复（含布局 navtab 显隐）
 loadProjects();

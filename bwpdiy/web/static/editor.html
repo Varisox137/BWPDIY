@@ -475,8 +475,8 @@ function buildForm() {
         afterEdit(true);
       });
     }
-    textRowC(div, '式神名', formData.shikigami ?? '', v => setOptText('shikigami', v));
-    textRowC(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
+    textRow(div, '式神名', formData.shikigami ?? '', v => setOptText('shikigami', v));
+    textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
   }
   // stat 数值按矩阵（法术仅觉醒；式神/形态/幻境强制非负，滚轮微调同布局页交互）
   if (t !== '法术' || !!formData.evolve) {
@@ -529,14 +529,6 @@ function afterEdit(rebuild = false) {
     showFormErrors(validateCardJS(formData));
   }
   scheduleCardPreview();
-}
-function textRowC(div, label, val, set) {
-  const l = document.createElement('label');
-  l.textContent = label + ' ';
-  const i = document.createElement('input');
-  i.type = 'text'; i.value = val;
-  i.onchange = () => set(i.value);
-  l.appendChild(i); div.appendChild(l);
 }
 function numRowC(div, label, val, nonneg, set) {
   const l = document.createElement('label');

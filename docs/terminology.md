@@ -9,8 +9,8 @@
 | 卡图 | artwork | 用户导入的插画，经变换与蒙版裁切；一张卡可有原画+多张异画 |
 | 原画 | default art | `artwork.images[0]` |
 | 异画 | alt art | `artwork.images[1:]`，仅立绘不同，卡面布局/形状不变；与原画 id 不同、共用一份 yaml |
-| 蒙版 | mask | 卡图抠图形状，边缘高斯平滑（radius=1） |
-| 牌框 | frame | 完整卡框，有 `high`/`low` 两种**版型**，区别在于卡图区域与文本区域所占比例（low 文本区更大，适合长文本）；MVP 默认 low，简体中文场景暂不提供选择 |
+| 蒙版 | mask | 卡图抠图形状，边缘高斯平滑（radius=1）；资源 `masks/mask_{zd/fs/xt/hj/xz}_low.png`（一期仅 low，旧 `*_bound.png` 已删除） |
+| 牌框 | frame | 完整卡框，资源 `frames/frame_{zd/fs/xt/hj/xz}_{框品}_{版型}.png`；版型有 `high`/`low` 两种，区别在于卡图区域与文本区域所占比例（low 文本区更大，适合长文本）；一期固定 low 且现库仅收五类型 `*_norm_low.png`，high 版型与 blue/black/red 框品原图留存 `frames/unprocessed/`（二期开放时取用） |
 | 框品 | frame_variant | 常规(norm)/琉璃(blue)/墨染(black)/百炼(red)；一期固定 norm，二期开放 |
 | 等级标 | level_badge | 三层自底向上叠加（无等级卡牌整体跳过）：① 底座 base（青黑色）→ ② 觉醒图案 evolve_star（五角星，仅觉醒牌叠加；觉醒 = evolve: true，仅战斗/法术/形态/幻境可携带，式神/协战不可）→ ③ 等级数字 level_num（1–3 级 × 4 种颜色，对应对局 4 个位置） |
 | 稀有度标 | rarity_mark | N/R/SR/SSR |

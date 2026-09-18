@@ -33,8 +33,8 @@ def _normalize_size_fields(layouts: dict) -> None:
                 if not isinstance(item, dict):
                     continue
                 for key, value in item.items():
-                    # bool 是 int 子类，须先排除：bool 属内容类字段（signed/wrap 已在
-                    # 白名单），被误当尺寸类会在新增 bool 字段时错误归一
+                    # bool 是 int 子类，须先排除：bool 属内容类字段（如 wrap），
+                    # 被误当尺寸类会在新增 bool 字段时错误归一
                     if (key in _PER_TYPE_KEYS or isinstance(value, bool)
                             or not isinstance(value, (int, float, list))):
                         continue

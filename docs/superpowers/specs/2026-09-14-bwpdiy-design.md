@@ -111,13 +111,17 @@ bwpdiy.render.render_card(card: dict, assets_dir: Path) -> PIL.Image
 
 ## 5. 编辑器 WebGUI
 
-vanilla JS 单页（无构建），三栏：
+vanilla JS 单页（无构建），`/` 为编辑器主体页，双 tab：「卡牌库」与「布局设置」（原独立布局页已退役，`/layout` 307 重定向 `/#layout`）。
 
-- **左栏**：项目列表 + 项目内卡牌列表（新建/复制/删除/重命名）
-- **中栏**：实时预览——表单变更 debounce 后请求 `/api/preview` 拿 PNG；卡图支持预览上**拖拽/滚轮缩放**定位（前端写回 offset/scale，渲染仍在服务端）
-- **右栏**：表单，按卡牌类型动态显隐字段，即时校验
+**卡牌库 tab**（M2+M3 骨架，已落地）三栏：
 
-功能：卡图上传（存入项目 `images/`）、单卡导出 PNG、项目批量导出。
+- **左栏**：项目列表 + 项目内卡牌列表（新建/重命名/删除；式神卡 shikigami 随项目出厂，不可删除/重命名，可覆盖保存）
+- **中栏**：预览——编辑期走样卡管线 debounce 实时刷新（卡图用占位底图）；选中/保存后走项目卡预览（artwork 基准目录 = 项目 `images/`，缺图回退占位）
+- **右栏**：表单，按卡牌类型动态显隐字段（含觉醒勾选框，仅战斗/法术/形态/幻境），即时校验（口径对齐 store schema），保存 422 错误表单侧展示
+
+**布局设置 tab**：六类型切换，元素/文本区画布拖拽定位，卡牌内容（样卡数值/式神名/子类型/描述/觉醒）可编辑实时预览，按类型开关元素，保存时样式键跨类型传播。
+
+**M3 完整版未做**：卡图上传（存入项目 `images/`）、预览上拖拽/滚轮缩放定位卡图（前端写回 offset/scale）、单卡导出 PNG、项目批量导出。
 
 ## 6. BWPro 集成
 
@@ -143,8 +147,8 @@ pytest 三层：schema 校验单测、渲染 smoke（各类型各出一张图不
 ## 10. 分期
 
 - **M1**：项目骨架 + assets 迁移 + render 管线（含纯文本排版）+ 命令行渲染一张示例卡
-- **M2**：store 层（项目/卡牌 CRUD + schema 校验）
-- **M3**：WebGUI 编辑器完整流程（列表/表单/预览/拖拽定位/导出）
+- **M2**：store 层（项目/卡牌 CRUD + schema 校验）——已落地（StoreError 语义 code、名称安全/路径注入防护、原子写）
+- **M3**：WebGUI 编辑器完整流程（列表/表单/预览/拖拽定位/导出）——骨架已落地（双 tab 编辑器：CRUD/表单/实时预览/布局调参）；卡图上传、卡图拖拽定位、PNG 导出未做
 - **M4**：HTTP API + `docs/integration.md` + 与 BWPro 对联调示例
 - **二期**：`[关键词]`/`#图标` 富文本排版、框品/多牌框开放、等级数字 4 色接入对局位置
 
@@ -156,6 +160,6 @@ pytest 三层：schema 校验单测、渲染 smoke（各类型各出一张图不
 
 1. **BWPro 现有 524 张卡 yaml 需补 `artwork` 段**：offset/scale 需逐卡人工调试。因 `artwork` 整段可缺省、缺省自动居中，旧 yaml 不补也能渲染，无迁移阻塞；逐卡精调是后期工作。（提醒用户）
 2. **BWPro 侧美术资产目录安排待定**：`artwork.images[].path` 在 BWPro 调用侧的相对基准目录以后确定。
-3. **式神卡资源核实**：式神卡外观形状同形态牌（`xt`），初始化时核实 `assets/` 里式神渲染实际复用哪些资源并在 terminology.md 标注。
+3. ~~**式神卡资源核实**~~（已核实）：式神卡外观形状同形态牌，渲染按 `TYPE_FRAME_CODE` 复用 `xt` 资源（`masks/mask_xt_low.png` + `frames/frame_xt_norm_low.png`，见 `bwpdiy/render/pipeline.py`），差异化元素为派系标/力量/生命。assets 精修后现库仅收五类型 `*_norm_low` 牌框/蒙版；high 版型与 blue/black/red 框品原图留存 `assets/frames/unprocessed/`（二期接线时取用），已弃用的 `*_bound.png` 蒙版已删除。
 4. 框品资源映射：常规=norm / 琉璃=blue / 墨染=black / 百炼=red（用户已确认，二期开放时按此接线）。
 5. **觉醒星美术资源可能需重制**（用户提醒）：`assets/levels/star.png`（126×127，legacy 程序化生成）在正式使用前需用户确认/替换。

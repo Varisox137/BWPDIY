@@ -4,21 +4,21 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          120,
-          65
+          128,
+          63
         ],
-        "base_size": 52,
-        "star_size": 68,
-        "num_size": 40,
+        "base_size": 56,
+        "star_size": 72,
+        "num_size": 45,
         "enabled": true
       },
       "faction": {
         "kind": "faction",
         "pos": [
           256,
-          318
+          300
         ],
-        "size": 44,
+        "size": 96,
         "style": 2
       },
       "power": {
@@ -26,15 +26,15 @@
         "field": "power",
         "icon": "ll",
         "pos": [
-          160,
-          485
+          151,
+          482
         ],
-        "icon_size": 64,
+        "icon_size": 74,
         "num_offset": [
-          8,
-          -2
+          2,
+          3
         ],
-        "font_size": 52
+        "font_size": 56
       },
       "health": {
         "kind": "stat",
@@ -42,31 +42,31 @@
         "icon": "sm",
         "pos": [
           360,
-          485
+          481
         ],
-        "icon_size": 32,
+        "icon_size": 102,
         "num_offset": [
-          22,
-          0
+          0,
+          4
         ],
-        "font_size": 30
+        "font_size": 56
       },
       "name": {
         "kind": "text",
         "pos": [
           256,
-          358
+          337
         ],
-        "font_size": 30,
+        "font_size": 24,
         "font": "name"
       },
       "footer": {
         "kind": "text",
         "pos": [
           256,
-          484
+          498
         ],
-        "font_size": 14,
+        "font_size": 15,
         "font": "desc"
       }
     },
@@ -74,12 +74,12 @@
       "desc": {
         "center": [
           256,
-          426
+          417
         ],
-        "width": 252,
-        "height": 80,
+        "width": 250,
+        "height": 125,
         "font_range": [
-          22,
+          24,
           12
         ],
         "wrap": true,
@@ -92,20 +92,20 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          120,
-          60
+          128,
+          64
         ],
-        "base_size": 52,
-        "star_size": 68,
-        "num_size": 40
+        "base_size": 56,
+        "star_size": 72,
+        "num_size": 45
       },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
           256,
-          345
+          340
         ],
-        "gap": 31,
+        "gap": 90,
         "margin": 8,
         "size": 22
       },
@@ -114,15 +114,15 @@
         "field": "power+",
         "icon": "ll",
         "pos": [
-          138,
-          484
+          151,
+          481
         ],
-        "icon_size": 64,
+        "icon_size": 74,
         "num_offset": [
-          8,
-          -2
+          2,
+          3
         ],
-        "font_size": 52
+        "font_size": 56
       },
       "shield": {
         "kind": "stat",
@@ -130,23 +130,23 @@
         "icon": "hj",
         "icon_neg": "pj",
         "pos": [
-          377,
-          482
+          360,
+          478
         ],
-        "icon_size": 56,
+        "icon_size": 66,
         "num_offset": [
-          13,
-          -2
+          2,
+          2
         ],
-        "font_size": 52
+        "font_size": 56
       },
       "name": {
         "kind": "text",
         "pos": [
           256,
-          342
+          336
         ],
-        "font_size": 30,
+        "font_size": 24,
         "font": "name"
       },
       "footer": {
@@ -155,7 +155,7 @@
           256,
           499
         ],
-        "font_size": 14,
+        "font_size": 15,
         "font": "desc"
       }
     },
@@ -163,12 +163,12 @@
       "desc": {
         "center": [
           256,
-          426
+          418
         ],
-        "width": 252,
-        "height": 80,
+        "width": 250,
+        "height": 125,
         "font_range": [
-          22,
+          24,
           12
         ],
         "wrap": true,
@@ -181,20 +181,20 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          120,
-          65
+          126,
+          42
         ],
-        "base_size": 52,
-        "star_size": 68,
-        "num_size": 40
+        "base_size": 56,
+        "star_size": 72,
+        "num_size": 45
       },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
           256,
-          358
+          340
         ],
-        "gap": 31,
+        "gap": 90,
         "margin": 8,
         "size": 22
       },
@@ -203,47 +203,47 @@
         "field": "power+",
         "icon": "ll",
         "pos": [
-          160,
-          485
+          145,
+          481
         ],
-        "icon_size": 64,
+        "icon_size": 74,
         "num_offset": [
-          8,
-          -2
+          2,
+          3
         ],
-        "font_size": 52
+        "font_size": 56
       },
       "health": {
         "kind": "stat",
         "field": "health+",
         "icon": "sm",
         "pos": [
-          360,
-          485
+          367,
+          480
         ],
-        "icon_size": 32,
+        "icon_size": 102,
         "num_offset": [
-          22,
-          0
+          0,
+          4
         ],
-        "font_size": 30
+        "font_size": 56
       },
       "name": {
         "kind": "text",
         "pos": [
           256,
-          358
+          338
         ],
-        "font_size": 30,
+        "font_size": 24,
         "font": "name"
       },
       "footer": {
         "kind": "text",
         "pos": [
           256,
-          484
+          497
         ],
-        "font_size": 14,
+        "font_size": 15,
         "font": "desc"
       }
     },
@@ -251,12 +251,12 @@
       "desc": {
         "center": [
           256,
-          426
+          418
         ],
-        "width": 252,
-        "height": 80,
+        "width": 250,
+        "height": 125,
         "font_range": [
-          22,
+          24,
           12
         ],
         "wrap": true,
@@ -269,20 +269,20 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          120,
-          65
+          128,
+          63
         ],
-        "base_size": 52,
-        "star_size": 68,
-        "num_size": 40
+        "base_size": 56,
+        "star_size": 72,
+        "num_size": 45
       },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
           256,
-          358
+          340
         ],
-        "gap": 31,
+        "gap": 90,
         "margin": 8,
         "size": 22
       },
@@ -291,15 +291,15 @@
         "field": "power",
         "icon": "ll",
         "pos": [
-          160,
-          485
+          151,
+          482
         ],
-        "icon_size": 64,
+        "icon_size": 74,
         "num_offset": [
-          8,
-          -2
+          2,
+          3
         ],
-        "font_size": 52
+        "font_size": 56
       },
       "health": {
         "kind": "stat",
@@ -307,31 +307,31 @@
         "icon": "sm",
         "pos": [
           360,
-          485
+          481
         ],
-        "icon_size": 32,
+        "icon_size": 102,
         "num_offset": [
-          22,
-          0
+          0,
+          4
         ],
-        "font_size": 30
+        "font_size": 56
       },
       "name": {
         "kind": "text",
         "pos": [
           256,
-          358
+          337
         ],
-        "font_size": 30,
+        "font_size": 24,
         "font": "name"
       },
       "footer": {
         "kind": "text",
         "pos": [
           256,
-          484
+          498
         ],
-        "font_size": 14,
+        "font_size": 15,
         "font": "desc"
       }
     },
@@ -339,12 +339,12 @@
       "desc": {
         "center": [
           256,
-          426
+          418
         ],
-        "width": 252,
-        "height": 80,
+        "width": 250,
+        "height": 125,
         "font_range": [
-          22,
+          24,
           12
         ],
         "wrap": true,
@@ -358,19 +358,19 @@
         "kind": "level_badge",
         "pos": [
           120,
-          65
+          58
         ],
-        "base_size": 52,
-        "star_size": 68,
-        "num_size": 40
+        "base_size": 56,
+        "star_size": 72,
+        "num_size": 45
       },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
-          256,
-          358
+          248,
+          344
         ],
-        "gap": 31,
+        "gap": 90,
         "margin": 8,
         "size": 22
       },
@@ -379,45 +379,45 @@
         "field": "durability",
         "icon": "nj",
         "pos": [
-          360,
-          485
+          361,
+          483
         ],
-        "icon_size": 32,
+        "icon_size": 68,
         "num_offset": [
-          22,
-          0
+          0,
+          5
         ],
-        "font_size": 30
+        "font_size": 50
       },
       "name": {
         "kind": "text",
         "pos": [
-          256,
-          358
+          248,
+          342
         ],
-        "font_size": 30,
+        "font_size": 24,
         "font": "name"
       },
       "footer": {
         "kind": "text",
         "pos": [
-          256,
-          484
+          248,
+          500
         ],
-        "font_size": 14,
+        "font_size": 15,
         "font": "desc"
       }
     },
     "text_regions": {
       "desc": {
         "center": [
-          256,
-          426
+          246,
+          421
         ],
-        "width": 252,
-        "height": 80,
+        "width": 250,
+        "height": 125,
         "font_range": [
-          22,
+          24,
           12
         ],
         "wrap": true,
@@ -430,20 +430,20 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          120,
-          65
+          128,
+          64
         ],
-        "base_size": 52,
-        "star_size": 68,
-        "num_size": 40
+        "base_size": 56,
+        "star_size": 72,
+        "num_size": 45
       },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
           256,
-          358
+          348
         ],
-        "gap": 31,
+        "gap": 90,
         "margin": 8,
         "size": 22
       },
@@ -451,18 +451,18 @@
         "kind": "text",
         "pos": [
           256,
-          358
+          346
         ],
-        "font_size": 30,
+        "font_size": 24,
         "font": "name"
       },
       "footer": {
         "kind": "text",
         "pos": [
           256,
-          484
+          498
         ],
-        "font_size": 14,
+        "font_size": 15,
         "font": "desc"
       }
     },
@@ -470,12 +470,12 @@
       "desc": {
         "center": [
           256,
-          426
+          424
         ],
-        "width": 252,
-        "height": 80,
+        "width": 250,
+        "height": 125,
         "font_range": [
-          22,
+          24,
           12
         ],
         "wrap": true,

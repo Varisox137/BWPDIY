@@ -731,7 +731,7 @@ function statInputs() {
   return inputs;
 }
 let cardOverrides = {};      // type -> {field: value} 卡牌内容覆盖（POST /api/preview 的 card）
-let curType = "战斗";
+let curType = "式神";
 let layoutFrameVariant = "norm";  // 预览框品切换（随「手动调整布局」扩展选项所在的布局 tab 显隐）
 // 框品按钮：点击切换并刷新预览；协战无框品，切到该类时整组禁用
 document.querySelectorAll('#l-frame-variants .fv').forEach(b => b.onclick = () => {
@@ -759,7 +759,7 @@ async function layoutBoot() {
     statusEl.textContent = '布局加载失败: ' + e;
     return;
   }
-  buildTypes(); selectType('战斗');
+  buildTypes(); selectType('式神');  // 默认卡牌类型：式神
 }
 function typeLayout() { return layouts[curType]; }
 function markDirty() { dirty = true; }
@@ -1080,8 +1080,7 @@ function buildProps() {
       selRow(div, '样式', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
     }
     if (e.kind === 'level_badge') {
-      // per-type 开关，不跨类型同步；协战按需求不提供开关（等价始终启用）
-      if (curType !== '协战') checkRow(div, '启用', e.enabled !== false, v => e.enabled = v);
+      // 等级组件是否绘制由卡面等级决定（等级 0=无等级不绘制），不再提供启用开关
       numRow(div, '底座尺寸', e.base_size, v => { e.base_size = v; syncElemField(sel.name, 'base_size', v); });
       numRow(div, '星标尺寸', e.star_size, v => { e.star_size = v; syncElemField(sel.name, 'star_size', v); });
       e.star_offset ??= [0, 0];

@@ -10,7 +10,6 @@
         "base_size": 58,
         "star_size": 76,
         "num_size": 40,
-        "enabled": true,
         "star_offset": [
           0,
           -4

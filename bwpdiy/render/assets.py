@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image, ImageFont
 
 FONT_FILES = {
-    "name": "田氏颜体大字库.ttf",
+    "name": "田氏颜体大字库2.0.ttf",
     "desc": "方正北魏楷书.ttf",
 }
 

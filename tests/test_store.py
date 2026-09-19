@@ -283,36 +283,6 @@ def test_save_card_validates_schema(lib):
     assert not (lib / "山风" / "cards" / "斩.yaml").exists()
 
 
-# ---------- 惰性迁移 ----------
-
-def _write_legacy_shikigami(lib, project="山风", name="山风"):
-    """构造旧版单式神结构：<项目>/shikigami.yaml。"""
-    pdir = lib / project
-    (pdir / "shikigami.yaml").write_text(
-        yaml.safe_dump({**SHIKIGAMI, "name": name}, allow_unicode=True), encoding="utf-8")
-    return pdir
-
-
-def test_migrate_legacy_on_list(lib):
-    """旧式 shikigami.yaml 在 list_cards 入口惰性移入 shikigami/ 目录。"""
-    create_project(lib, "山风")
-    pdir = _write_legacy_shikigami(lib)
-    assert list_cards(lib, "山风")["shikigami"] == [{"stem": "shikigami", "name": "山风"}]
-    assert not (pdir / "shikigami.yaml").exists()
-    assert (pdir / "shikigami" / "shikigami.yaml").is_file()
-    # 迁移后读/删均按新结构分派
-    assert load_card(lib, "山风", "shikigami")["type"] == "式神"
-
-
-def test_migrate_legacy_target_exists(lib):
-    create_project(lib, "山风")
-    save_card(lib, "山风", "shikigami", SHIKIGAMI)  # shikigami/shikigami.yaml 已存在
-    _write_legacy_shikigami(lib, name="旧山风")
-    with pytest.raises(StoreError, match="手动处理"):
-        list_cards(lib, "山风")
-    assert (lib / "山风" / "shikigami.yaml").is_file()  # 未动旧文件
-
-
 # ---------- 数量上限 / 式神名唯一 / 改名联动 ----------
 
 def test_max_cards_limit(lib, monkeypatch):

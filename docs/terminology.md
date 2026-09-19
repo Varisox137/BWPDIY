@@ -41,7 +41,7 @@
 | 术语 | 说明 |
 |---|---|
 | 式神项目 | library 下的一个目录（v1.2.2 起对应 BWPro 大版本）：`shikigami/`（式神卡，一式神一文件、数量不限）+ `cards/`（非式神卡，上限 299）+ `images/`（卡图，上传落盘 hash 命名） |
-| 卡名与文件名脱钩 | yaml 文件名任意（方便 BWPro 按 id 取文件），卡名以文件内 `name` 字段为准；式神卡名全项目唯一（引用按名关联），改名时服务端联动改写同项目所有卡的 `shikigami`/`shikigami1`/`shikigami2`；旧版 `<项目>/shikigami.yaml` 首次访问惰性迁移入 `shikigami/` |
+| 卡名与文件名脱钩 | yaml 文件名任意（方便 BWPro 按 id 取文件），卡名以文件内 `name` 字段为准；式神卡名全项目唯一（引用按名关联），改名时服务端联动改写同项目所有卡的 `shikigami`/`shikigami1`/`shikigami2` |
 | 项目名/卡名合法性 | store 层保存时拒绝：空名、首尾空白、`.`/`..`、路径分隔符与 `<>:"\|?*`、控制字符、以点结尾（防路径注入）、Windows 保留设备名（CON/PRN/AUX/NUL/COM1–9/LPT1–9，大小写不敏感、按 `.` 前缀截断判定）——约束文件 stem 与项目名 |
 | 衍生物 | 项目内由卡效果派生的实体卡，存于 `cards/`，带派生标记 |
 | 引擎段 | 卡牌 yaml 中与 BWPro 口径对齐的字段（type/name/level/rarity/description…；v1.0 增可选 `frame_variant`） |

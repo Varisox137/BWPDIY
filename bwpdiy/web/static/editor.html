@@ -460,7 +460,7 @@ function askNewCard() {
     for (const o of TYPES) {
       const op = document.createElement('option');
       op.value = op.textContent = o;
-      if (o === '战斗') op.selected = true;
+      if (o === '式神') op.selected = true;
       typeSel.appendChild(op);
     }
     box.appendChild(typeSel);
@@ -478,7 +478,7 @@ function askNewCard() {
         s.appendChild(op);
       }
       const i = document.createElement('input');
-      i.type = 'text';
+      i.type = 'text'; i.placeholder = '式神名';
       s.onchange = () => { i.style.display = s.value === MANUAL ? '' : 'none'; };
       l.appendChild(s); l.appendChild(i);
       shikiBox.appendChild(l);
@@ -736,7 +736,7 @@ function shikigamiRow(div, label, field) {
     s.appendChild(op);
   }
   const i = document.createElement('input');
-  i.type = 'text'; i.value = manual ? cur : '';
+  i.type = 'text'; i.placeholder = '式神名'; i.value = manual ? cur : '';
   i.style.display = manual ? '' : 'none';
   s.onchange = () => {
     if (s.value === MANUAL) {

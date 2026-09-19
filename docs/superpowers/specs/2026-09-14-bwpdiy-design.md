@@ -52,8 +52,7 @@ library/
 
 文件名与卡名脱钩（v1.2.2）：文件名任意（方便 BWPro 按 id 命名取文件），卡名以文件内
 `name` 字段为准；式神卡名全项目唯一（引用按名关联），改名时服务端联动改写同项目所有卡的
-`shikigami`/`shikigami1`/`shikigami2` 引用。旧版单式神结构（`<项目>/shikigami.yaml`）
-首次访问时惰性迁移入 `shikigami/`。
+`shikigami`/`shikigami1`/`shikigami2` 引用。
 
 ### 卡牌 yaml 结构
 

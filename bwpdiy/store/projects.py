@@ -4,8 +4,6 @@
     library/<项目名>/shikigami/<任意文件名>.yaml   式神卡，数量不限，卡名以文件内 name 字段为准
     library/<项目名>/cards/<任意文件名>.yaml       非式神卡，单项目上限 MAX_CARDS 张
     library/<项目名>/images/                       卡图原图
-
-旧版单式神结构（<项目>/shikigami.yaml）在 list/load/save/delete 入口惰性迁移入 shikigami/。
 """
 
 from __future__ import annotations
@@ -76,19 +74,6 @@ def _require_project(library: Path, project: str) -> Path:
     return pdir
 
 
-def _migrate_legacy(pdir: Path) -> None:
-    """旧版单式神结构迁移：<项目>/shikigami.yaml → shikigami/shikigami.yaml。"""
-    legacy = pdir / "shikigami.yaml"
-    if not legacy.is_file():
-        return
-    target = pdir / "shikigami" / "shikigami.yaml"
-    if target.exists():
-        raise StoreError(f"旧式神卡 {legacy.name} 与 shikigami/shikigami.yaml 并存，请手动处理：{pdir.name}",
-                         code="invalid")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    os.replace(legacy, target)
-
-
 def _find_card(pdir: Path, stem: str) -> Path | None:
     """读卡分派：先在 shikigami/ 再在 cards/ 找；都找不到返回 None。"""
     _check_name(stem, "卡名")
@@ -152,7 +137,6 @@ def list_cards(library: Path, project: str) -> dict[str, list[dict]]:
     name 取自文件内容（损坏/非映射时 None 仍列出）；各组按 name 排序（None 排最后）。
     """
     pdir = _require_project(library, project)
-    _migrate_legacy(pdir)
     result: dict[str, list[dict]] = {"shikigami": [], "cards": []}
     for sub in ("shikigami", "cards"):
         cdir = pdir / sub
@@ -170,7 +154,6 @@ def list_cards(library: Path, project: str) -> dict[str, list[dict]]:
 def load_card(library: Path, project: str, card_name: str) -> dict:
     """读取卡牌 yaml；load 不做 schema 校验（校验在保存时执行）。"""
     pdir = _require_project(library, project)
-    _migrate_legacy(pdir)
     path = _find_card(pdir, card_name)
     if path is None:
         raise StoreError(f"卡牌不存在：{project}/{card_name}", code="not_found")
@@ -197,7 +180,6 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
     返回 (落盘路径, 联动更新了的卡的 name 列表)。
     """
     pdir = _require_project(library, project)
-    _migrate_legacy(pdir)
     _check_name(card_name, "卡名")
     errors = validate_card(data)
     if errors:
@@ -261,7 +243,6 @@ def _rewrite_references(pdir: Path, exclude: Path, old: str, new: str) -> list[s
 def delete_card(library: Path, project: str, card_name: str) -> None:
     """删除卡牌（式神卡可删；引用它的卡保留失效字符串，不级联）。"""
     pdir = _require_project(library, project)
-    _migrate_legacy(pdir)
     path = _find_card(pdir, card_name)
     if path is None:
         raise StoreError(f"卡牌不存在：{project}/{card_name}", code="not_found")

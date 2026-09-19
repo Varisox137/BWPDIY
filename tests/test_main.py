@@ -68,25 +68,40 @@ def test_no_browser(fakes, monkeypatch):
 # ---------- 启动实例探测 ----------
 
 def test_probe_same_version_reuses_instance(fakes, monkeypatch, capsys):
-    """同版本已在运行：不起新服务，直接开浏览器复用，返回 0。"""
+    """同版本已在运行：不起新服务，直接开浏览器复用，暂停等按键后返回 0。"""
     import bwpdiy.__main__ as m
     from bwpdiy import __version__
+    paused = []
     monkeypatch.setattr(m, "_probe_running", lambda host, port: __version__)
+    monkeypatch.setattr(m, "_pause_exit", lambda: paused.append(1))
     monkeypatch.setattr(sys, "argv", ["bwpdiy"])
     assert main() == 0
     assert fakes["uvicorn"] is None
     assert fakes["browser"] == ["http://127.0.0.1:8630/"]
-    assert "已在运行" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "已在运行" in out and f"BWPDIY v{__version__}" in out  # 启动先打印版本
+    assert paused == [1]
 
 
 def test_probe_old_version_refuses_start(fakes, monkeypatch, capsys):
-    """异版本占用端口：拒绝启动并提示先保存再关闭旧程序，返回 1。"""
+    """异版本占用端口：拒绝启动并提示先保存再关闭旧程序，暂停等按键后返回 1。"""
     import bwpdiy.__main__ as m
+    paused = []
     monkeypatch.setattr(m, "_probe_running", lambda host, port: "0.5.0")
+    monkeypatch.setattr(m, "_pause_exit", lambda: paused.append(1))
     monkeypatch.setattr(sys, "argv", ["bwpdiy"])
     assert main() == 1
     assert fakes["uvicorn"] is None and fakes["browser"] == []
     assert "旧版本" in capsys.readouterr().err
+    assert paused == [1]
+
+
+def test_pause_exit_skipped_when_not_tty(monkeypatch):
+    """非交互终端（测试/脚本/输出捕获）暂停直接跳过，不读 stdin。"""
+    import bwpdiy.__main__ as m
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+    m._pause_exit()  # 不挂起即通过
 
 
 def test_probe_non_loopback_skipped(fakes, monkeypatch):

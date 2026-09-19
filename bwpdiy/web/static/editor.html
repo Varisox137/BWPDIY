@@ -87,6 +87,8 @@
     <div class="btnrow">
       <button id="c-new-proj">新建</button><button id="c-ren-proj">重命名</button><button id="c-del-proj">删除</button>
     </div>
+    <h4>主要式神 <span id="c-shiki-count"></span></h4>
+    <div id="c-shikigami"></div>
     <h4>卡牌 <span id="c-card-count"></span></h4>
     <div id="c-cards"></div>
     <div class="btnrow">
@@ -301,10 +303,13 @@ function shikigamiNames() {
   return cards.shikigami.map(c => c.name).filter(n => n != null);
 }
 function buildCardList() {
+  const shikiDiv = document.getElementById('c-shikigami');
   const div = document.getElementById('c-cards');
+  shikiDiv.innerHTML = '';
   div.innerHTML = '';
-  for (const c of cards.shikigami) div.appendChild(cardItem(c, true));
+  for (const c of cards.shikigami) shikiDiv.appendChild(cardItem(c, true));
   for (const c of cards.cards) div.appendChild(cardItem(c, false));
+  document.getElementById('c-shiki-count').textContent = `${cards.shikigami.length}/49`;
   document.getElementById('c-card-count').textContent = `${cards.cards.length}/299`;
 }
 function cardItem(c, isShiki) {
@@ -315,7 +320,7 @@ function cardItem(c, isShiki) {
     d.title += '（文件损坏，无法读取卡名）';
     d.className = 'item broken';
   } else {
-    d.textContent = isShiki ? `式神·${c.name}` : c.name;
+    d.textContent = c.name;  // 主要式神有独立栏位，不再加「式神·」前缀
     d.className = 'item' + (isShiki ? ' shiki' : '');
   }
   if (c.stem === curCard) d.classList.add('active');

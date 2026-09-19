@@ -301,6 +301,21 @@ def test_max_cards_limit(lib, monkeypatch):
     assert not (lib / "山风" / "cards" / "突.yaml").exists()
 
 
+def test_max_shikigami_limit(lib, monkeypatch):
+    """式神卡新增超 MAX_SHIKIGAMI 拒绝（覆盖已有卡不计入）。"""
+    import bwpdiy.store.projects as projects
+
+    monkeypatch.setattr(projects, "MAX_SHIKIGAMI", 2)
+    create_project(lib, "山风")
+    save_card(lib, "山风", "100307", SHIKIGAMI)
+    save_card(lib, "山风", "100308", {**SHIKIGAMI, "name": "薰"})
+    save_card(lib, "山风", "100307", {**SHIKIGAMI, "power": 4})  # 覆盖已有卡不计入
+    with pytest.raises(StoreError, match="式神上限") as exc:
+        save_card(lib, "山风", "100309", {**SHIKIGAMI, "name": "辉夜姬"})
+    assert exc.value.code == "forbidden"
+    assert not (lib / "山风" / "shikigami" / "100309.yaml").exists()
+
+
 def test_shikigami_name_unique(lib):
     """式神卡 name 全项目唯一（引用按名关联，必须无歧义）。"""
     create_project(lib, "山风")

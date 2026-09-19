@@ -18,6 +18,7 @@ import yaml
 from .schema import SchemaError, validate_card
 
 MAX_CARDS = 299  # 单项目非式神卡上限，对应 BWPro 大版本卡牌量
+MAX_SHIKIGAMI = 49  # 单项目式神（主要式神）上限
 
 _ILLEGAL_CHARS = set('<>:"/\\|?*')
 _RESERVED_NAMES = {
@@ -191,10 +192,12 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
                          f"请先删除或改名", code="already_exists")
     path = pdir / sub / f"{card_name}.yaml"
     is_new = not path.is_file()
-    if sub == "cards" and is_new:
-        existing = list((pdir / "cards").glob("*.yaml")) if (pdir / "cards").is_dir() else []
-        if len(existing) >= MAX_CARDS:
-            raise StoreError(f"单项目卡牌上限 {MAX_CARDS} 张", code="forbidden")
+    if is_new:
+        existing = list((pdir / sub).glob("*.yaml")) if (pdir / sub).is_dir() else []
+        limit = MAX_SHIKIGAMI if sub == "shikigami" else MAX_CARDS
+        kind = "式神" if sub == "shikigami" else "卡牌"
+        if len(existing) >= limit:
+            raise StoreError(f"单项目{kind}上限 {limit} 张", code="forbidden")
     if sub == "shikigami":
         shiki_dir = pdir / "shikigami"
         for p in sorted(shiki_dir.glob("*.yaml")) if shiki_dir.is_dir() else []:

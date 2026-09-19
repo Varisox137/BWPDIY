@@ -2,6 +2,7 @@
 
 from .projects import (
     MAX_CARDS,
+    MAX_SHIKIGAMI,
     StoreError,
     create_project,
     delete_card,
@@ -26,6 +27,7 @@ __all__ = [
     "FACTIONS",
     "LEVELS",
     "MAX_CARDS",
+    "MAX_SHIKIGAMI",
     "RARITIES",
     "SchemaError",
     "StoreError",

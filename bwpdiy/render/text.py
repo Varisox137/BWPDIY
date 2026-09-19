@@ -202,7 +202,7 @@ def _layout_at_size(chars: list[tuple[str, bool]], font: ImageFont.FreeTypeFont,
 def _fit(chars: list[tuple[str, bool]], region: dict, lib: AssetLibrary,
          row_runs: dict | None):
     """字号从大到小适配；每个字号上先尝试逐 px 临时上移居中锚点（1px 步进、
-    至多半行高）——接受条件：排得下且末行水平居中（未被障碍挤偏）。
+    至多半行高）——接受条件：排得下且每一行都水平居中（未被障碍挤偏）。
     当前字号所有上移量都不行才减小字号。"""
     max_size, min_size = region["font_range"]
     acx = region["center"][0] + region.get("center_offset", [0, 0])[0]
@@ -211,7 +211,7 @@ def _fit(chars: list[tuple[str, bool]], region: dict, lib: AssetLibrary,
         max_dy = int(_line_height(font) / 2)
         for dy in range(0, max_dy + 1):
             lines = _layout_at_size(chars, font, region, region["wrap"], row_runs, dy=dy)
-            if lines is not None and abs(lines[-1][1] - acx) < 1e-6:
+            if lines is not None and all(abs(cx - acx) < 1e-6 for _, cx, _ in lines):
                 return font, lines
     return None
 

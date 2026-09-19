@@ -84,6 +84,18 @@ def test_footer_with_special_type(assets_dir, sample_art):
     assert img.mode == "RGBA"
 
 
+def test_footer_assist_shikigami_pair(assets_dir, sample_art):
+    """协战脚注兜底：shikigami1/shikigami2 齐备 → 「山风×薰-协战」；缺任一 → 「协战」。"""
+    base = {"type": "协战", "name": "sample_art", "rarity": "R",
+            "_base_dir": str(sample_art.parent)}
+    both = dict(base, shikigami1="山风", shikigami2="薰")
+    assert (list(render_card(both, assets_dir, crop=False).getdata())
+            == list(render_card(dict(base, footer="山风×薰-协战"), assets_dir, crop=False).getdata()))
+    for missing in (dict(base, shikigami1="山风"), dict(base, shikigami2="薰"), base):
+        assert (list(render_card(missing, assets_dir, crop=False).getdata())
+                == list(render_card(dict(base, footer="协战"), assets_dir, crop=False).getdata()))
+
+
 def test_artwork_path_escape_rejected(assets_dir, sample_art, monkeypatch):
     """卡图路径必须位于基准目录内：目录外绝对路径/.. 越界 → ValueError；像素超限 → ValueError。"""
     card = {"type": "法术", "name": "sample_art", "level": 1, "rarity": "N",

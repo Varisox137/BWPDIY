@@ -1,8 +1,9 @@
-"""自动更新测试：版本解析、latest release 检查（mock 网络）、web 端点分派。
+"""自动更新测试：版本解析、latest release 检查（mock 网络）、sha256 校验、web 端点分派。
 
 不触真实网络：urlopen 一律 monkeypatch。
 """
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -35,9 +36,11 @@ class _FakeResp:
 
 
 def _release(tag, assets=None):
+    exe = f"BWPDIY-{tag}.exe"
     return {"tag_name": tag, "assets": assets or [
-        {"name": f"BWPDIY-{tag}.exe", "browser_download_url": "https://example.com/x.exe",
+        {"name": exe, "browser_download_url": "https://example.com/x.exe",
          "size": 30_000_000},
+        {"name": exe + ".sha256", "browser_download_url": "https://example.com/x.exe.sha256"},
     ]}
 
 
@@ -70,6 +73,7 @@ def test_check_update_has_update(monkeypatch):
     r = updater.check_update()
     assert r["has_update"] and r["latest"] == "v99.0.0"
     assert r["asset_name"] == "BWPDIY-v99.0.0.exe" and r["current"] == updater.__version__
+    assert r["sha256_url"] == "https://example.com/x.exe.sha256"
 
 
 def test_check_update_older_or_equal(monkeypatch):
@@ -83,6 +87,14 @@ def test_check_update_no_exe_asset(monkeypatch):
     assert r["has_update"] is False and "资产" in r["error"]
 
 
+def test_check_update_no_sha256_asset(monkeypatch):
+    """缺 sha256 校验文件：安全校验不降级，视为无更新并报错说明。"""
+    _mock_urlopen(monkeypatch, _release("v99.0.0", assets=[
+        {"name": "BWPDIY-v99.0.0.exe", "browser_download_url": "https://example.com/x.exe"}]))
+    r = updater.check_update()
+    assert r["has_update"] is False and "sha256" in r["error"]
+
+
 def test_check_update_network_error_silent(monkeypatch):
     _mock_urlopen(monkeypatch, exc=OSError("离线"))
     r = updater.check_update()
@@ -92,6 +104,39 @@ def test_check_update_network_error_silent(monkeypatch):
 def test_check_update_bad_tag(monkeypatch):
     _mock_urlopen(monkeypatch, _release("最新版"))
     assert updater.check_update()["has_update"] is False
+
+
+# ---------- sha256 下载校验 ----------
+
+def test_verify_download_ok(tmp_path):
+    """校验通过：sha256sum 格式（双空格分隔）匹配，文件保留。"""
+    f = tmp_path / "BWPDIY-v9.9.9.exe"
+    f.write_bytes(b"MZ" + b"0" * 1000)
+    digest = hashlib.sha256(f.read_bytes()).hexdigest()
+    updater._verify_download(f, f"{digest}  BWPDIY-v9.9.9.exe", "BWPDIY-v9.9.9.exe")
+    assert f.is_file()
+
+
+def test_verify_download_mismatch_deletes(tmp_path):
+    """校验失败：hash 不匹配时报「下载校验失败」并删除已下载文件。"""
+    f = tmp_path / "BWPDIY-v9.9.9.exe"
+    f.write_bytes(b"MZ" + b"0" * 1000)
+    with pytest.raises(ValueError, match="下载校验失败"):
+        updater._verify_download(f, f"{'0' * 64}  BWPDIY-v9.9.9.exe", "BWPDIY-v9.9.9.exe")
+    assert not f.exists()
+
+
+@pytest.mark.parametrize("text", [
+    "",
+    "不是hash  BWPDIY-v9.9.9.exe",
+    f"{'0' * 64}  别的文件.exe",  # 校验文件与 exe 资产不对应
+])
+def test_verify_download_bad_sha_file(tmp_path, text):
+    f = tmp_path / "BWPDIY-v9.9.9.exe"
+    f.write_bytes(b"MZ" + b"0" * 1000)
+    with pytest.raises(ValueError):
+        updater._verify_download(f, text, "BWPDIY-v9.9.9.exe")
+    assert not f.exists()
 
 
 # ---------- web 端点 ----------

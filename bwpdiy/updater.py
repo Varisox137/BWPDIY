@@ -11,11 +11,13 @@
 - 仅 frozen（PyInstaller 打包）模式可执行替换；开发模式只提示、不允许 apply。
 
 安全口径：固定仓库常量；资产名必须匹配 BWPDIY-vX.Y.Z.exe；下载仅 HTTPS；
-下载产物做 MZ 头与最小尺寸 sanity 检查。release 未发布 checksum，暂不校验哈希。
+下载产物做 MZ 头与最小尺寸 sanity 检查。release 除 exe 外须附 <exe文件名>.sha256
+（sha256sum 格式），下载后实算比对，缺失或不匹配一律视为失败（安全校验不降级）。
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -65,11 +67,18 @@ def check_update() -> dict:
         if asset is None:
             result["error"] = "最新 release 未包含 exe 资产"
             return result
+        sha_asset = next((a for a in data.get("assets", [])
+                          if a.get("name") == asset["name"] + ".sha256"), None)
+        if sha_asset is None:
+            # 无校验文件视同检查失败：hash 校验是安全防线，不降级为不校验
+            result["error"] = "最新 release 未包含 sha256 校验文件，已跳过本次更新"
+            return result
         result.update({
             "has_update": True,
             "latest": data["tag_name"],
             "asset_name": asset["name"],
             "asset_url": asset["browser_download_url"],
+            "sha256_url": sha_asset["browser_download_url"],
             "size": asset.get("size", 0),
         })
     except Exception as e:  # 离线/限流/格式变化：静默降级为「无更新」
@@ -93,6 +102,48 @@ def _download(url: str, dest: Path) -> None:
         if f.read(2) != b"MZ":
             dest.unlink(missing_ok=True)
             raise ValueError("下载产物不是有效的 exe")
+
+
+def _download_text(url: str) -> str:
+    """下载小文本资产（sha256 校验文件）。"""
+    req = urllib.request.Request(url, headers={"User-Agent": f"BWPDIY/{__version__}"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        return resp.read().decode("utf-8")
+
+
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
+
+def _expected_sha256(text: str, asset_name: str) -> str:
+    """解析 sha256sum 格式（<64位hex>  <文件名>），并核对文件名对应。"""
+    line = next((l for l in text.splitlines() if l.strip()), "")
+    parts = line.split()
+    if len(parts) < 2 or not _SHA256_RE.match(parts[0]):
+        raise ValueError("sha256 校验文件格式非法")
+    if parts[1].lstrip("*") != asset_name:
+        raise ValueError("sha256 校验文件与 exe 资产不对应")
+    return parts[0].lower()
+
+
+def _file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _verify_download(dest: Path, sha256_text: str, asset_name: str) -> None:
+    """下载产物 sha256 比对；不一致或校验文件非法时删除下载文件并报错。"""
+    try:
+        expected = _expected_sha256(sha256_text, asset_name)
+        actual = _file_sha256(dest)
+        if actual != expected:
+            raise ValueError(
+                f"下载校验失败：sha256 不匹配（预期 {expected[:12]}…，实际 {actual[:12]}…）")
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
 
 
 def _write_updater_bat(old_exe: Path, new_exe: Path, inplace: bool) -> Path:
@@ -150,6 +201,7 @@ def download_and_schedule_restart(info: dict) -> str:
     目录不可写或与运行中 exe 同名时回退临时目录 + move 覆盖。
     非 frozen 直接 ValueError（开发模式不替换脚本自身）。退出用 Timer 延迟
     os._exit：先让 HTTP 响应发回浏览器，再杀进程放文件锁。
+    下载后与 release 附带的 sha256 校验文件比对，不一致删临时文件并报错。
     """
     if not is_frozen():
         raise ValueError("开发模式（非 exe）不支持一键更新")
@@ -159,6 +211,7 @@ def download_and_schedule_restart(info: dict) -> str:
     if inplace:
         dest = Path(tempfile.gettempdir()) / info["asset_name"]
     _download(info["asset_url"], dest)
+    _verify_download(dest, _download_text(info["sha256_url"]), info["asset_name"])
     bat = _write_updater_bat(old_exe, dest, inplace)
     subprocess.Popen(["cmd.exe", "/c", str(bat)],
                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))

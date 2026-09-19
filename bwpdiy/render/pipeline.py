@@ -119,9 +119,11 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         raise ValueError(f"卡图路径越出基准目录: {ref['path']}") from None
     if not art_path.is_file():
         raise FileNotFoundError(f"卡图缺失: {art_path}")
-    # 加载即缓存（键含 mtime 与旋转角）：绕中心旋转并扩展画布，缩放/偏移对缓存图进行
-    art = lib.artwork(art_path, ref["rotate"])
-    art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"])
+    # 加载即缓存（键含 mtime 与旋转角）：绕中心旋转并扩展画布，缩放/偏移对缓存图进行；
+    # cover 基准为旋转前原图尺寸，旋转不改变内容视觉尺度
+    orig_size, art = lib.artwork(art_path, ref["rotate"])
+    art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"],
+                      cover_base=orig_size)
     # 卡图按轮廓预裁剪（框实心区内缩 2px），框缘半透明带下无卡图、不洇色
     art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))
     canvas = Image.alpha_composite(art, frame)  # 牌框在上：卡图区透明，无需蒙版
@@ -129,13 +131,17 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
     elements = type_layout["elements"]
     card = dict(card)
-    # 脚注兜底：式神名-类型[/子类型]；中立牌（无所属式神）只标 类型[/子类型]
-    # （式神卡自身无所属式神字段，回退卡名）
+    # 脚注兜底：式神名-类型[/子类型]；协战为 式神1×式神2-协战（缺任一式神只标 协战）；
+    # 中立牌（无所属式神）只标 类型[/子类型]（式神卡自身无所属式神字段，回退卡名）
     if not card.get("footer"):
-        shikigami = card.get("shikigami") or (card["name"] if card_type == "式神" else None)
-        card["footer"] = f"{shikigami}-{card_type}" if shikigami else card_type
-        if card.get("special_type"):
-            card["footer"] += f"/{card['special_type']}"
+        if card_type == "协战":
+            s1, s2 = card.get("shikigami1"), card.get("shikigami2")
+            card["footer"] = f"{s1}×{s2}-协战" if s1 and s2 else "协战"
+        else:
+            shikigami = card.get("shikigami") or (card["name"] if card_type == "式神" else None)
+            card["footer"] = f"{shikigami}-{card_type}" if shikigami else card_type
+            if card.get("special_type"):
+                card["footer"] += f"/{card['special_type']}"
     # 先测卡名宽度（rarity_flank 外移量依据；name 点元素缺失按 0）
     name_width = 0
     name_elem = elements.get("name")

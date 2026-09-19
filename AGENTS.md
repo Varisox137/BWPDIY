@@ -11,7 +11,8 @@
 
 ## 数据纪律
 
-- 卡牌 yaml 分引擎段（与 BWPro 口径对齐，按类型分字段）与渲染段（`artwork.images` 列表，全可缺省）。schema 字段只增不改。
+- 卡牌库结构（v1.2.2）：`library/<项目>/shikigami/*.yaml`（式神卡，一式神一文件）+ `cards/*.yaml`（≤299）+ `images/`（上传卡图 hash 命名）；文件名与卡名脱钩（卡名=文件内 name），式神改名由 store 层联动更新同项目引用；旧版单式神 `shikigami.yaml` 惰性迁移。
+- 卡牌 yaml 分引擎段（与 BWPro 口径对齐，按类型分字段；协战所属式神为 `shikigami1`/`shikigami2`）与渲染段（`artwork.images` 列表，全可缺省）。schema 字段只增不改。
 - 描述文本（description）支持 `[[关键字]]` 高亮标记（双英文方括号、括号不绘制、按框品异色；单 [ ] 为字面字符；配对校验见 `render/text.py` parse_keyword_segments）。
 - 机制未实现不进数据；字段/枚举变更须同步设计文档与术语表。
 
@@ -21,4 +22,4 @@
 - 依赖用 uv（`uv add` / `uv sync`），不用 pip 直装。
 - 中文 conventional commit；每次 commit 后 `git push`（失败不阻塞，汇报即可）；rebase/reset/分支操作先问。
 - 大改动先 plan mode；批量新功能委托子代理，收尾全量测试由主上下文亲跑。
-- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`）+ `gh release create`；**同二级版本（前两位不变）的三级小更新发布时，删去该二级版本下的过往 GitHub release 与本地旧 exe，只保留最新版**。
+- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`，同时生成 `<exe>.sha256` 校验文件）+ `gh release create`（exe 与 .sha256 两个资产都要上传，客户端下载后强制校验）；**同二级版本（前两位不变）的三级小更新发布时，删去该二级版本下的过往 GitHub release 与本地旧 exe，只保留最新版**。

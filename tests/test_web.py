@@ -358,3 +358,30 @@ console.log(JSON.stringify({
     # 非负类型 = 矩阵中 plain（无符号）类型
     plain_types = {t for (t, _f), mode in _STAT_MATRIX.items() if mode == "plain"}
     assert sorted(js["NONNEG_TYPES"]) == sorted(plain_types)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_js_validate_reinforce_whitelist(tmp_path):
+    """validateCardJS 白名单对齐新 schema：协战允许 shikigami1/shikigami2、拒绝 shikigami。"""
+    script = _script()
+    end = script.index(";", script.index("const FRAME_VARIANT_TYPES =")) + 1
+    consts = script[script.index("const TYPES ="):end]
+    validate = _extract_js(script, "function validateCardJS(d)")
+    driver = f"""
+const assert = require('node:assert');
+{consts}
+{validate}
+const ok = {{type: '协战', name: '共鸣', level: 1, rarity: 'R',
+             shikigami1: '甲', shikigami2: '乙', description: ''}};
+assert.deepStrictEqual(validateCardJS(ok), []);
+const withOld = {{...ok, shikigami: '甲'}};
+assert.ok(validateCardJS(withOld).some(e => e.includes('shikigami') && e.includes('白名单')));
+assert.ok(validateCardJS({{...ok, shikigami1: 3}}).some(e => e.includes('shikigami1')));
+const battle = {{type: '战斗', name: '斩', level: 2, rarity: 'R', shikigami: '甲',
+                'power+': 1, 'shield+': 1, description: ''}};
+assert.deepStrictEqual(validateCardJS(battle), []);
+assert.ok(validateCardJS({{...battle, shikigami1: '甲'}}).some(e => e.includes('白名单')));
+assert.ok(validateCardJS({{...battle, name: ''}}).some(e => e.includes('name')));
+console.log("OK");
+"""
+    _run_node(tmp_path, driver)

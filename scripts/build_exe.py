@@ -8,6 +8,7 @@
 中间产物在 build/、dist/（均 gitignore），最终 exe 复制到 releases/。
 """
 
+import hashlib
 import os
 import shutil
 import sys
@@ -87,7 +88,12 @@ def main() -> int:
     src = ROOT / "dist" / f"{EXE_NAME}.exe"
     dst = releases / src.name
     shutil.copy2(src, dst)
+    # sha256 校验文件（sha256sum 格式）：release 必附资产，客户端下载后比对（updater._verify_download）
+    digest = hashlib.sha256(dst.read_bytes()).hexdigest()
+    sha_path = dst.with_name(dst.name + ".sha256")
+    sha_path.write_text(f"{digest}  {dst.name}\n", encoding="utf-8")
     print(f"已输出: {dst} ({dst.stat().st_size / 1024 / 1024:.1f} MB)")
+    print(f"校验文件: {sha_path}")
     return 0
 
 

@@ -1,8 +1,11 @@
-"""web 层项目/卡牌 REST API 测试：CRUD 全路径、错误映射、项目卡预览。
+"""web 层项目/卡牌 REST API 测试：CRUD 全路径、错误映射、项目卡预览、hash 命名卡图上传。
 
 fixture 用 tmp_path 的 library_dir + assets 拷贝，不碰真实 library/ 与 assets/layout.json。
+存储模型：library/<项目>/{shikigami,cards}/<任意文件名>.yaml + images/；
+文件名（stem）与卡名（name 字段）脱钩，list_cards 返回 {shikigami, cards} 两组 [{stem, name}]。
 """
 
+import hashlib
 import shutil
 from io import BytesIO
 from pathlib import Path
@@ -35,14 +38,23 @@ def client(assets_dir, library_dir):
     return TestClient(create_app(assets_dir, library_dir=library_dir))
 
 
-def _battle_card(name="测试斩"):
+def _shikigami_card(name="测试式神"):
+    return {"type": "式神", "name": name, "faction": "红莲", "power": 3, "health": 4}
+
+
+def _battle_card(name="测试斩", shikigami="测试式神"):
     return {"type": "战斗", "name": name, "level": 2, "rarity": "R",
-            "shikigami": "测试项目", "power+": 1, "shield+": 1,
+            "shikigami": shikigami, "power+": 1, "shield+": 1,
             "description": "测试描述。"}
 
 
 def _png_size(resp) -> tuple:
     return Image.open(BytesIO(resp.content)).size
+
+
+def _img_files(library_dir, project) -> list:
+    d = library_dir / project / "images"
+    return sorted(p.name for p in d.iterdir()) if d.is_dir() else []
 
 
 # ---------- 项目 CRUD ----------
@@ -52,15 +64,12 @@ def test_projects_empty(client):
     assert r.status_code == 200 and r.json() == []
 
 
-def test_project_create_with_default_shikigami(client, library_dir):
+def test_project_create_empty(client):
+    """create_project 创建空项目（无出厂式神卡），cards 列表为两组空表。"""
     r = client.post("/api/projects", json={"name": "测试项目"})
     assert r.status_code == 200 and r.json()["ok"]
     assert client.get("/api/projects").json() == ["测试项目"]
-    # 出厂含默认式神卡
-    assert client.get("/api/projects/测试项目/cards").json() == ["shikigami"]
-    card = client.get("/api/projects/测试项目/cards/shikigami").json()
-    assert card["type"] == "式神" and card["name"] == "测试项目"
-    assert (library_dir / "测试项目" / "images").is_dir()
+    assert client.get("/api/projects/测试项目/cards").json() == {"shikigami": [], "cards": []}
 
 
 def test_project_create_duplicate_409(client):
@@ -114,17 +123,32 @@ def test_project_delete(client):
 
 @pytest.fixture()
 def project(client):
+    """空项目 + 一张式神卡（stem 与卡名脱钩，此处恰好同名）。"""
     client.post("/api/projects", json={"name": "测试项目"})
+    client.put("/api/projects/测试项目/cards/shikigami", json=_shikigami_card())
     return "测试项目"
+
+
+_SHIKI_ENTRY = {"stem": "shikigami", "name": "测试式神"}
 
 
 def test_card_save_and_load_roundtrip(client, project):
     card = _battle_card()
     r = client.put(f"/api/projects/{project}/cards/测试斩", json=card)
-    assert r.status_code == 200 and r.json()["ok"]
-    assert client.get(f"/api/projects/{project}/cards").json() == ["shikigami", "测试斩"]
+    assert r.status_code == 200 and r.json() == {"ok": True, "updated": []}
+    assert client.get(f"/api/projects/{project}/cards").json() == {
+        "shikigami": [_SHIKI_ENTRY], "cards": [{"stem": "测试斩", "name": "测试斩"}]}
     got = client.get(f"/api/projects/{project}/cards/测试斩").json()
     assert got == card
+
+
+def test_card_list_sorted_by_name(client, project):
+    """list_cards 各组按卡内 name 排序（与文件名脱钩；stem 与名字序相反以排除按文件名排序）。"""
+    client.put(f"/api/projects/{project}/cards/stem-a", json=_battle_card("B卡"))
+    client.put(f"/api/projects/{project}/cards/stem-b", json=_battle_card("A卡"))
+    lst = client.get(f"/api/projects/{project}/cards").json()
+    assert lst["cards"] == [{"stem": "stem-b", "name": "A卡"},
+                            {"stem": "stem-a", "name": "B卡"}]
 
 
 def test_card_save_schema_error_422_chinese(client, project):
@@ -134,24 +158,27 @@ def test_card_save_schema_error_422_chinese(client, project):
     detail = r.json()["detail"]
     assert any("rarity" in m for m in detail)      # 缺 rarity 一次报全
     assert any("power+" in m for m in detail)
-    assert client.get(f"/api/projects/{project}/cards").json() == ["shikigami"]  # 未落盘
+    assert client.get(f"/api/projects/{project}/cards").json()["cards"] == []  # 未落盘
 
 
-def test_card_save_name_mismatch_422(client, project):
-    r = client.put(f"/api/projects/{project}/cards/文件名", json=_battle_card("卡内名"))
-    assert r.status_code == 422
-    assert any("一致" in m for m in r.json()["detail"])
+def test_card_save_name_decoupled_from_stem(client, project):
+    """卡名与文件名脱钩：stem 与 name 不一致可保存（不再强制一致）。"""
+    r = client.put(f"/api/projects/{project}/cards/stem-1", json=_battle_card("卡内名"))
+    assert r.status_code == 200
+    lst = client.get(f"/api/projects/{project}/cards").json()
+    assert lst["cards"] == [{"stem": "stem-1", "name": "卡内名"}]
+    assert client.get(f"/api/projects/{project}/cards/stem-1").json()["name"] == "卡内名"
 
 
-def test_card_save_shikigami_must_be_shikigami_type(client, project):
-    r = client.put(f"/api/projects/{project}/cards/shikigami", json=_battle_card("shikigami"))
-    assert r.status_code == 422
-
-
-def test_card_save_cards_dir_no_shikigami_type(client, project):
-    card = {"type": "式神", "name": "第二式神", "faction": "红莲", "power": 3, "health": 4}
-    r = client.put(f"/api/projects/{project}/cards/第二式神", json=card)
-    assert r.status_code == 422
+def test_card_save_shikigami_rename_syncs_references(client, project):
+    """式神卡改名：save_card 联动更新同项目卡的 shikigami 引用，updated 返回被更新卡名。"""
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    r = client.put(f"/api/projects/{project}/cards/shikigami", json=_shikigami_card("新名"))
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "updated": ["测试斩"]}
+    assert client.get(f"/api/projects/{project}/cards/测试斩").json()["shikigami"] == "新名"
+    lst = client.get(f"/api/projects/{project}/cards").json()
+    assert lst["shikigami"] == [{"stem": "shikigami", "name": "新名"}]
 
 
 def test_card_save_shikigami_overwrite(client, project):
@@ -159,6 +186,28 @@ def test_card_save_shikigami_overwrite(client, project):
     r = client.put(f"/api/projects/{project}/cards/shikigami", json=card)
     assert r.status_code == 200
     assert client.get(f"/api/projects/{project}/cards/shikigami").json()["health"] == 5
+
+
+def test_card_save_over_299_forbidden_422(client, project, library_dir):
+    """非式神卡超 299 张：store 报 forbidden → 422。"""
+    d = library_dir / project / "cards"
+    d.mkdir(parents=True, exist_ok=True)
+    for i in range(299):
+        (d / f"c{i:03}.yaml").write_text(
+            yaml.safe_dump(_battle_card(f"卡{i}"), allow_unicode=True), encoding="utf-8")
+    r = client.put(f"/api/projects/{project}/cards/超额卡", json=_battle_card("超额卡"))
+    assert r.status_code == 422
+
+
+def test_card_save_reinforce_shikigami12(client, project):
+    """协战白名单：shikigami1/shikigami2 可选字符串；旧 shikigami 键已移除（422）。"""
+    card = {"type": "协战", "name": "共鸣", "level": 1, "rarity": "R",
+            "shikigami1": "测试式神", "shikigami2": "另一式神", "description": "测试描述。"}
+    r = client.put(f"/api/projects/{project}/cards/共鸣", json=card)
+    assert r.status_code == 200
+    assert client.get(f"/api/projects/{project}/cards/共鸣").json() == card
+    bad = dict(card, shikigami="测试式神")
+    assert client.put(f"/api/projects/{project}/cards/共鸣", json=bad).status_code == 422
 
 
 def test_card_crud_project_not_found_404(client):
@@ -176,14 +225,15 @@ def test_card_load_not_found_404(client, project):
 def test_card_delete(client, project):
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
     assert client.delete(f"/api/projects/{project}/cards/测试斩").status_code == 200
-    assert client.get(f"/api/projects/{project}/cards").json() == ["shikigami"]
+    assert client.get(f"/api/projects/{project}/cards").json() == {
+        "shikigami": [_SHIKI_ENTRY], "cards": []}
     assert client.delete(f"/api/projects/{project}/cards/测试斩").status_code == 404
 
 
-def test_card_delete_shikigami_refused(client, project):
-    r = client.delete(f"/api/projects/{project}/cards/shikigami")
-    assert r.status_code == 422 and "不可删除" in r.json()["detail"]
-    assert client.get(f"/api/projects/{project}/cards").json() == ["shikigami"]
+def test_card_delete_shikigami_allowed(client, project):
+    """式神卡可删（新存储模型解禁）。"""
+    assert client.delete(f"/api/projects/{project}/cards/shikigami").status_code == 200
+    assert client.get(f"/api/projects/{project}/cards").json() == {"shikigami": [], "cards": []}
 
 
 @pytest.mark.parametrize("bad", ["a\\b", "evil.", "NUL"])
@@ -196,7 +246,7 @@ def test_card_illegal_name_422(client, project, bad):
 # ---------- 项目卡预览 ----------
 
 def test_preview_default_shikigami_fallback_art(client, project):
-    """无 artwork 的出厂式神卡：占位图回退，渲染出完整 512×512 PNG。"""
+    """无 artwork 的式神卡：占位图回退，渲染出完整 512×512 PNG。"""
     r = client.post(f"/api/projects/{project}/cards/shikigami/preview", json={})
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     assert _png_size(r) == (512, 512)
@@ -332,38 +382,57 @@ def test_encoded_slash_in_path_rejected(client, project):
     assert r.status_code == 404
 
 
-# ---------- 卡图上传 ----------
+# ---------- 卡图上传（hash 命名：落盘名 = sha256(字节)[:16] + ext） ----------
+
+def _art_name(data: bytes, ext: str) -> str:
+    return hashlib.sha256(data).hexdigest()[:16] + ext
+
 
 def test_artwork_upload_roundtrip(client, project, library_dir):
-    """上传合法 png：落盘 images/<卡名>.png、yaml 写回 artwork.images[0].path、预览可用。"""
+    """上传合法 png：落盘 images/<hash>.png、yaml 写回 artwork.images[0].path、预览可用。"""
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    data = SAMPLE_ART.read_bytes()
+    name = _art_name(data, ".png")
     r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=立绘.PNG",
-                    content=SAMPLE_ART.read_bytes())
-    assert r.status_code == 200 and r.json()["path"] == "测试斩.png"
-    assert (library_dir / project / "images" / "测试斩.png").is_file()
+                    content=data)
+    assert r.status_code == 200 and r.json()["path"] == name
+    assert _img_files(library_dir, project) == [name]
     card = client.get(f"/api/projects/{project}/cards/测试斩").json()
-    assert card["artwork"]["images"][0]["path"] == "测试斩.png"
+    assert card["artwork"]["images"][0]["path"] == name
     r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
     assert r.status_code == 200 and _png_size(r) == (512, 512)
 
 
-def test_artwork_upload_preserves_offset_scale_and_cleans_old(client, project, library_dir):
-    """换扩展名重传：保留已有 offset/scale，删除旧图文件。"""
+def test_artwork_upload_same_image_dedup(client, project, library_dir):
+    """同图两次上传（含不同原始文件名）：hash 同名复用，images/ 只留一份。"""
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    data = SAMPLE_ART.read_bytes()
+    name = _art_name(data, ".png")
+    r1 = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=a.png", content=data)
+    r2 = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=b.png", content=data)
+    assert r1.json()["path"] == name == r2.json()["path"]
+    assert _img_files(library_dir, project) == [name]
+
+
+def test_artwork_upload_preserves_offset_scale_and_keeps_old(client, project, library_dir):
+    """换图重传：保留已有 offset/scale；hash 命名下不清理旧图（多卡可共享，孤儿用户自理）。"""
     card = _battle_card()
-    card["artwork"] = {"images": [{"path": "测试斩.png", "offset_x": 5, "scale": 1.2}]}
+    card["artwork"] = {"images": [{"path": "旧图.png", "offset_x": 5, "scale": 1.2}]}
     client.put(f"/api/projects/{project}/cards/测试斩", json=card)
-    client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=a.png",
-                content=SAMPLE_ART.read_bytes())
-    assert (library_dir / project / "images" / "测试斩.png").is_file()
+    data = SAMPLE_ART.read_bytes()
+    client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=a.png", content=data)
+    png_name = _art_name(data, ".png")
     jpg = BytesIO()
     Image.new("RGB", (8, 8)).save(jpg, "JPEG")
+    jpg_data = jpg.getvalue()
     r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=b.jpg",
-                    content=jpg.getvalue())
-    assert r.status_code == 200 and r.json()["path"] == "测试斩.jpg"
-    assert not (library_dir / project / "images" / "测试斩.png").exists()  # 旧图已清理
-    assert (library_dir / project / "images" / "测试斩.jpg").is_file()
+                    content=jpg_data)
+    jpg_name = _art_name(jpg_data, ".jpg")
+    assert r.status_code == 200 and r.json()["path"] == jpg_name
+    assert png_name != jpg_name  # 不同图不同名
+    assert _img_files(library_dir, project) == [jpg_name, png_name]  # 旧图保留
     got = client.get(f"/api/projects/{project}/cards/测试斩").json()["artwork"]["images"][0]
-    assert got["path"] == "测试斩.jpg" and got["offset_x"] == 5 and got["scale"] == 1.2
+    assert got["path"] == jpg_name and got["offset_x"] == 5 and got["scale"] == 1.2
 
 
 def test_artwork_upload_bad_ext_422(client, project, library_dir):
@@ -371,7 +440,7 @@ def test_artwork_upload_bad_ext_422(client, project, library_dir):
     r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=x.gif",
                     content=SAMPLE_ART.read_bytes())
     assert r.status_code == 422 and "格式" in r.json()["detail"]
-    assert list((library_dir / project / "images").iterdir()) == []  # 未落盘
+    assert _img_files(library_dir, project) == []  # 未落盘
 
 
 def test_artwork_upload_not_an_image_422(client, project, library_dir):
@@ -380,7 +449,7 @@ def test_artwork_upload_not_an_image_422(client, project, library_dir):
     r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=x.png",
                     content="这不是图片".encode("utf-8"))
     assert r.status_code == 422 and "图片" in r.json()["detail"]
-    assert list((library_dir / project / "images").iterdir()) == []
+    assert _img_files(library_dir, project) == []
     assert "artwork" not in client.get(f"/api/projects/{project}/cards/测试斩").json()
 
 

@@ -36,7 +36,7 @@ SAMPLE_CARDS: dict[str, dict] = {
                           "若此牌耐久>=10，敌方回合结束时，再触发上述效果一次。"},
     # 山风 21 鸮羽共鸣 SSR 1 协战（未加入）
     "协战": {"type": "协战", "name": "鸮羽共鸣", "level": 1, "rarity": "SSR",
-            "footer": "山风×薰-协战",
+            "shikigami1": "山风", "shikigami2": "薰",
             "description": "选择使用一项：山风-庇羽；薰-鸮鸣"},
 }
 

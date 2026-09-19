@@ -230,6 +230,18 @@ def test_fit_lifts_anchor_to_recenter_last_line(assets_dir):
     assert raw is None or abs(raw[-1][1] - 250) > 1e-6
 
 
+def test_fit_recenters_any_line_not_just_last(assets_dir):
+    """接受条件=每一行都水平居中（v1.2.2 起，原仅末行）：障碍只挤偏中间行时
+    同样触发上移/降字号，最终所有行回中。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(100, 280, 400, 440)  # 中心 (250,360)
+    mask = ink_mask([(340, 342, 400, 378)])   # 右侧中间墨迹块：只覆盖中间行的 y 带
+    text = "第一行文本内容\n第二行居中验证内容\n第三行文本内容"
+    font, lines = fit_in_region(text, region, lib, obstacle_mask=mask)
+    assert lines is not None and len(lines) == 3
+    assert all(abs(cx - 250) < 1e-6 for _, cx, _ in lines)
+
+
 def test_vertical_center_with_obstacles(assets_dir):
     """有角标墨迹时：末行须保持水平居中（锚点按需自动上移），块整体不出区域。"""
     lib = AssetLibrary(assets_dir)

@@ -1,9 +1,11 @@
 """式神项目制卡牌库存取：文件系统即数据库，纯函数 + Path 注入（不依赖 FastAPI）。
 
 目录结构（library/ 为用户数据，gitignore）：
-    library/<项目名>/shikigami.yaml   式神卡（固定文件名，保留卡名 shikigami）
-    library/<项目名>/cards/<卡名>.yaml  8 卡 + 衍生物
-    library/<项目名>/images/           卡图原图
+    library/<项目名>/shikigami/<任意文件名>.yaml   式神卡，数量不限，卡名以文件内 name 字段为准
+    library/<项目名>/cards/<任意文件名>.yaml       非式神卡，单项目上限 MAX_CARDS 张
+    library/<项目名>/images/                       卡图原图
+
+旧版单式神结构（<项目>/shikigami.yaml）在 list/load/save/delete 入口惰性迁移入 shikigami/。
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import yaml
 
 from .schema import SchemaError, validate_card
 
-SHIKIGAMI_STEM = "shikigami"  # 保留卡名：项目的式神卡，固定存于 shikigami.yaml
+MAX_CARDS = 299  # 单项目非式神卡上限，对应 BWPro 大版本卡牌量
 
 _ILLEGAL_CHARS = set('<>:"/\\|?*')
 _RESERVED_NAMES = {
@@ -25,6 +27,8 @@ _RESERVED_NAMES = {
     *(f"COM{i}" for i in range(1, 10)),
     *(f"LPT{i}" for i in range(1, 10)),
 }
+# 式神引用字段：改名联动时统一改写
+_REF_FIELDS = ("shikigami", "shikigami1", "shikigami2")
 
 
 class StoreError(Exception):
@@ -72,11 +76,36 @@ def _require_project(library: Path, project: str) -> Path:
     return pdir
 
 
-def _card_path(pdir: Path, card_name: str) -> Path:
-    _check_name(card_name, "卡名")
-    if card_name == SHIKIGAMI_STEM:
-        return pdir / "shikigami.yaml"
-    return pdir / "cards" / f"{card_name}.yaml"
+def _migrate_legacy(pdir: Path) -> None:
+    """旧版单式神结构迁移：<项目>/shikigami.yaml → shikigami/shikigami.yaml。"""
+    legacy = pdir / "shikigami.yaml"
+    if not legacy.is_file():
+        return
+    target = pdir / "shikigami" / "shikigami.yaml"
+    if target.exists():
+        raise StoreError(f"旧式神卡 {legacy.name} 与 shikigami/shikigami.yaml 并存，请手动处理：{pdir.name}",
+                         code="invalid")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(legacy, target)
+
+
+def _find_card(pdir: Path, stem: str) -> Path | None:
+    """读卡分派：先在 shikigami/ 再在 cards/ 找；都找不到返回 None。"""
+    _check_name(stem, "卡名")
+    for sub in ("shikigami", "cards"):
+        path = pdir / sub / f"{stem}.yaml"
+        if path.is_file():
+            return path
+    return None
+
+
+def _read_yaml(path: Path):
+    """宽松读取：损坏/非映射返回 None（供列表与联动遍历容错）。"""
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 # ---------- 项目 CRUD ----------
@@ -90,14 +119,12 @@ def list_projects(library: Path) -> list[str]:
 
 
 def create_project(library: Path, project: str) -> Path:
-    """新建项目骨架：cards/、images/ 与默认式神卡（name=项目名，红莲 3/4）。"""
+    """新建空项目骨架：cards/ 与 images/（不出厂默认式神卡）。"""
     pdir = _project_dir(library, project)
     if pdir.exists():
         raise StoreError(f"项目已存在：{project}", code="already_exists")
     (pdir / "cards").mkdir(parents=True)
     (pdir / "images").mkdir()
-    shikigami = {"type": "式神", "name": project, "faction": "红莲", "power": 3, "health": 4}
-    _dump_yaml(pdir / "shikigami.yaml", shikigami)
     return pdir
 
 
@@ -119,22 +146,33 @@ def delete_project(library: Path, project: str) -> None:
 
 # ---------- 卡牌 CRUD ----------
 
-def list_cards(library: Path, project: str) -> list[str]:
-    """项目内全部卡名（文件 stem）：shikigami 居首（若存在），其余按名排序。"""
+def list_cards(library: Path, project: str) -> dict[str, list[dict]]:
+    """项目内全部卡：{"shikigami": [...], "cards": [...]}，条目 {"stem", "name"}。
+
+    name 取自文件内容（损坏/非映射时 None 仍列出）；各组按 name 排序（None 排最后）。
+    """
     pdir = _require_project(library, project)
-    names = []
-    if (pdir / "shikigami.yaml").is_file():
-        names.append(SHIKIGAMI_STEM)
-    cards_dir = pdir / "cards"
-    if cards_dir.is_dir():
-        names += sorted(p.stem for p in cards_dir.glob("*.yaml"))
-    return names
+    _migrate_legacy(pdir)
+    result: dict[str, list[dict]] = {"shikigami": [], "cards": []}
+    for sub in ("shikigami", "cards"):
+        cdir = pdir / sub
+        if not cdir.is_dir():
+            continue
+        for path in cdir.glob("*.yaml"):
+            data = _read_yaml(path)
+            name = data.get("name") if data else None
+            result[sub].append({"stem": path.stem,
+                                "name": name if isinstance(name, str) else None})
+        result[sub].sort(key=lambda c: (c["name"] is None, c["name"] or ""))
+    return result
 
 
 def load_card(library: Path, project: str, card_name: str) -> dict:
     """读取卡牌 yaml；load 不做 schema 校验（校验在保存时执行）。"""
-    path = _card_path(_require_project(library, project), card_name)
-    if not path.is_file():
+    pdir = _require_project(library, project)
+    _migrate_legacy(pdir)
+    path = _find_card(pdir, card_name)
+    if path is None:
         raise StoreError(f"卡牌不存在：{project}/{card_name}", code="not_found")
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -149,29 +187,83 @@ def load_card(library: Path, project: str, card_name: str) -> dict:
     return data
 
 
-def save_card(library: Path, project: str, card_name: str, data: dict) -> Path:
-    """schema 校验通过才落盘；cards/ 下不允许 type=式神，shikigami.yaml 必须是式神卡。"""
+def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[Path, list[str]]:
+    """schema 校验通过才落盘；按 type 分派目录（式神 → shikigami/，其余 → cards/）。
+
+    文件名任意（卡名以文件内 name 为准，方便 BWPro 按 id 命名文件）；
+    请求 stem 已存在于另一目录（类型与目录不符）报错指引。非式神卡新增超 MAX_CARDS 拒绝。
+    式神卡 name 全项目唯一（引用按名关联）；改名时联动改写其余卡的 shikigami/shikigami1/
+    shikigami2 引用（只换名不再校验）。
+    返回 (落盘路径, 联动更新了的卡的 name 列表)。
+    """
     pdir = _require_project(library, project)
-    path = _card_path(pdir, card_name)
+    _migrate_legacy(pdir)
+    _check_name(card_name, "卡名")
     errors = validate_card(data)
-    if not errors:
-        if card_name == SHIKIGAMI_STEM and data["type"] != "式神":
-            errors.append(f"卡名 {SHIKIGAMI_STEM} 为保留名：shikigami.yaml 必须是式神卡（type: 式神）")
-        elif card_name != SHIKIGAMI_STEM and data["type"] == "式神":
-            errors.append("式神卡固定存于 shikigami.yaml，cards/ 下不允许 type: 式神")
-        elif card_name != SHIKIGAMI_STEM and data["name"] != card_name:
-            errors.append(f"字段 name（{data['name']}）必须与文件名（{card_name}）一致")
     if errors:
         raise SchemaError(errors)
+    sub = "shikigami" if data["type"] == "式神" else "cards"
+    other = "cards" if sub == "shikigami" else "shikigami"
+    if (pdir / other / f"{card_name}.yaml").is_file():
+        raise StoreError(f"同名文件已存在于 {other}/ 目录（与卡牌类型不符）：{card_name}.yaml，"
+                         f"请先删除或改名", code="already_exists")
+    path = pdir / sub / f"{card_name}.yaml"
+    is_new = not path.is_file()
+    if sub == "cards" and is_new:
+        existing = list((pdir / "cards").glob("*.yaml")) if (pdir / "cards").is_dir() else []
+        if len(existing) >= MAX_CARDS:
+            raise StoreError(f"单项目卡牌上限 {MAX_CARDS} 张", code="forbidden")
+    if sub == "shikigami":
+        shiki_dir = pdir / "shikigami"
+        for p in sorted(shiki_dir.glob("*.yaml")) if shiki_dir.is_dir() else []:
+            if p.stem == card_name:
+                continue
+            other_data = _read_yaml(p)
+            if other_data and other_data.get("name") == data["name"]:
+                raise SchemaError([f"式神卡名「{data['name']}」与已有式神卡（{p.stem}.yaml）重复："
+                                   f"引用按名关联，式神卡名必须唯一"])
+    # 改名联动：旧盘内容（式神卡）name 变化时，改写全项目其他卡的式神引用
+    updated: list[str] = []
+    if sub == "shikigami" and not is_new:
+        old = _read_yaml(path)
+        old_name = old.get("name") if old and old.get("type") == "式神" else None
+        if isinstance(old_name, str) and old_name and old_name != data["name"]:
+            updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
     _dump_yaml(path, data)
-    return path
+    return path, updated
+
+
+def _rewrite_references(pdir: Path, exclude: Path, old: str, new: str) -> list[str]:
+    """式神改名联动：遍历项目全部其他卡，shikigami/shikigami1/shikigami2 == 旧名的改为新名。"""
+    updated = []
+    for sub in ("shikigami", "cards"):
+        cdir = pdir / sub
+        if not cdir.is_dir():
+            continue
+        for path in sorted(cdir.glob("*.yaml")):
+            if path == exclude:
+                continue
+            card = _read_yaml(path)
+            if card is None:
+                continue
+            changed = False
+            for field in _REF_FIELDS:
+                if card.get(field) == old:
+                    card[field] = new
+                    changed = True
+            if changed:
+                _dump_yaml(path, card)
+                name = card.get("name")
+                updated.append(name if isinstance(name, str) else path.stem)
+    return updated
 
 
 def delete_card(library: Path, project: str, card_name: str) -> None:
-    path = _card_path(_require_project(library, project), card_name)
-    if card_name == SHIKIGAMI_STEM:
-        raise StoreError("式神卡（shikigami.yaml）不可删除，可覆盖保存", code="forbidden")
-    if not path.is_file():
+    """删除卡牌（式神卡可删；引用它的卡保留失效字符串，不级联）。"""
+    pdir = _require_project(library, project)
+    _migrate_legacy(pdir)
+    path = _find_card(pdir, card_name)
+    if path is None:
         raise StoreError(f"卡牌不存在：{project}/{card_name}", code="not_found")
     path.unlink()
 

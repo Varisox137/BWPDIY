@@ -18,7 +18,9 @@ FRAME_VARIANTS = ("norm", "blue", "black", "red")
 
 _COMMON_FIELDS = ("type", "name", "description")
 _SHIKIGAMI_ONLY = ("faction",)
-_NON_SHIKIGAMI_FIELDS = ("level", "rarity", "shikigami", "special_type")
+_NON_SHIKIGAMI_FIELDS = ("level", "rarity", "special_type")
+# 所属式神按名关联：常规非式神卡单引用 shikigami；协战双引用 shikigami1/shikigami2
+_ASSIST_FIELDS = ("shikigami1", "shikigami2")
 # 觉醒（evolve）仅战斗/法术/形态/幻境可携带；式神/协战不可
 _EVOLVE_TYPES = ("战斗", "法术", "形态", "幻境")
 
@@ -56,6 +58,7 @@ def _allowed_fields(ctype: str) -> set[str]:
         allowed.add("frame_variant")  # 式神牌框同形态，支持四框品（无觉醒）
     else:
         allowed |= set(_NON_SHIKIGAMI_FIELDS) | set(_STATS_BY_TYPE[ctype])
+        allowed |= set(_ASSIST_FIELDS) if ctype == "协战" else {"shikigami"}
         if ctype in _EVOLVE_TYPES:
             allowed.add("evolve")
             allowed.add("frame_variant")
@@ -104,7 +107,7 @@ def validate_card(data) -> list[str]:
             errors.append(
                 f"字段 frame_variant：非法框品「{data['frame_variant']}」，"
                 f"须为 {'/'.join(FRAME_VARIANTS)} 之一")
-        for field in ("shikigami", "special_type", "description"):
+        for field in ("shikigami", *_ASSIST_FIELDS, "special_type", "description"):
             if field in data and not isinstance(data[field], str):
                 errors.append(f"字段 {field}：必须是字符串")
     if ctype == "式神" and "description" in data and not isinstance(data["description"], str):

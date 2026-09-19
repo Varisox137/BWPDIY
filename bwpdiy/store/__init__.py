@@ -1,7 +1,7 @@
 """卡牌库存取 + schema 校验（式神项目制）。"""
 
 from .projects import (
-    SHIKIGAMI_STEM,
+    MAX_CARDS,
     StoreError,
     create_project,
     delete_card,
@@ -25,8 +25,8 @@ __all__ = [
     "CARD_TYPES",
     "FACTIONS",
     "LEVELS",
+    "MAX_CARDS",
     "RARITIES",
-    "SHIKIGAMI_STEM",
     "SchemaError",
     "StoreError",
     "create_project",

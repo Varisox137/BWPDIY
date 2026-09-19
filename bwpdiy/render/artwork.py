@@ -16,14 +16,18 @@ def rotate_artwork(img: Image.Image, rotate: float) -> Image.Image:
 
 def fit_artwork(img: Image.Image, target_size: tuple[int, int],
                 offset_x: float = 0, offset_y: float = 0,
-                scale: float = 1.0) -> Image.Image:
+                scale: float = 1.0,
+                cover_base: tuple[int, int] | None = None) -> Image.Image:
     """等比缩放至覆盖 target_size 后乘 scale，按 中心+offset 裁剪为 target_size。
 
     offset 单位为输出像素（右/下为正），越界钳制到可裁剪范围。
+    cover_base：cover 系数的基准尺寸（缺省=img.size）。旋转扩画布的场景传旋转前
+    原图尺寸，保证内容视觉尺度不随旋转角漂移（缩放/裁剪仍作用于 img 本身）。
     """
     tw, th = target_size
+    bw, bh = cover_base or img.size
     w, h = img.size
-    cover = max(tw / w, th / h) * scale
+    cover = max(tw / bw, th / bh) * scale
     nw, nh = max(round(w * cover), 1), max(round(h * cover), 1)
     resized = img.resize((nw, nh), Image.Resampling.LANCZOS)
     left = (nw - tw) / 2 + offset_x

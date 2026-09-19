@@ -139,5 +139,7 @@ def test_preview_invalid_brackets_422(tmp_path):
     override = {"type": "战斗", "name": "测试斩", "level": 2, "rarity": "R",
                 "shikigami": "测试项目", "power+": 1, "shield+": 1,
                 "description": "未闭合[[关键字"}
-    r = client.post("/api/projects/测试项目/cards/shikigami/preview", json={"card": override})
+    client.put("/api/projects/测试项目/cards/测试斩",
+               json={**override, "description": "正常描述。"})
+    r = client.post("/api/projects/测试项目/cards/测试斩/preview", json={"card": override})
     assert r.status_code == 422 and "方括号" in r.json()["detail"]

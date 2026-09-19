@@ -84,16 +84,17 @@ def test_missing_resource_raises(assets_dir):
 # ---------- 用户卡图缓存（v1.2.1 旋转支持） ----------
 
 def test_artwork_cache_by_path_rotate(tmp_path):
-    """缓存键 = (路径, mtime, 旋转角)：同参复用同对象，异角/改文件各自重载。"""
+    """缓存键 = (路径, mtime, 旋转角)：同参复用同对象，异角/改文件各自重载。
+    返回 (原图尺寸, 旋转后图)：原图尺寸供 fit_artwork 作 cover 基准。"""
     import os
     p = tmp_path / "图.png"
     Image.new("RGB", (100, 50), (200, 100, 50)).save(p)
     lib = AssetLibrary(tmp_path)
     a = lib.artwork(p)
-    assert a.mode == "RGBA" and a.size == (100, 50)
+    assert a[0] == (100, 50) and a[1].mode == "RGBA" and a[1].size == (100, 50)
     assert lib.artwork(p) is a                      # 同参命中缓存
     r = lib.artwork(p, 90)
-    assert r is not a and r.size == (50, 100)       # 旋转扩展画布
+    assert r is not a and r[0] == (100, 50) and r[1].size == (50, 100)  # 旋转扩展画布
     os.utime(p, (p.stat().st_mtime + 10, p.stat().st_mtime + 10))
     assert lib.artwork(p) is not a                  # mtime 变化重载
 

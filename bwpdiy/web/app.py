@@ -1,6 +1,7 @@
 """FastAPI 编辑器服务（布局配置工具 + 项目/卡牌 REST API）。"""
 
 import copy
+import hashlib
 import json
 import os
 import shutil
@@ -196,8 +197,10 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     @app.put("/api/projects/{project}/cards/{card}")
     async def put_card(project: str, card: str, request: dict):
-        save_card(library_dir, project, card, request)
-        return {"ok": True}
+        # save_card 返回 (path, updated)：式神卡改名时自动联动同项目卡的所属式神引用，
+        # updated 为被更新卡的卡名列表（前端据此提示并刷新列表）
+        _path, updated = save_card(library_dir, project, card, request)
+        return {"ok": True, "updated": updated}
 
     @app.delete("/api/projects/{project}/cards/{card}")
     def remove_card(project: str, card: str):
@@ -228,10 +231,12 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     @app.post("/api/projects/{project}/cards/{card}/artwork")
     async def post_artwork(project: str, card: str, request: Request):
-        """上传卡图：裸字节 body + filename 查询参数（只取扩展名，落盘名固定为 <卡名><ext>）。
+        """上传卡图：裸字节 body + filename 查询参数（只取扩展名，落盘名 = 内容 hash + ext）。
 
+        落盘名 = sha256(图片字节) 前 16 位 + 扩展名：同图多卡共享、重复上传自动去重，
+        不做旧图清理（hash 命名下多卡可共享同图，孤儿文件用户自理）。
         图片真实性/像素上限在写盘前校验；写盘后走 save_card 更新 artwork.images[0].path
-        （保留已有 offset/scale），schema 不过则删图回滚。
+        （保留已有 offset/scale），schema 不过则删图回滚（仅当本次真正写了新文件）。
         """
         ext = Path(request.query_params.get("filename", "")).suffix.lower()
         if ext not in _ART_EXTS:
@@ -254,28 +259,22 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         raw_images = artwork.get("images")
         old_images = raw_images if isinstance(raw_images, list) else []
         first = dict(old_images[0]) if old_images and isinstance(old_images[0], dict) else {}
-        old_path = first.get("path")
-        filename = f"{card}{ext}"
+        filename = f"{hashlib.sha256(data).hexdigest()[:16]}{ext}"
         first["path"] = filename
         artwork["images"] = [first, *old_images[1:]]
         card_data["artwork"] = artwork
         images_dir = library_dir / project / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
         target = images_dir / filename
-        target.write_bytes(data)
+        written = not target.is_file()
+        if written:
+            target.write_bytes(data)  # 同 hash 文件已存在：复用跳过写盘
         try:
             save_card(library_dir, project, card, card_data)
         except Exception:
-            target.unlink(missing_ok=True)  # schema 不过：删图回滚，不留孤儿文件
+            if written:
+                target.unlink(missing_ok=True)  # schema 不过：删图回滚，不留孤儿文件
             raise
-        # 换扩展名/旧自定义文件名时清理旧图（仅限 images/ 内、且非占位回退缺省名以外的引用）
-        if isinstance(old_path, str) and old_path and old_path != filename:
-            old_file = images_dir / old_path
-            try:
-                if old_file.resolve().parent == images_dir.resolve() and old_file.is_file():
-                    old_file.unlink()
-            except OSError:
-                pass  # 旧图清理失败不阻塞上传
         return {"ok": True, "path": filename}
 
     return app

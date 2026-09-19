@@ -73,3 +73,26 @@ def test_rotate_fit_pipeline():
     """旋转与 fit 组合：旋转后的缓存图再缩放裁剪，输出尺寸不变。"""
     out = fit_artwork(rotate_artwork(make_art(800, 600), 30), (512, 512))
     assert out.size == (512, 512)
+
+
+def test_rotate_preserves_content_scale():
+    """cover_base=旋转前尺寸：旋转后内容视觉尺度与不旋转一致（v1.2.2 修旋转自带缩放）。
+
+    中心 100×100 红块：不旋转时宽=100×(512/200)=256；45° 旋转后为对角线 256√2≈362。
+    （旧逻辑按旋转后外接矩形算 cover，45° 时红块只剩约 171，内容明显缩小。）
+    """
+    img = Image.new("RGBA", (400, 200), (0, 0, 255, 255))
+    for x in range(150, 250):
+        for y in range(50, 150):
+            img.putpixel((x, y), (255, 0, 0, 255))
+
+    def red_bbox_w(im):
+        xs = [x for y in range(512) for x in range(512)
+              if im.getpixel((x, y))[0] > 200 and im.getpixel((x, y))[3] > 200]
+        return max(xs) - min(xs)
+
+    w_plain = red_bbox_w(fit_artwork(img, (512, 512)))
+    w_rot = red_bbox_w(fit_artwork(rotate_artwork(img, 45), (512, 512),
+                                   cover_base=(400, 200)))
+    assert abs(w_plain - 256) <= 4
+    assert abs(w_rot - 362) <= 12

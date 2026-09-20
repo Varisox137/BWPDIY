@@ -61,9 +61,9 @@
   #update-banner { display: none; background: #fff3cd; color: #664d03; padding: 5px 10px; font-size: 13px; text-align: center; }
   #update-banner button { margin-left: 8px; font-size: 12px; }
 
-  /* ---- 使用说明弹窗 ---- */
-  #help-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100; }
-  #help-box { background: #fff; width: 580px; max-height: 80vh; overflow-y: auto; margin: 8vh auto; padding: 14px 20px; border-radius: 4px; font-size: 13px; line-height: 1.7; }
+  /* ---- 使用说明 / 服务失联弹窗 ---- */
+  #help-modal, #server-down-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100; }
+  #help-box, #server-down-box { background: #fff; width: 580px; max-height: 80vh; overflow-y: auto; margin: 8vh auto; padding: 14px 20px; border-radius: 4px; font-size: 13px; line-height: 1.7; }
   #help-box h3 { margin: 0 0 6px; }
   #help-box h4 { margin: 12px 0 2px; }
   #help-box code { background: #f0ead8; padding: 0 3px; }
@@ -150,7 +150,7 @@
     <button id="help-close">关闭</button>
     <h3>BWPDIY 使用说明</h3>
     <h4>基本流程</h4>
-    <div>左栏新建项目与卡牌（默认新建式神；非式神卡的「所属式神」可关联同项目式神）→ 右栏编辑卡牌内容、上传卡图 → 中央实时预览 → 「保存」写盘。卡图按 id（留空则按卡名）命名落盘。</div>
+    <div>左栏新建项目与卡牌（默认新建式神；非式神卡的「所属式神」可关联同项目式神）→ 右栏编辑卡牌内容、上传卡图 → 中央实时预览 → 「保存」写盘。卡图按 id（留空则按卡名）命名落盘。连续 2 小时无操作时程序会自动停止（防占用），重新启动即可。</div>
     <h4>描述文本自适应</h4>
     <div>描述自动换行、每行水平居中、整体竖直居中；排不下时先微调居中点、再自动逐级缩小字号；遇左下/右下角标自动避让，文字不会压到数值。</div>
     <h4>关键字高亮</h4>
@@ -169,6 +169,14 @@
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
     <h4>扩展选项</h4>
     <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步）；<b>允许 N 稀有度</b>——稀有度下拉开放 N。勾玉四色为二期功能，暂未开放。</div>
+  </div>
+</div>
+
+<div id="server-down-modal">
+  <div id="server-down-box">
+    <h3>连接已断开</h3>
+    <div>与工具的连接已断开。若连续 <b>2 小时</b>没有任何操作，程序会自动停止以释放占用；也可能是程序被关闭或已自动更新重启。<br>
+    请重新启动 BWPDIY（或等更新重启完成），再刷新本页面。已保存的卡牌/布局不受影响，未保存的表单修改会丢失。</div>
   </div>
 </div>
 
@@ -204,6 +212,19 @@ const FRAME_VARIANT_TYPES = new Set(["式神", "战斗", "法术", "形态", "�
 
 let layouts = null;          // 完整布局 dict（/api/layout），两 tab 共享
 let samples = null;          // 六类型样卡字段（/api/samples），布局 tab 用
+
+// 服务失联弹窗：服务连续 2h 无任何操作（HTTP 请求）会自动终止（防占用）；
+// 此后一切请求连接失败——包装 fetch 统一捕获，弹一次说明（JSON 解析失败等非
+// 网络错误不触发：只有 fetch 自身 reject 才是连接级失败）
+let serverDownShown = false;
+const _origFetch = window.fetch.bind(window);
+window.fetch = (...args) => _origFetch(...args).catch(e => {
+  if (!serverDownShown) {
+    serverDownShown = true;
+    document.getElementById('server-down-modal').style.display = 'block';
+  }
+  throw e;
+});
 
 async function ensureLayouts() {
   if (!layouts) layouts = await (await fetch('/api/layout')).json();

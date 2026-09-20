@@ -1,9 +1,16 @@
-"""FastAPI 编辑器服务（布局配置工具 + 项目/卡牌 REST API）。"""
+"""FastAPI 编辑器服务（布局配置工具 + 项目/卡牌 REST API）。
+
+空闲自动终止（防占用）：连续 idle_timeout 秒（默认 2h）无任何操作则进程退出。
+「操作」= HTTP 请求，但前端自动轮询（/api/update/check，每 1min）不算——
+否则挂着页面就永远不空闲。GUI 侧对所有请求失败弹「连接已断开」提示。
+"""
 
 import copy
 import json
 import os
 import shutil
+import threading
+import time
 from io import BytesIO
 from pathlib import Path
 
@@ -33,16 +40,45 @@ from bwpdiy.web.sample_cards import SAMPLE_CARDS
 _STATIC = Path(__file__).parent / "static"
 _SAMPLE_ART = Path(__file__).parent / "sample_art.png"  # 缺图占位（与样卡机制一致）
 
+# 空闲统计排除的被动轮询路径（前端每 1min 自动请求，不算用户操作）
+_IDLE_EXCLUDE_PATHS = {"/api/update/check"}
+
 
 def create_app(assets_dir: Path, static_dir: Path | None = None,
                library_dir: Path | None = None,
-               loopback_guard: bool = True) -> FastAPI:
+               loopback_guard: bool = True,
+               idle_timeout: float = 7200.0,
+               on_idle=None) -> FastAPI:
     assets_dir = Path(assets_dir)
     static_dir = Path(static_dir) if static_dir else _STATIC
     library_dir = Path(library_dir) if library_dir else default_library_dir()
     app = FastAPI(title="BWPDIY")
     app.state.assets_dir = assets_dir
     app.state.library_dir = library_dir
+    app.state.last_activity = time.time()
+
+    @app.middleware("http")
+    async def _activity_track(request, call_next):
+        if request.url.path not in _IDLE_EXCLUDE_PATHS:
+            app.state.last_activity = time.time()
+        return await call_next(request)
+
+    if idle_timeout > 0:
+        def _watchdog():
+            interval = min(60.0, max(0.05, idle_timeout / 4))
+            while True:
+                time.sleep(interval)
+                if time.time() - app.state.last_activity >= idle_timeout:
+                    if on_idle is not None:  # 测试注入
+                        on_idle()
+                    else:
+                        print(f"已连续 {idle_timeout / 3600:g} 小时无操作，"
+                              "服务自动终止（防占用），重新启动即可继续使用。", flush=True)
+                        os._exit(0)
+                    return
+
+        threading.Thread(target=_watchdog, daemon=True,
+                         name="bwpdiy-idle-watchdog").start()
 
     # Host 校验（防 DNS rebinding）：本机工具只应接受回环 Host——攻击者域名
     # 重绑定到 127.0.0.1 时浏览器带的是攻击者域名 Host，直接 400 堵住整条链。

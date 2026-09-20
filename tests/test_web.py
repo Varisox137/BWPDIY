@@ -30,6 +30,29 @@ def test_get_layout(client):
     assert "战斗" in r.json()
 
 
+def test_idle_activity_tracks_requests(client, monkeypatch):
+    """空闲统计：普通请求刷新活动时间；/api/update/check（前端 1min 自动轮询）不刷新。"""
+    from bwpdiy import updater
+    monkeypatch.setattr(updater, "check_update",
+                        lambda: {"current": "x", "frozen": False, "has_update": False})
+    app = client.app
+    client.get("/")
+    t1 = app.state.last_activity
+    client.get("/api/update/check")
+    assert app.state.last_activity == t1
+    client.get("/api/layout")
+    assert app.state.last_activity >= t1
+
+
+def test_idle_watchdog_fires(tmp_path):
+    """看门狗：超过 idle_timeout 无操作触发 on_idle（默认实现为打印并退出进程）。"""
+    import threading
+    fired = threading.Event()
+    create_app(ASSETS, library_dir=tmp_path / "library", idle_timeout=0.1,
+               on_idle=fired.set)
+    assert fired.wait(3)
+
+
 def test_host_guard(client):
     """Host 校验（防 DNS rebinding）：非回环 Host 一律 400；回环/testserver 放行。"""
     assert client.get("/api/layout", headers={"host": "evil.example.com"}).status_code == 400

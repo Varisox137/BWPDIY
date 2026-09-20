@@ -1,6 +1,6 @@
 # BWPDIY 术语表
 
-定稿日期：2026-09-14。修订：v1.0（2026-09-18，PSD 素材替换/四框品/新合成管线/扩展选项）；v1.2（描述文本关键字高亮）。新增/变更术语须同步本表。
+定稿日期：2026-09-14。修订：v1.0（2026-09-18，PSD 素材替换/四框品/新合成管线/扩展选项）；v1.2（描述文本关键字高亮）；v1.3.0（描述文本 `#xx` 内嵌图标）。新增/变更术语须同步本表。
 
 ## 渲染层级（自底向上合成顺序）
 
@@ -16,10 +16,10 @@
 | 框品 | frame_variant | 常规(norm)/琉璃(blue)/墨染(black)/百炼(red)；v1.0 开放——卡牌 yaml 可选字段 `frame_variant`（缺省 norm，式神/战斗/法术/形态/幻境可携带，式神牌框同形态、协战恒 norm），按框品自动切换牌框/稀有度贴图/文字颜色 |
 | 等级标 | level_badge | 三层自底向上叠加（无等级卡牌整体跳过）：① 底座 `levels/base.png`（勾玉底框）→ ② 觉醒图案 `levels/evolve_star.png`（五角星金底，仅觉醒牌；觉醒 = evolve: true，仅战斗/法术/形态/幻境可携带，式神/协战不可）→ ③ 勾玉层 `levels/level_{1,2,3}_yellow.png`（官方勾玉个数制，默认黄色；四色=黄/青/紫/红二期染色生成，BWPro 对战四位己方式神渲染用，另 blue/brown 两色保留生成）；布局参数三组：`pos` 底座坐标、`star_offset` 觉醒星相对底座偏移、`num_offset` 勾玉相对底座偏移（缺省 [0,0]） |
 | 稀有度标 | rarity_mark | N/R/SR/SSR，资源 `rarity/{R,SR,SSR}{,_blue,_red}.png`（罕贵度整带裁单枚花标；black 框品回退 norm 版）+ `rarity/reinforce_{R,SR,SSR}.png`（协战专版：蓝=R/紫=SR/金=SSR）+ `rarity/N.png`（legacy 图，仅「扩展选项」启用时可选） |
-| 派系标 | faction_mark | 红莲 red/苍叶 green/青岚 blue/紫岩 purple/无相；式神卡大标沿用 legacy 三变体 `factions/{color}_{1,2,3}.png`（style 默认 2）；`icons/faction_{color}{,_black}.png` 小标为二期内嵌图标备用 |
+| 派系标 | faction_mark | 红莲 red/苍叶 green/青岚 blue/紫岩 purple/无相；式神卡大标沿用 legacy 三变体 `factions/{color}_{1,2,3}.png`（style 默认 2）；`icons/faction_{color}{,_black}.png` 小标为 `#xx` 内嵌图标用（v1.3.0 起，墨染框用 `_black` 变体） |
 | 数值标 | stat | 力量(power)/生命(health)/战斗牌护甲加成(shield)/幻境耐久(intensity)；角标贴图 `stats/{stem}.png`（力量/生命全类型共用 `power.png`/`health.png`；护甲 `combat_shield.png`，负护甲自动换 `stats/combat_fragile_2.png` 破甲图，变体 1/2 可选默认 2；耐久 `field_intensity.png`）；正负号贴图 `signs/{plus,minus}.png`（不经数字字体）；适用矩阵见「元素」行 |
 | 卡名 | name_text | 田氏颜体大字库 2.0（生僻字字形风格已统一，v1.2.3 起） |
-| 描述文本 | desc_text | 方正北魏楷书，自动排版（从大到小试字号、自动换行、逐行居中、文本块竖直居中）；文字颜色按框品（`FRAME_TEXT_FILL`，取色自官方模板文字样本：norm 深色/black 金色/blue·red 浅色）；**关键字高亮**（v1.2）：`[[关键字]]` 双英文方括号标记（v1.2.1 起；单 [ ] 为字面字符），括号不绘制、内容按框品异色（`FRAME_KEYWORD_FILL`，norm 金棕取色自官方卡面关键字样本，blue/red 同族金橙、black 亮橙以对金色正文保持区分）；括号配对校验（未闭合/无配对/嵌套/空 `[[]]` 均报错，渲染层 ValueError + GUI 表单即时校验） |
+| 描述文本 | desc_text | 方正北魏楷书，自动排版（从大到小试字号、自动换行、逐行居中、文本块竖直居中）；文字颜色按框品（`FRAME_TEXT_FILL`，取色自官方模板文字样本：norm 深色/black 金色/blue·red 浅色）；**关键字高亮**（v1.2）：`[[关键字]]` 双英文方括号标记（v1.2.1 起；单 [ ] 为字面字符），括号不绘制、内容按框品异色（`FRAME_KEYWORD_FILL`，norm 金棕取色自官方卡面关键字样本，blue/red 同族金橙、black 亮橙以对金色正文保持区分）；括号配对校验（未闭合/无配对/嵌套/空 `[[]]` 均报错，渲染层 ValueError + GUI 表单即时校验）；**内嵌图标**（v1.3.0）：`#<两位拼音首字母>` 行内绘制小图标（映射 `render/text.py` ICON_CODES，高=字号、alpha bbox 等比缩放、竖直中心对齐行中心；记号不进输出，未知代码 ValueError，'#' 后非两字母为字面字符），派系图标墨染框下用 `_black` 变体 |
 | 成品导出 | 512 顶格适配 | 最终卡图按整卡 tightest alpha bbox 裁剪后等比缩放至高 512（**上下顶格、左右居中留白**）贴回 512×512 导出（宽溢出则退为按宽适配、上下留白）；布局预览（crop=False）仍返回 512 全画布合成结果 |
 | 轮廓裁剪 | silhouette clip | 叠框前牌框先做 alpha 阈值清理（`FRAME_ALPHA_THRESHOLD=192`，删去 PSD 导出框缘外/窗内低透明度散点，v1.0.2；经 T=0/32/64/128/192 对比，差异仅为边缘 1-2px 抗锯齿，不伤内部装饰），再删去**牌框实际形状**之外的所有像素（框 alpha==0 且与画布边缘连通的区域；卡图窗被框缘完整包围不受影响）——矩形 bbox 裁剪会残留框形外卡图（v1.0.1 修复）；元素在轮廓裁剪之后绘制，探出框缘的等级标等不受影响 |
 
@@ -34,7 +34,7 @@
 | `reinforce` | 协战 |
 | （同 form） | 式神——卡面外观形状同形态牌，差异化元素为派系标/力量/生命 |
 
-拼音首字母→术语映射保留（二期 `#xx` 内嵌图标语法用）：`xt→form` `zd→combat` `fs→spell` `hj→field` `xz→reinforce`；`ll→power` `sm→health` `hj→shield` `pj→fragile` `nl→energy` `nj→intensity` `zl→combat_power` `fl→weak` `sj→bounty`（数值英文名单对齐 BWPro：破甲=fragile、幻境耐久=intensity、战力=combat_power、乏力=weak、赏金=bounty）。
+拼音首字母→术语映射保留（v1.3.0 起 `#xx` 内嵌图标语法用）：`xt→form` `zd→combat` `fs→spell` `hj→field` `xz→reinforce`；`ll→power` `sm→health` `hj→shield` `pj→fragile` `nl→energy` `nj→intensity` `zl→combat_power` `fl→weak` `sj→bounty`（数值英文名单对齐 BWPro：破甲=fragile、幻境耐久=intensity、战力=combat_power、乏力=weak、赏金=bounty）。ICON_CODES 实收 ll/sm/hj/pj/nl/nj/zl/fl + 派系 hl/cy/ql/zy（sj 赏金素材缺失暂未收录）。
 
 ## 数据与组织
 
@@ -57,6 +57,5 @@
 | 术语 | 说明 |
 |---|---|
 | 关键词上色 | 描述文本中 `[关键词]` 高亮着色 |
-| 内嵌图标 | 描述文本中 `#xx` 语法插入小图标（拼音首字母代码→`icons/{术语}.png` 映射见「卡牌类型代码」节） |
 | 勾玉四色 | `levels/level_{1,2,3}_{yellow,cyan,purple,red}.png` 染色生成（另 blue/brown 保留），BWPro 对战四位己方式神渲染用；届时与 legacy 6 色数字版比对取舍 |
 | 协战双式神头像框 | 双菱形头像+派系小标（素材在 `psd_export/协战/式神头像框/`）；仅 BWPro 卡组构筑/对战详情用，DIY 工具一般不绘制 |

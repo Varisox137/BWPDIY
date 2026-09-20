@@ -1,4 +1,5 @@
 from PIL import Image, ImageChops, ImageFilter
+import pytest
 
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.text import TEXT_FILL, draw_region, fit_in_region
@@ -114,8 +115,8 @@ def test_ink_mask_avoidance_wider_than_bbox(assets_dir):
     # 直接测排版层口径（fit 层另有末行居中/锚点上移验收，与宽窄口径无关）：
     # 墨迹口径 36 号排得下；bbox 口径（右缘到 x180+4）排不下
     from bwpdiy.render.geometry import mask_row_runs
-    from bwpdiy.render.text import _layout_at_size, _styled_chars
-    chars = _styled_chars(text)
+    from bwpdiy.render.text import _layout_at_size, parse_items
+    chars = parse_items(text)
     assert _layout_at_size(chars, font36, region, region["wrap"],
                            mask_row_runs(ink)) is not None
     assert _layout_at_size(chars, font36, region, region["wrap"],
@@ -152,9 +153,9 @@ def test_obstacle_gap_field(assets_dir):
     half = font36.getlength(text) / 2
     # 触界平移是排版层（_layout_at_size）口径；fit 层会先尝试锚点上移/缩字号避免触界
     from bwpdiy.render.geometry import mask_row_runs
-    from bwpdiy.render.text import _layout_at_size, _styled_chars
+    from bwpdiy.render.text import _layout_at_size, parse_items
     runs = mask_row_runs(mask)
-    chars = _styled_chars(text)
+    chars = parse_items(text)
     lines = _layout_at_size(chars, font36, dict(base), False, runs)
     assert abs(lines[0][1] - (129 + half)) < 1e-6  # 左界 125+4
     lines = _layout_at_size(chars, font36, dict(base, obstacle_gap=10), False, runs)
@@ -217,7 +218,7 @@ def test_fit_lifts_anchor_to_recenter_last_line(assets_dir):
     """末行被右下角障碍挤偏时：fit 先逐 px 上移居中锚点（≤半行高）救回末行居中，
     不行才缩字号。"""
     from bwpdiy.render.geometry import mask_row_runs
-    from bwpdiy.render.text import _layout_at_size, _styled_chars
+    from bwpdiy.render.text import _layout_at_size, parse_items
     lib = AssetLibrary(assets_dir)
     region = rect_region(100, 300, 400, 420)  # 中心 (250,360)
     mask = ink_mask([(300, 390, 400, 420)])  # 右下角墨迹块
@@ -226,7 +227,7 @@ def test_fit_lifts_anchor_to_recenter_last_line(assets_dir):
     assert lines is not None and len(lines) == 2
     assert abs(lines[-1][1] - 250) < 1e-6  # 末行回中
     # 同字号锚点不上移时末行被挤偏（证明确为上移救回，而非字号缩小顺带解决）
-    raw = _layout_at_size(_styled_chars(text), font, region, region["wrap"], mask_row_runs(mask))
+    raw = _layout_at_size(parse_items(text), font, region, region["wrap"], mask_row_runs(mask))
     assert raw is None or abs(raw[-1][1] - 250) > 1e-6
 
 
@@ -252,3 +253,44 @@ def test_vertical_center_with_obstacles(assets_dir):
     assert len(lines) > 1
     assert abs(lines[-1][1] - 250) < 1e-6  # 末行水平居中（锚点已按需上移）
     assert lines[0][2] >= 100 and lines[-1][2] <= 400  # 块不出区域
+
+
+# ---------- 内嵌图标（#xx） ----------
+
+def test_parse_items_icon_codes():
+    from bwpdiy.render.text import parse_items
+    # 纯文本：全 char 项
+    assert parse_items("甲乙") == [("char", "甲", False), ("char", "乙", False)]
+    # #ll → icon 项，记号本身不进入字符流
+    assert parse_items("获得#ll点力量") == [
+        ("char", "获", False), ("char", "得", False), ("icon", "ll", False),
+        ("char", "点", False), ("char", "力", False), ("char", "量", False)]
+    # 代码不区分大小写
+    assert parse_items("#LL") == [("icon", "ll", False)]
+    # 关键字段内的图标继承 kw 标记
+    assert parse_items("[[#ll]]") == [("icon", "ll", True)]
+    # '#' 后非两个英文字母：字面字符
+    assert parse_items("#1")[0] == ("char", "#", False)
+    # 未知代码报错
+    with pytest.raises(ValueError, match="图标代码未知"):
+        parse_items("#xx")
+
+
+def test_draw_region_inline_icon(assets_dir):
+    """行内图标参与排版并绘制：同字号下墨迹多于纯文本；fit 行文本不含图标项。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(100, 100, 400, 200)
+    ink = lambda img: sum(1 for p in img.getdata() if p[3] > 0)
+    plain = draw_region(canvas(), lib, "测试图标", region)
+    with_icon = draw_region(canvas(), lib, "测试#ll图标", region)
+    assert ink(with_icon) > ink(plain)
+    font, lines = fit_in_region("测试#ll图标", region, lib)
+    assert lines[0][0] == "测试图标"  # 行纯文本不含图标记号
+
+
+def test_icon_black_variant_for_faction(assets_dir):
+    """墨染框（icon_variant='black'）派系图标用 _black 变体；无变体的图标回退原图。"""
+    from bwpdiy.render.text import _icon_image
+    lib = AssetLibrary(assets_dir)
+    assert _icon_image("hl", lib, "black").tobytes() != _icon_image("hl", lib, None).tobytes()
+    assert _icon_image("ll", lib, "black").tobytes() == _icon_image("ll", lib, None).tobytes()

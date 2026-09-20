@@ -185,7 +185,7 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         kw_fill = FRAME_KEYWORD_FILL.get(variant, FRAME_KEYWORD_FILL["norm"])
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
                              obstacle_mask=obstacle_mask, fill=desc_fill,
-                             keyword_fill=kw_fill)
+                             keyword_fill=kw_fill, icon_variant=variant)
     # 数值层最后画：描述文本避让数值（掩膜含数值墨迹），数值压在文本之上
     for elem_name, elem in stat_elems:
         canvas = render_element(canvas, lib, elem_name, elem, card, ctx,

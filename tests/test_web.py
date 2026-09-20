@@ -171,6 +171,15 @@ def test_samples_api(client):
     assert "_base_dir" not in battle and "artwork" not in battle
 
 
+def test_help_button_and_modal():
+    """中央区「使用说明」按钮在「强制刷新」左边；弹窗含基础功能说明要点。"""
+    html = EDITOR_HTML.read_text(encoding="utf-8")
+    assert html.index('id="c-btn-help"') < html.index('id="c-btn-refresh"')
+    modal = html.split('id="help-modal"', 1)[1]
+    for needle in ("[[关键字]]", "#ll", "四分之一宽空格", "扩展选项", "自适应"):
+        assert needle in modal
+
+
 # --- editor.html 内嵌 JS 纯函数测试（node 驱动：抽取函数源码 + 桩驱动运行） ---
 # 布局设置 tab 自 layout.html 迁入 editor.html，被测函数名保持不变
 

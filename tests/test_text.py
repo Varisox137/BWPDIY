@@ -304,8 +304,8 @@ def test_icon_counts_toward_line_width(assets_dir):
     font36 = lib.font("desc", 36)
     items = parse_items("甲乙#ll")
     iw = _icon_widths(items, font36, lib, None)
-    # 行宽 = 字符宽度 + 图标缩放宽度 + 文字-图标半宽空格（居中/换行均按此口径）
-    assert _line_width(items, font36, iw) == font36.getlength("甲乙") + 18.0 + iw["ll"]
+    # 行宽 = 字符宽度 + 图标缩放宽度 + 文字-图标四分之一宽空格（居中/换行均按此口径）
+    assert _line_width(items, font36, iw) == font36.getlength("甲乙") + 9.0 + iw["ll"]
     text = "甲乙丙丁"
     w = font36.getlength(text)
     region = rect_region(0, 0, round(w) + 2, 100, wrap=False)  # 恰好排下纯文本
@@ -313,13 +313,13 @@ def test_icon_counts_toward_line_width(assets_dir):
     assert _layout_at_size(parse_items(text + "#ll"), font36, region, False, lib=lib) is None
 
 
-def test_icon_text_gap_half_em(assets_dir):
-    """图标与同行相邻文字间自动加半宽空格（0.5em）；
+def test_icon_text_gap_quarter_em(assets_dir):
+    """图标与同行相邻文字间自动加四分之一宽空格（0.25em）；
     图标在行首/行尾时该侧无空格，图标-图标相邻不加。"""
     from bwpdiy.render.text import _icon_widths, _line_width, parse_items
     lib = AssetLibrary(assets_dir)
     font36 = lib.font("desc", 36)
-    gap = 18.0  # 36 × 0.5em
+    gap = 9.0  # 36 × 0.25em
     def lw(s):
         items = parse_items(s)
         return _line_width(items, font36, _icon_widths(items, font36, lib, None))
@@ -339,7 +339,7 @@ def test_icon_scale_field(assets_dir):
     assert (h1, h2) == (36, 18) and w2 < w1
     font36 = lib.font("desc", 36)
     items = parse_items("甲乙丙丁#ll")
-    gap = 18.0  # 文字-图标半宽空格
+    gap = 9.0  # 文字-图标四分之一宽空格
     region = rect_region(0, 0, round(font36.getlength("甲乙丙丁") + gap + w2) + 1, 100,
                          wrap=False)
     # 宽度介于「半系数」与「全系数」之间：0.5 排得下，缺省 1.0 超宽失败

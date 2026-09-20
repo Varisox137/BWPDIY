@@ -1,11 +1,11 @@
-"""关键字高亮测试：[[关键字]] 双括号标记解析/校验、异色绘制、括号剥离排版、管线与 web 端集成。
+"""关键字高亮测试：[[关键字]] 双括号标记解析、异色绘制、括号剥离排版、管线与 web 端集成。
 
-v1.2.1 起标记为双中括号，单 [ ] 为字面字符。
+v1.2.1 起标记为双中括号，单 [ ] 为字面字符；v1.3.0 起未匹配括号按字面文本显示
+（从左往右匹配，'[[' 配其后最近 ']]'，高亮内部不再解析新 '[['）。
 """
 
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -53,15 +53,14 @@ def test_parse_segments_single_brackets_literal():
     assert parse_keyword_segments("[[[贯通]]]") == [("[贯通", True), ("]", False)]
 
 
-@pytest.mark.parametrize("bad,msg", [
-    ("未闭合[[关键字", "未闭合"),
-    ("多余]]右括号", "缺少配对"),
-    ("嵌套[[甲[[乙]]丙]]", "嵌套"),
-    ("空[[]]标记", "为空"),
-])
-def test_parse_segments_invalid(bad, msg):
-    with pytest.raises(ValueError, match=msg):
-        parse_keyword_segments(bad)
+def test_parse_segments_unmatched_literal():
+    """未匹配括号按字面文本显示（v1.3.0 起不再报错）：'[[' 无闭合、']]' 无配对、空 '[[]]'。"""
+    assert parse_keyword_segments("未闭合[[关键字") == [("未闭合[[关键字", False)]
+    assert parse_keyword_segments("多余]]右括号") == [("多余]]右括号", False)]
+    assert parse_keyword_segments("空[[]]标记") == [("空[[]]标记", False)]
+    # 从左往右：'[[' 配其后最近 ']]'，高亮内部不再解析新 '[['（字面进入关键字内容）
+    assert parse_keyword_segments("嵌套[[甲[[乙]]丙]]") == [
+        ("嵌套", False), ("甲[[乙", True), ("丙]]", False)]
 
 
 # ---------- 排版与绘制 ----------
@@ -100,10 +99,21 @@ def test_draw_without_keyword_fill_uniform(assets_dir):
                for p in img.getdata())
 
 
-def test_draw_invalid_brackets_raise(assets_dir):
+def test_draw_unmatched_brackets_literal(assets_dir):
+    """未闭合括号按字面文本绘制（不报错），整段正文色。"""
     lib = AssetLibrary(assets_dir)
-    with pytest.raises(ValueError, match="方括号"):
-        draw_region(canvas(), lib, "未闭合[[关键字", rect_region(100, 100, 400, 200))
+    img = draw_region(canvas(), lib, "未闭合[[关键字", rect_region(100, 100, 400, 200),
+                      fill=TEXT_FILL, keyword_fill=KEYWORD_FILL)
+    assert any(p[3] > 200 and all(abs(p[i] - TEXT_FILL[i]) <= 30 for i in range(3))
+               for p in img.getdata())
+
+
+def test_draw_keyword_with_icon(assets_dir):
+    """高亮内部 # 图标照常解析绘制（异色对图标无实际效果：图标按原图粘贴）。"""
+    lib = AssetLibrary(assets_dir)
+    img = draw_region(canvas(), lib, "[[贯通#ll]]", rect_region(100, 100, 400, 200),
+                      fill=TEXT_FILL, keyword_fill=KEYWORD_FILL)
+    assert any(p[3] > 200 for p in img.getdata())
 
 
 # ---------- 管线与 web 集成 ----------
@@ -128,18 +138,24 @@ def test_render_card_single_brackets_no_highlight(assets_dir):
     assert with_brackets is not None
 
 
-def test_render_card_invalid_brackets_raise(assets_dir):
-    with pytest.raises(ValueError, match="方括号"):
-        render_card(_battle_card("未闭合[[关键字"), ASSETS, crop=False)
+def test_render_card_unmatched_brackets_render(assets_dir):
+    """管线集成：未闭合括号按字面文本渲染（不报错），与纯文本渲染结果不同（多画了括号）。"""
+    plain = render_card(_battle_card("未闭合关键字"), ASSETS, crop=False)
+    marked = render_card(_battle_card("未闭合[[关键字"), ASSETS, crop=False)
+    assert list(plain.getdata()) != list(marked.getdata())
 
 
-def test_preview_invalid_brackets_422(tmp_path):
+def test_preview_unknown_icon_code_422(tmp_path):
+    """未知图标代码仍在预览端报 422（括号不配对已改为字面显示，不再报错）。"""
     client = TestClient(create_app(ASSETS, library_dir=tmp_path / "library"))
     client.post("/api/projects", json={"name": "测试项目"})
     override = {"type": "战斗", "name": "测试斩", "level": 2, "rarity": "R",
                 "shikigami": "测试项目", "power+": 1, "shield+": 1,
-                "description": "未闭合[[关键字"}
+                "description": "触发#xx图标"}
     client.put("/api/projects/测试项目/cards/测试斩",
                json={**override, "description": "正常描述。"})
     r = client.post("/api/projects/测试项目/cards/测试斩/preview", json={"card": override})
-    assert r.status_code == 422 and "方括号" in r.json()["detail"]
+    assert r.status_code == 422 and "图标代码未知" in r.json()["detail"]
+    ok = client.post("/api/projects/测试项目/cards/测试斩/preview",
+                     json={"card": {**override, "description": "未闭合[[关键字"}})
+    assert ok.status_code == 200

@@ -1,8 +1,9 @@
 """文本层：矩形文本区排版（自动换行、逐行居中、字号递减适配、掩膜墨迹避让、关键字异色、内嵌图标）。
 
 关键字高亮：描述文本中 [[关键字]] 用双英文方括号标记（v1.2.1 起；单 [ ] 为字面字符），
-括号不绘制、内容按框品异色（FRAME_KEYWORD_FILL）。括号匹配校验在排版入口执行
-（parse_keyword_segments）。
+括号不绘制、内容按框品异色（FRAME_KEYWORD_FILL）。从左往右匹配（'[[' 配其后
+最近 ']]'），未匹配的括号按字面文本显示（v1.3.0 起不再报错）；高亮内部不再
+解析新的 '[['，# 图标照常解析（异色对图标无效果）。
 
 内嵌图标（v1.3.0）：`#<两位拼音首字母>` 在行内绘制为小图标（如 #ll → 力量），
 记号本身不进入输出；图标高度=字号×icon_scale（desc 文本区布局字段，缺省 1.0，
@@ -69,39 +70,33 @@ _ICON_RE = re.compile(r"#([A-Za-z]{2})")
 def parse_keyword_segments(text: str) -> list[tuple[str, bool]]:
     """解析 [[关键字]] 双括号标记 → [(文本段, 是否关键字)]；标记本身不进入输出。
 
-    单 [ / ] 为字面字符（可正常输入）。校验（均 ValueError）：
-    '[[' 未闭合、']]' 无配对、'[[' 嵌套、'[[]]' 为空。
-    连续三个以上括号按贪心解析：'[[[' = 开标记 + 字面 '['，']]]' = 闭标记 + 字面 ']'。
+    从左往右匹配：'[[' 配其后最近的 ']]'，内容为关键字（内部不再解析新的
+    '[['——字面进入关键字内容；# 图标照常解析，但异色对图标无实际效果）。
+    未匹配的括号一律按字面文本显示：'[[' 无闭合、']]' 无配对、'[[]]' 空内容；
+    单 [ ] 为字面字符。
     """
     segs: list[tuple[str, bool]] = []
-    plain, kw = "", None
+    plain = ""
     i = 0
     while i < len(text):
         pair = text[i:i + 2]
         if pair == "[[":
-            if kw is not None:
-                raise ValueError("描述文本方括号不匹配：'[[' 内不能嵌套 '[['")
+            end = text.find("]]", i + 2)
+            if end == -1 or end == i + 2:  # 未闭合或空内容：按字面文本
+                plain += "[["
+                i += 2
+                continue
             if plain:
                 segs.append((plain, False))
                 plain = ""
-            kw = ""
-            i += 2
+            segs.append((text[i + 2:end], True))
+            i = end + 2
         elif pair == "]]":
-            if kw is None:
-                raise ValueError("描述文本方括号不匹配：']]' 缺少配对的 '[['")
-            if not kw:
-                raise ValueError("描述文本方括号不匹配：'[[]]' 内容为空")
-            segs.append((kw, True))
-            kw = None
+            plain += "]]"  # 无配对闭标记：按字面文本
             i += 2
         else:
-            if kw is not None:
-                kw += text[i]
-            else:
-                plain += text[i]
+            plain += text[i]
             i += 1
-    if kw is not None:
-        raise ValueError("描述文本方括号不匹配：'[[' 未闭合")
     if plain:
         segs.append((plain, False))
     return segs
@@ -112,7 +107,8 @@ def parse_items(text: str) -> list[tuple[str, str, bool]]:
 
     kind ∈ "char"（单字符）/ "icon"（图标代码）；kw = 是否在关键字段内。
     排版宽度按可见内容计（图标按缩放后宽度），标记本身不进入输出。
-    '#' 后两个英文字母查 ICON_CODES（不区分大小写），未知代码 ValueError。
+    '#' 后两个英文字母查 ICON_CODES（不区分大小写），未知代码 ValueError；
+    括号不配对不报错（parse_keyword_segments 已按字面文本处理）。
     """
     items: list[tuple[str, str, bool]] = []
     for seg, kw in parse_keyword_segments(text):

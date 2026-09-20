@@ -20,15 +20,15 @@ def test_fit_scale_enlarges():
 
 
 def test_fit_offset_shifts_window():
-    # 用左右两半不同颜色的图验证 offset 平移裁剪窗口
+    """用左右两半不同颜色的图验证 offset 平移：正值 = 图像向右移（v1.3.0 起）。"""
     img = Image.new("RGBA", (1024, 512), (255, 0, 0, 255))
     for x in range(512, 1024):
         for y in range(512):
             img.putpixel((x, y), (0, 0, 255, 255))
-    left = fit_artwork(img, (512, 512), offset_x=-256)
-    right = fit_artwork(img, (512, 512), offset_x=256)
-    assert left.getpixel((10, 256)) == (255, 0, 0, 255)
-    assert right.getpixel((502, 256)) == (0, 0, 255, 255)
+    right = fit_artwork(img, (512, 512), offset_x=256)   # 图像右移：左半红入画
+    left = fit_artwork(img, (512, 512), offset_x=-256)   # 图像左移：右半蓝入画
+    assert right.getpixel((10, 256)) == (255, 0, 0, 255)
+    assert left.getpixel((502, 256)) == (0, 0, 255, 255)
 
 
 def test_fit_offset_free_pan_transparent():
@@ -47,17 +47,18 @@ def test_fit_offset_works_for_square_image():
             img.putpixel((x, y), (0, 0, 255, 255))  # 左半红、右半蓝
     base = fit_artwork(img, (512, 512))
     assert base.getpixel((500, 256))[3] == 255      # 满幅不透明
-    moved = fit_artwork(img, (512, 512), offset_x=100)
-    assert moved.getpixel((500, 256))[3] == 0       # 右缘让出透明带
-    assert moved.getpixel((10, 256)) == (255, 0, 0, 255)  # 窗口右移：左半红仍可见
-    back = fit_artwork(img, (512, 512), offset_x=-100)
-    assert back.getpixel((10, 256))[3] == 0         # 左缘让出透明带
+    moved = fit_artwork(img, (512, 512), offset_x=100)   # 图像右移
+    assert moved.getpixel((10, 256))[3] == 0        # 左缘让出透明带
+    assert moved.getpixel((500, 256)) == (0, 0, 255, 255)  # 右半蓝仍可见
+    back = fit_artwork(img, (512, 512), offset_x=-100)   # 图像左移
+    assert back.getpixel((500, 256))[3] == 0        # 右缘让出透明带
+    assert back.getpixel((10, 256)) == (255, 0, 0, 255)  # 左半红仍可见
 
 
 def test_fit_rgb_input_pads_transparent():
     """RGB 输入越界区域同样填透明（内部先转 RGBA，不会填不透明黑）。"""
     out = fit_artwork(Image.new("RGB", (512, 512), (255, 0, 0)), (512, 512), offset_x=100)
-    assert out.getpixel((500, 256))[3] == 0
+    assert out.getpixel((10, 256))[3] == 0  # 图像右移：左缘透明
 
 
 # ---------- 旋转（v1.2.1） ----------

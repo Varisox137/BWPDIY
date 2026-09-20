@@ -154,7 +154,7 @@
     <h4>描述文本自适应</h4>
     <div>描述自动换行、每行水平居中、整体竖直居中；排不下时先微调居中点、再自动逐级缩小字号；遇左下/右下角标自动避让，文字不会压到数值。</div>
     <h4>关键字高亮</h4>
-    <div>描述中用双英文方括号 <code>[[关键字]]</code> 标记，显示为牌框对应的异色（括号本身不绘制）；单个 [ ] 为普通字符。括号须正确配对，否则预览报错。</div>
+    <div>描述中用双英文方括号 <code>[[关键字]]</code> 标记，显示为牌框对应的异色（括号本身不绘制）；从左往右匹配，未配对的括号与单个 [ ] 一样按普通文本显示。</div>
     <h4>内嵌小图标</h4>
     <div>描述中输入 <code>#xx</code>（两位拼音首字母代码）插入行内小图标，与相邻文字间自动留四分之一宽空格；图标大小随字号缩放（布局设置中可调相对大小）。可用代码：
       <table>
@@ -164,7 +164,7 @@
       </table>
     </div>
     <h4>卡图定位</h4>
-    <div>上传卡图后可调偏移 X/Y（正值=取景窗右/下移）、缩放、旋转（正角度=顺时针）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。</div>
+    <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。</div>
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
     <h4>扩展选项</h4>
@@ -919,24 +919,7 @@ function validateCardJS(d) {
     if (!Number.isInteger(d[f])) errors.push(`字段 ${f}：必须是整数`);
     else if (!SIGNED_STATS.includes(f) && d[f] < 0) errors.push(`字段 ${f}：必须是非负整数`);
   }
-  // [[关键字]] 双括号配对校验（口径对齐渲染层 parse_keyword_segments；单 [ ] 为字面字符）
-  if (typeof d.description === 'string') {
-    let open = false, inner = false, bad = null;
-    const s = d.description;
-    for (let i = 0; i < s.length; i++) {
-      const pair = s.slice(i, i + 2);
-      if (pair === '[[') {
-        if (open) { bad = "'[[' 内不能嵌套 '[['"; break; }
-        open = true; inner = false; i++;
-      } else if (pair === ']]') {
-        if (!open) { bad = "']]' 缺少配对的 '[['"; break; }
-        if (!inner) { bad = "'[[]]' 内容为空"; break; }
-        open = false; i++;
-      } else if (open) inner = true;
-    }
-    if (!bad && open) bad = "'[[' 未闭合";
-    if (bad) errors.push(`字段 description：方括号不匹配（${bad}）`);
-  }
+  // [[关键字]] 括号不校验：未匹配括号按字面文本显示（口径对齐渲染层 parse_keyword_segments）
   return errors;
 }
 

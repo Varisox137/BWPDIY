@@ -7,7 +7,9 @@
 内嵌图标（v1.3.0）：`#<两位拼音首字母>` 在行内绘制为小图标（如 #ll → 力量），
 记号本身不进入输出；图标高度=字号×icon_scale（desc 文本区布局字段，缺省 1.0，
 跨类型归一）、按 alpha bbox 等比缩放、竖直中心对齐行中心；图标宽度计入换行与
-逐行居中（随字号递减一同缩小）。
+逐行居中（随字号递减一同缩小）。图标与相邻文字之间自动加半宽空格（0.5em）；
+图标处于行首/行尾时该侧无空格（空格只存在于同一行内的文字-图标相邻处，
+图标与图标相邻不加）。
 '#' 后跟两个英文字母才视为图标代码：未知代码 ValueError；其余 '#' 为字面字符。
 派系图标在墨染框下用 _black 变体（icon_variant="black"）。
 """
@@ -156,18 +158,29 @@ def _icon_widths(items: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFon
             for k, v, _ in items if k == "icon"}
 
 
+_ICON_GAP_EM = 0.5  # 图标与同行相邻文字之间的半宽空格（em 计）
+
+
 def _line_width(line: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
                 icon_w: dict[str, int]) -> float:
-    """行宽：连续字符段 getlength（保字距），图标按缩放宽度计入。"""
-    w, run = 0.0, ""
+    """行宽：连续字符段 getlength（保字距），图标按缩放宽度计入；
+    同行内文字-图标相邻（任一顺序）自动加一个半宽空格——图标在行首/行尾
+    时该侧无空格（空格只存在于行内相邻处），图标-图标相邻不加。"""
+    w, run, prev = 0.0, "", None
+    gap = font.size * _ICON_GAP_EM
     for kind, v, _ in line:
         if kind == "icon":
             if run:
                 w += font.getlength(run)
                 run = ""
+            if prev == "char":
+                w += gap
             w += icon_w[v]
         else:
+            if prev == "icon":
+                w += gap
             run += v
+        prev = kind
     if run:
         w += font.getlength(run)
     return w
@@ -367,6 +380,8 @@ def _draw_styled_line(out: Image.Image, line: list[tuple[str, str, bool]],
     x = cx - _line_width(line, font, icon_w) / 2
     draw = ImageDraw.Draw(out)
     run, run_kw = "", line[0][2]
+    gap = font.size * _ICON_GAP_EM
+    prev = None
 
     def flush():
         nonlocal x, run
@@ -382,10 +397,15 @@ def _draw_styled_line(out: Image.Image, line: list[tuple[str, str, bool]],
             run_kw = kw
         if kind == "icon":
             flush()
+            if prev == "char":
+                x += gap
             w, h = _icon_size(v, font.size, lib, icon_variant, icon_scale)
             icon = _icon_image(v, lib, icon_variant).resize((w, h), Image.LANCZOS)
             out.paste(icon, (round(x), round(cy - h / 2)), icon)
             x += w
         else:
+            if prev == "icon":
+                x += gap
             run += v
+        prev = kind
     flush()

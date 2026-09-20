@@ -106,7 +106,7 @@
         ],
         "wrap": true,
         "font": "desc",
-        "icon_scale": 1.0
+        "icon_scale": 0.9
       }
     }
   },
@@ -240,7 +240,7 @@
         ],
         "wrap": true,
         "font": "desc",
-        "icon_scale": 1.0
+        "icon_scale": 0.9
       }
     }
   },
@@ -360,7 +360,7 @@
         ],
         "wrap": true,
         "font": "desc",
-        "icon_scale": 1.0
+        "icon_scale": 0.9
       }
     }
   },
@@ -472,7 +472,7 @@
         ],
         "wrap": true,
         "font": "desc",
-        "icon_scale": 1.0
+        "icon_scale": 0.9
       }
     }
   },
@@ -563,7 +563,7 @@
         ],
         "wrap": true,
         "font": "desc",
-        "icon_scale": 1.0
+        "icon_scale": 0.9
       }
     }
   },
@@ -634,7 +634,7 @@
         ],
         "wrap": true,
         "font": "desc",
-        "icon_scale": 1.0
+        "icon_scale": 0.9
       }
     }
   }

@@ -294,3 +294,35 @@ def test_icon_black_variant_for_faction(assets_dir):
     lib = AssetLibrary(assets_dir)
     assert _icon_image("hl", lib, "black").tobytes() != _icon_image("hl", lib, None).tobytes()
     assert _icon_image("ll", lib, "black").tobytes() == _icon_image("ll", lib, None).tobytes()
+
+
+def test_icon_counts_toward_line_width(assets_dir):
+    """图标宽度计入行宽（换行与逐行居中共用 _line_width）：
+    nowrap 区域恰好排得下纯文本时，末尾追加图标即排版失败。"""
+    from bwpdiy.render.text import _icon_widths, _layout_at_size, _line_width, parse_items
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    items = parse_items("甲乙#ll")
+    iw = _icon_widths(items, font36, lib, None)
+    # 行宽 = 字符宽度 + 图标缩放宽度（居中/换行均按此口径）
+    assert _line_width(items, font36, iw) == font36.getlength("甲乙") + iw["ll"]
+    text = "甲乙丙丁"
+    w = font36.getlength(text)
+    region = rect_region(0, 0, round(w) + 2, 100, wrap=False)  # 恰好排下纯文本
+    assert _layout_at_size(parse_items(text), font36, region, False, lib=lib) is not None
+    assert _layout_at_size(parse_items(text + "#ll"), font36, region, False, lib=lib) is None
+
+
+def test_icon_scale_field(assets_dir):
+    """desc 区 icon_scale（缺省 1.0）：图标高=字号×系数，排版宽度随系数缩小。"""
+    from bwpdiy.render.text import _icon_size, _layout_at_size, parse_items
+    lib = AssetLibrary(assets_dir)
+    w1, h1 = _icon_size("ll", 36, lib, None)
+    w2, h2 = _icon_size("ll", 36, lib, None, 0.5)
+    assert (h1, h2) == (36, 18) and w2 < w1
+    font36 = lib.font("desc", 36)
+    items = parse_items("甲乙丙丁#ll")
+    region = rect_region(0, 0, round(font36.getlength("甲乙丙丁") + w2) + 1, 100, wrap=False)
+    # 宽度介于「半系数」与「全系数」之间：0.5 排得下，缺省 1.0 超宽失败
+    assert _layout_at_size(items, font36, dict(region, icon_scale=0.5), False, lib=lib) is not None
+    assert _layout_at_size(items, font36, region, False, lib=lib) is None

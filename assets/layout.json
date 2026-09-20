@@ -105,7 +105,8 @@
           12
         ],
         "wrap": true,
-        "font": "desc"
+        "font": "desc",
+        "icon_scale": 1.0
       }
     }
   },
@@ -238,7 +239,8 @@
           12
         ],
         "wrap": true,
-        "font": "desc"
+        "font": "desc",
+        "icon_scale": 1.0
       }
     }
   },
@@ -357,7 +359,8 @@
           12
         ],
         "wrap": true,
-        "font": "desc"
+        "font": "desc",
+        "icon_scale": 1.0
       }
     }
   },
@@ -468,7 +471,8 @@
           12
         ],
         "wrap": true,
-        "font": "desc"
+        "font": "desc",
+        "icon_scale": 1.0
       }
     }
   },
@@ -558,7 +562,8 @@
           12
         ],
         "wrap": true,
-        "font": "desc"
+        "font": "desc",
+        "icon_scale": 1.0
       }
     }
   },
@@ -628,7 +633,8 @@
           12
         ],
         "wrap": true,
-        "font": "desc"
+        "font": "desc",
+        "icon_scale": 1.0
       }
     }
   }

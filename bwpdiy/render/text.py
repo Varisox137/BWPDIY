@@ -5,7 +5,9 @@
 （parse_keyword_segments）。
 
 内嵌图标（v1.3.0）：`#<两位拼音首字母>` 在行内绘制为小图标（如 #ll → 力量），
-记号本身不进入输出；图标高度=字号、按 alpha bbox 等比缩放、竖直中心对齐行中心。
+记号本身不进入输出；图标高度=字号×icon_scale（desc 文本区布局字段，缺省 1.0，
+跨类型归一）、按 alpha bbox 等比缩放、竖直中心对齐行中心；图标宽度计入换行与
+逐行居中（随字号递减一同缩小）。
 '#' 后跟两个英文字母才视为图标代码：未知代码 ValueError；其余 '#' 为字面字符。
 派系图标在墨染框下用 _black 变体（icon_variant="black"）。
 """
@@ -140,15 +142,17 @@ def _icon_image(code: str, lib: AssetLibrary, icon_variant: str | None) -> Image
 
 
 def _icon_size(code: str, height: int, lib: AssetLibrary,
-               icon_variant: str | None) -> tuple[int, int]:
-    """图标缩放目标尺寸：高=字号，宽按 alpha bbox 等比。"""
+               icon_variant: str | None, scale: float = 1.0) -> tuple[int, int]:
+    """图标缩放目标尺寸：高=字号×scale（icon_scale 布局字段，缺省 1.0），宽按 alpha bbox 等比。"""
+    h = max(1, round(height * scale))
     img = _icon_image(code, lib, icon_variant)
-    return max(1, round(height * img.width / img.height)), height
+    return max(1, round(h * img.width / img.height)), h
 
 
 def _icon_widths(items: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
-                 lib: AssetLibrary, icon_variant: str | None) -> dict[str, int]:
-    return {v: _icon_size(v, font.size, lib, icon_variant)[0]
+                 lib: AssetLibrary, icon_variant: str | None,
+                 scale: float = 1.0) -> dict[str, int]:
+    return {v: _icon_size(v, font.size, lib, icon_variant, scale)[0]
             for k, v, _ in items if k == "icon"}
 
 
@@ -198,7 +202,8 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
     y_top, y_bottom = cy - half_h, cy + half_h
     lh = _line_height(font)
     gap = region.get("obstacle_gap", 4)
-    icon_w = (_icon_widths(items, font, lib, icon_variant)
+    icon_scale = region.get("icon_scale", 1.0)  # 内嵌图标相对文字大小（高=字号×scale）
+    icon_w = (_icon_widths(items, font, lib, icon_variant, icon_scale)
               if lib is not None else {})
 
     def span_at(y: float):
@@ -337,17 +342,19 @@ def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
         fitted = (font, lines)
     font, lines = fitted
     out = canvas.copy()
+    icon_scale = region.get("icon_scale", 1.0)
     for line, cx, cy in lines:
-        _draw_styled_line(out, line, cx, cy, font, fill, keyword_fill, lib, icon_variant)
+        _draw_styled_line(out, line, cx, cy, font, fill, keyword_fill, lib,
+                          icon_variant, icon_scale)
     return out
 
 
 def _draw_styled_line(out: Image.Image, line: list[tuple[str, str, bool]],
                       cx: float, cy: float, font: ImageFont.FreeTypeFont,
                       fill, keyword_fill, lib: AssetLibrary,
-                      icon_variant: str | None) -> None:
+                      icon_variant: str | None, icon_scale: float = 1.0) -> None:
     """无关键字段且无图标时整行 anchor=mm 一次绘制；否则按段异色、anchor=lm 横向
-    推进，图标项就地缩放粘贴（高=字号，竖直中心对齐行中心）。"""
+    推进，图标项就地缩放粘贴（高=字号×icon_scale，竖直中心对齐行中心）。"""
     if not line:
         return
     has_kw = keyword_fill is not None and any(kw for _, _, kw in line)
@@ -356,7 +363,7 @@ def _draw_styled_line(out: Image.Image, line: list[tuple[str, str, bool]],
         ImageDraw.Draw(out).text((cx, cy), _plain(line), font=font, anchor="mm",
                                  fill=fill)
         return
-    icon_w = _icon_widths(line, font, lib, icon_variant)
+    icon_w = _icon_widths(line, font, lib, icon_variant, icon_scale)
     x = cx - _line_width(line, font, icon_w) / 2
     draw = ImageDraw.Draw(out)
     run, run_kw = "", line[0][2]
@@ -375,7 +382,7 @@ def _draw_styled_line(out: Image.Image, line: list[tuple[str, str, bool]],
             run_kw = kw
         if kind == "icon":
             flush()
-            w, h = _icon_size(v, font.size, lib, icon_variant)
+            w, h = _icon_size(v, font.size, lib, icon_variant, icon_scale)
             icon = _icon_image(v, lib, icon_variant).resize((w, h), Image.LANCZOS)
             out.paste(icon, (round(x), round(cy - h / 2)), icon)
             x += w

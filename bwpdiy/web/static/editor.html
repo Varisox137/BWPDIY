@@ -1390,6 +1390,10 @@ function buildProps() {
     numRow(div, '字号下限', r.font_range[1], v => { r.font_range[1] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
     checkRow(div, '自动换行', r.wrap, v => r.wrap = v);
     selRow(div, '字体', FONTS, r.font, v => r.font = v, disp);
+    // 内嵌图标相对文字大小（高=字号×系数）：尺寸类字段，跨类型同步
+    r.icon_scale ??= 1.0;
+    floatRow(div, '小图标相对文字大小', r.icon_scale,
+             v => { r.icon_scale = v; syncRegionField(sel.name, 'icon_scale', v); });
   }
 }
 function title(t) { const h = document.createElement('h4'); h.textContent = t; return h; }
@@ -1407,6 +1411,15 @@ function checkRow(div, label, val, set) {
   const i = document.createElement('input');
   i.type = 'checkbox'; i.checked = val;
   i.onchange = () => { markDirty(); set(i.checked); schedulePreview(); };
+  l.appendChild(i); div.appendChild(l);
+}
+function floatRow(div, label, val, set) {
+  // 浮点输入（如 icon_scale 比例系数）；非法/非正回退原值
+  const l = document.createElement('label');
+  l.textContent = label + ' ';
+  const i = document.createElement('input');
+  i.type = 'number'; i.value = val; i.step = 0.05;
+  i.onchange = () => { const v = parseFloat(i.value); if (isNaN(v) || v <= 0) { i.value = val; return; } markDirty(); set(v); schedulePreview(); };
   l.appendChild(i); div.appendChild(l);
 }
 function selRow(div, label, opts, val, set, map = null) {

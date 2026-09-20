@@ -1509,36 +1509,45 @@ fetch('/api/version').then(r => r.json()).then(v => {
 applyExtOptions();  // 扩展选项恢复（含布局 navtab 显隐）
 loadProjects();
 // 自动更新检查：有新版出横幅；exe 一键更新（下载后程序退出替换重启），开发模式仅给下载链接
-fetch('/api/update/check').then(r => r.json()).then(u => {
-  if (!u.has_update) return;
-  document.getElementById('update-text').textContent = `发现新版本 ${u.latest}（当前 v${u.current}）`;
-  const btn = document.getElementById('update-btn');
-  if (u.frozen) {
-    btn.onclick = async () => {
-      if (!confirm(`下载并更新到 ${u.latest}？程序将自动重启。`)) return;
-      btn.disabled = true;
-      document.getElementById('update-text').textContent = '正在下载更新，请稍候…';
-      let r;
-      try {
-        r = await fetch('/api/update/apply', {method: 'POST'});
-      } catch (e) {
-        // 更新成功时进程退出会掐断连接，也可能落到此处：按成功提示处理
-        document.getElementById('update-text').textContent = '程序正在退出并更新重启（若未自动启动请手动打开）';
-        return;
-      }
-      if (r.ok) {
-        document.getElementById('update-text').textContent = '下载完成，程序即将退出并自动更新重启';
-      } else {
-        document.getElementById('update-text').textContent = '更新失败：' + (await parseErrorDetail(r)).join('；');
-        btn.disabled = false;
-      }
-    };
-  } else {
-    btn.style.display = 'none';
-    document.getElementById('update-link').style.display = '';
-  }
-  document.getElementById('update-banner').style.display = 'block';
-}).catch(() => {});  // 离线/检查失败静默：不出横幅
+// 页面加载即查一次，此后每 1min 复查（下载/更新进行中暂停复查，避免覆盖进度提示）
+let updateApplying = false;
+function checkUpdate() {
+  if (updateApplying) return;
+  fetch('/api/update/check').then(r => r.json()).then(u => {
+    if (!u.has_update) return;
+    document.getElementById('update-text').textContent = `发现新版本 ${u.latest}（当前 v${u.current}）`;
+    const btn = document.getElementById('update-btn');
+    if (u.frozen) {
+      btn.onclick = async () => {
+        if (!confirm(`下载并更新到 ${u.latest}？程序将自动重启。`)) return;
+        updateApplying = true;
+        btn.disabled = true;
+        document.getElementById('update-text').textContent = '正在下载更新，请稍候…';
+        let r;
+        try {
+          r = await fetch('/api/update/apply', {method: 'POST'});
+        } catch (e) {
+          // 更新成功时进程退出会掐断连接，也可能落到此处：按成功提示处理
+          document.getElementById('update-text').textContent = '程序正在退出并更新重启（若未自动启动请手动打开）';
+          return;
+        }
+        if (r.ok) {
+          document.getElementById('update-text').textContent = '下载完成，程序即将退出并自动更新重启';
+        } else {
+          document.getElementById('update-text').textContent = '更新失败：' + (await parseErrorDetail(r)).join('；');
+          btn.disabled = false;
+          updateApplying = false;
+        }
+      };
+    } else {
+      btn.style.display = 'none';
+      document.getElementById('update-link').style.display = '';
+    }
+    document.getElementById('update-banner').style.display = 'block';
+  }).catch(() => {});  // 离线/检查失败静默：不出横幅
+}
+checkUpdate();
+setInterval(checkUpdate, 60000);
 if (location.hash === '#layout' && extOptions.layout) showTab('layout');  // /layout 重定向落点（布局 tab 隐藏时不跳转）
 
 // 未保存修改（布局 dirty / 卡牌 cDirty）时关闭或刷新标签页弹浏览器确认框

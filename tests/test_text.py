@@ -296,6 +296,20 @@ def test_icon_black_variant_for_faction(assets_dir):
     assert _icon_image("ll", lib, "black").tobytes() == _icon_image("ll", lib, None).tobytes()
 
 
+def test_icon_image_tight_square(assets_dir):
+    """内嵌前预处理：alpha bbox 紧致裁剪后透明扩展为最紧方形 box——
+    输出恒为正方形，且内容至少顶满一对对边（最紧）。"""
+    from bwpdiy.render.text import _icon_image
+    lib = AssetLibrary(assets_dir)
+    for code in ("ll", "hl", "zl"):
+        img = _icon_image(code, lib, None)
+        assert img.width == img.height
+        bbox = img.getchannel("A").getbbox()
+        x_touch = bbox[0] == 0 and bbox[2] == img.width
+        y_touch = bbox[1] == 0 and bbox[3] == img.height
+        assert x_touch or y_touch
+
+
 def test_icon_counts_toward_line_width(assets_dir):
     """图标宽度计入行宽（换行与逐行居中共用 _line_width）：
     nowrap 区域恰好排得下纯文本时，末尾追加图标即排版失败。"""

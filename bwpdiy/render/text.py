@@ -7,7 +7,8 @@
 
 内嵌图标（v1.3.0）：`#<两位拼音首字母>` 在行内绘制为小图标（如 #ll → 力量），
 记号本身不进入输出；图标高度=字号×icon_scale（desc 文本区布局字段，缺省 1.0，
-跨类型归一）、按 alpha bbox 等比缩放、竖直中心对齐行中心；图标宽度计入换行与
+跨类型归一），内嵌前预处理为 alpha bbox 外接的最紧方形 box（内容居中、占位
+恒为正方形）、竖直中心对齐行中心；图标宽度计入换行与
 逐行居中（随字号递减一同缩小）。图标与相邻文字之间自动加四分之一宽空格（0.25em）；
 图标处于行首/行尾时该侧无空格（空格只存在于同一行内的文字-图标相邻处，
 图标与图标相邻不加）。
@@ -130,21 +131,30 @@ def _plain(items: list[tuple[str, str, bool]]) -> str:
 
 
 def _icon_image(code: str, lib: AssetLibrary, icon_variant: str | None) -> Image.Image:
-    """图标原图按 alpha bbox 紧致裁剪；派系图标在墨染框下用 _black 变体。"""
+    """图标原图按 alpha≥128 碰撞轮廓紧致裁剪（抗锯齿淡边缘不算墨迹，仿牌框阈值
+    预处理）后，alpha_composite 透明扩展为容纳内容的最紧方形 box（保真源 alpha、
+    内容居中，内嵌前预处理：图标占位恒为正方形）；派系图标在墨染框下用 _black 变体。"""
     stem = ICON_CODES[code]
     if icon_variant == "black" and (lib.root / "icons" / f"{stem}_black.png").is_file():
         stem += "_black"
     img = lib.icon(stem)
-    bbox = img.getchannel("A").getbbox()
-    return img.crop(bbox) if bbox else img
+    bbox = img.getchannel("A").point(lambda v: 255 if v >= 128 else 0).getbbox()
+    if bbox:
+        img = img.crop(bbox)
+    side = max(img.width, img.height)
+    if img.width != img.height:
+        square = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        square.alpha_composite(img, ((side - img.width) // 2, (side - img.height) // 2))
+        img = square
+    return img
 
 
 def _icon_size(code: str, height: int, lib: AssetLibrary,
                icon_variant: str | None, scale: float = 1.0) -> tuple[int, int]:
-    """图标缩放目标尺寸：高=字号×scale（icon_scale 布局字段，缺省 1.0），宽按 alpha bbox 等比。"""
+    """图标缩放目标尺寸：高=字号×scale（icon_scale 布局字段，缺省 1.0）；
+    源图已预处理为方形，宽=高。"""
     h = max(1, round(height * scale))
-    img = _icon_image(code, lib, icon_variant)
-    return max(1, round(h * img.width / img.height)), h
+    return h, h
 
 
 def _icon_widths(items: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,

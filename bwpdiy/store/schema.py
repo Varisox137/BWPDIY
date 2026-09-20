@@ -16,7 +16,7 @@ RARITIES = ("N", "R", "SR", "SSR")
 LEVELS = (1, 2, 3)
 FRAME_VARIANTS = ("norm", "blue", "black", "red")
 
-_COMMON_FIELDS = ("type", "name", "description")
+_COMMON_FIELDS = ("type", "name", "id", "description")
 _SHIKIGAMI_ONLY = ("faction",)
 _NON_SHIKIGAMI_FIELDS = ("level", "rarity", "special_type")
 # 所属式神按名关联：常规非式神卡单引用 shikigami；协战双引用 shikigami1/shikigami2
@@ -81,6 +81,9 @@ def validate_card(data) -> list[str]:
 
     if not isinstance(data.get("name"), str) or not data["name"].strip():
         errors.append("字段 name：必填且必须是非空字符串")
+    # id 可留空（缺省）：BWPro 按 id 取文件/卡图按 id 命名用；仅校验类型
+    if "id" in data and not isinstance(data["id"], str):
+        errors.append("字段 id：必须是字符串")
 
     for key in data:
         if key != "artwork" and key not in _allowed_fields(ctype):

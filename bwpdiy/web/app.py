@@ -1,7 +1,6 @@
 """FastAPI 编辑器服务（布局配置工具 + 项目/卡牌 REST API）。"""
 
 import copy
-import hashlib
 import json
 import os
 import shutil
@@ -231,10 +230,11 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     @app.post("/api/projects/{project}/cards/{card}/artwork")
     async def post_artwork(project: str, card: str, request: Request):
-        """上传卡图：裸字节 body + filename 查询参数（只取扩展名，落盘名 = 内容 hash + ext）。
+        """上传卡图：裸字节 body + filename 查询参数（只取扩展名）。
 
-        落盘名 = sha256(图片字节) 前 16 位 + 扩展名：同图多卡共享、重复上传自动去重，
-        不做旧图清理（hash 命名下多卡可共享同图，孤儿文件用户自理）。
+        落盘名 = <id 或卡名><ext>（id 字段可留空，留空回退卡名）：对齐 BWPro 按 id 取
+        卡图的约定；同 id/卡名复用同名文件（覆盖写），不同版本不同 id 各自成文。
+        修改 id 不重命名已有卡图（其他卡可能正引用该文件）；不做旧图清理（孤儿文件用户自理）。
         图片真实性/像素上限在写盘前校验；写盘后走 save_card 更新 artwork.images[0].path
         （保留已有 offset/scale），schema 不过则删图回滚（仅当本次真正写了新文件）。
         """
@@ -254,26 +254,32 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         except Exception as e:
             raise HTTPException(422, f"不是有效的图片文件: {e}") from e
         card_data = load_card(library_dir, project, card)  # 卡牌不存在 → 404；卡名合法性在此校验
+        stem = card_data.get("id") or card_data.get("name", "")
+        stem = "".join(c for c in str(stem) if c not in '<>:"/\\|?*').strip().rstrip(". ")
+        if not stem:
+            raise HTTPException(422, "卡名/id 无法用作文件名：请先填写卡名（或 id）")
         raw_artwork = card_data.get("artwork")
         artwork = dict(raw_artwork) if isinstance(raw_artwork, dict) else {}
         raw_images = artwork.get("images")
         old_images = raw_images if isinstance(raw_images, list) else []
         first = dict(old_images[0]) if old_images and isinstance(old_images[0], dict) else {}
-        filename = f"{hashlib.sha256(data).hexdigest()[:16]}{ext}"
+        filename = f"{stem}{ext}"
         first["path"] = filename
         artwork["images"] = [first, *old_images[1:]]
         card_data["artwork"] = artwork
         images_dir = library_dir / project / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
         target = images_dir / filename
-        written = not target.is_file()
-        if written:
-            target.write_bytes(data)  # 同 hash 文件已存在：复用跳过写盘
+        old_bytes = target.read_bytes() if target.is_file() else None
+        if old_bytes != data:
+            target.write_bytes(data)  # 同名同内容：复用跳过写盘
         try:
             save_card(library_dir, project, card, card_data)
         except Exception:
-            if written:
+            if old_bytes is None:
                 target.unlink(missing_ok=True)  # schema 不过：删图回滚，不留孤儿文件
+            elif old_bytes != data:
+                target.write_bytes(old_bytes)  # 同名覆盖：还原原文件内容
             raise
         return {"ok": True, "path": filename}
 
@@ -295,7 +301,7 @@ def _with_artwork_fallback(card: dict, images_dir: Path) -> dict:
     ref = dict(first) if isinstance(first, dict) else {}
     raw_path = ref.get("path")
     if not isinstance(raw_path, str) or not raw_path:
-        raw_path = f"{card.get('name', '')}.png"
+        raw_path = f"{card.get('id') or card.get('name', '')}.png"  # 缺省 <id>.png，id 留空回退卡名
     art_path = Path(raw_path)
     if not art_path.is_absolute():
         art_path = images_dir / art_path

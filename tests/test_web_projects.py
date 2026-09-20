@@ -1,11 +1,10 @@
-"""web 层项目/卡牌 REST API 测试：CRUD 全路径、错误映射、项目卡预览、hash 命名卡图上传。
+"""web 层项目/卡牌 REST API 测试：CRUD 全路径、错误映射、项目卡预览、卡图上传（id/卡名命名）。
 
 fixture 用 tmp_path 的 library_dir + assets 拷贝，不碰真实 library/ 与 assets/layout.json。
 存储模型：library/<项目>/{shikigami,cards}/<任意文件名>.yaml + images/；
 文件名（stem）与卡名（name 字段）脱钩，list_cards 返回 {shikigami, cards} 两组 [{stem, name}]。
 """
 
-import hashlib
 import shutil
 from io import BytesIO
 from pathlib import Path
@@ -382,57 +381,58 @@ def test_encoded_slash_in_path_rejected(client, project):
     assert r.status_code == 404
 
 
-# ---------- 卡图上传（hash 命名：落盘名 = sha256(字节)[:16] + ext） ----------
-
-def _art_name(data: bytes, ext: str) -> str:
-    return hashlib.sha256(data).hexdigest()[:16] + ext
-
+# ---------- 卡图上传（落盘名 = <id 或卡名><ext>） ----------
 
 def test_artwork_upload_roundtrip(client, project, library_dir):
-    """上传合法 png：落盘 images/<hash>.png、yaml 写回 artwork.images[0].path、预览可用。"""
+    """上传合法 png（卡无 id）：落盘 images/<卡名>.png、yaml 写回 artwork.images[0].path、预览可用。"""
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
     data = SAMPLE_ART.read_bytes()
-    name = _art_name(data, ".png")
     r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=立绘.PNG",
                     content=data)
-    assert r.status_code == 200 and r.json()["path"] == name
-    assert _img_files(library_dir, project) == [name]
+    assert r.status_code == 200 and r.json()["path"] == "测试斩.png"  # 扩展名小写化
+    assert _img_files(library_dir, project) == ["测试斩.png"]
     card = client.get(f"/api/projects/{project}/cards/测试斩").json()
-    assert card["artwork"]["images"][0]["path"] == name
+    assert card["artwork"]["images"][0]["path"] == "测试斩.png"
     r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
     assert r.status_code == 200 and _png_size(r) == (512, 512)
 
 
-def test_artwork_upload_same_image_dedup(client, project, library_dir):
-    """同图两次上传（含不同原始文件名）：hash 同名复用，images/ 只留一份。"""
-    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+def test_artwork_upload_named_by_id(client, project, library_dir):
+    """卡有 id 字段：落盘 <id>.<ext>（对齐 BWPro 按 id 取卡图）；同图重传同名复用。"""
+    client.put(f"/api/projects/{project}/cards/测试斩",
+               json={**_battle_card(), "id": "100301"})
     data = SAMPLE_ART.read_bytes()
-    name = _art_name(data, ".png")
     r1 = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=a.png", content=data)
     r2 = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=b.png", content=data)
-    assert r1.json()["path"] == name == r2.json()["path"]
-    assert _img_files(library_dir, project) == [name]
+    assert r1.json()["path"] == "100301.png" == r2.json()["path"]
+    assert _img_files(library_dir, project) == ["100301.png"]
+
+
+def test_artwork_upload_same_name_versions(client, project, library_dir):
+    """同卡名不同版本：id 不同 → 各自卡图文件并存（同卡名同卡图不同版本场景）。"""
+    client.put(f"/api/projects/{project}/cards/v1", json={**_battle_card(), "id": "100301"})
+    client.put(f"/api/projects/{project}/cards/v2", json={**_battle_card(), "id": "10030101"})
+    data = SAMPLE_ART.read_bytes()
+    client.post(f"/api/projects/{project}/cards/v1/artwork?filename=a.png", content=data)
+    client.post(f"/api/projects/{project}/cards/v2/artwork?filename=a.png", content=data)
+    assert _img_files(library_dir, project) == ["100301.png", "10030101.png"]
 
 
 def test_artwork_upload_preserves_offset_scale_and_keeps_old(client, project, library_dir):
-    """换图重传：保留已有 offset/scale；hash 命名下不清理旧图（多卡可共享，孤儿用户自理）。"""
+    """换图重传：保留已有 offset/scale；不清理旧图（孤儿文件用户自理）。"""
     card = _battle_card()
     card["artwork"] = {"images": [{"path": "旧图.png", "offset_x": 5, "scale": 1.2}]}
     client.put(f"/api/projects/{project}/cards/测试斩", json=card)
-    data = SAMPLE_ART.read_bytes()
-    client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=a.png", content=data)
-    png_name = _art_name(data, ".png")
+    client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=a.png",
+                content=SAMPLE_ART.read_bytes())
     jpg = BytesIO()
     Image.new("RGB", (8, 8)).save(jpg, "JPEG")
-    jpg_data = jpg.getvalue()
     r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=b.jpg",
-                    content=jpg_data)
-    jpg_name = _art_name(jpg_data, ".jpg")
-    assert r.status_code == 200 and r.json()["path"] == jpg_name
-    assert png_name != jpg_name  # 不同图不同名
-    assert _img_files(library_dir, project) == [jpg_name, png_name]  # 旧图保留
+                    content=jpg.getvalue())
+    assert r.status_code == 200 and r.json()["path"] == "测试斩.jpg"
+    assert _img_files(library_dir, project) == ["测试斩.jpg", "测试斩.png"]  # 旧图保留
     got = client.get(f"/api/projects/{project}/cards/测试斩").json()["artwork"]["images"][0]
-    assert got["path"] == jpg_name and got["offset_x"] == 5 and got["scale"] == 1.2
+    assert got["path"] == "测试斩.jpg" and got["offset_x"] == 5 and got["scale"] == 1.2
 
 
 def test_artwork_upload_bad_ext_422(client, project, library_dir):

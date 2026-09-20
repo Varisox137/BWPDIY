@@ -602,8 +602,10 @@ function buildForm() {
   div.innerHTML = '';
   if (!formData) { div.textContent = '未选中卡牌'; return; }
   const t = formData.type;
-  // 类型创建时定死；卡名直接编辑（name 字段，文件名 stem 不在 GUI 改）
+  // 类型创建时定死；id 可留空（上传卡图按 id 命名、留空回退卡名；改 id 不动已有卡图）；
+  // 卡名直接编辑（name 字段，文件名 stem 不在 GUI 改）
   infoRow(div, '类型', t);
+  textRow(div, 'id', formData.id ?? '', v => setOptText('id', v));
   textRow(div, '卡名', formData.name ?? '', v => setField('name', v));
   if (t === '式神') {
     selRowC(div, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
@@ -830,7 +832,8 @@ function validateCardJS(d) {
   const t = d.type;
   if (!TYPES.includes(t)) return [`字段 type：非法卡牌类型「${t}」，须为 ${TYPES.join('/')} 之一`];
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
-  const allowed = new Set(['type', 'name', 'description', 'artwork']);
+  if ('id' in d && typeof d.id !== 'string') errors.push('字段 id：必须是字符串');
+  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork']);
   if (t === '式神') ['faction', 'frame_variant', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {
     // 协战白名单：shikigami 移除，改为可选 shikigami1/shikigami2（与 store schema 同口径）

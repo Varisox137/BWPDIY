@@ -382,6 +382,7 @@ def test_rename_cascade_only_for_shikigami(lib):
         {},
     ]}},
     {"type": "法术", "name": "最简", "rarity": "N"},
+    {"type": "法术", "name": "带 id", "id": "100301", "rarity": "N"},
 ])
 def test_validate_ok(card):
     assert validate_card(card) == []
@@ -393,6 +394,7 @@ def test_validate_ok(card):
     ({"name": "x"}, "type"),
     ({**FIGHT, "type": "装备"}, "type"),
     ({**FIGHT, "name": ""}, "name"),
+    ({**FIGHT, "id": 100301}, "id"),
     ({**SHIKIGAMI, "faction": "黄金"}, "faction"),
     ({**FIGHT, "rarity": "UR"}, "rarity"),
     ({**FIGHT, "level": 4}, "level"),

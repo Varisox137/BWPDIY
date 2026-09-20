@@ -678,9 +678,7 @@ function buildForm() {
     const first = (images[0] && typeof images[0] === 'object') ? images[0] : {};
     first.path = res.path;
     formData.artwork.images = [first, ...images.slice(1)];
-    const curArtEl = document.getElementById('c-cur-art');
-    if (curArtEl) curArtEl.textContent = `当前卡图：${res.path}`;
-    showFormErrors(validateCardJS(formData));
+    buildForm();  // 重建表单：立即出现卡图定位输入框（原先仅表单构建时按旧 path 条件渲染）
     if (cDirty) scheduleCardPreview(); else cPreviewProject();
   };
   artLabel.appendChild(fileInput); artLabel.appendChild(upBtn); div.appendChild(artLabel);

@@ -13,7 +13,7 @@
 
 - 卡牌库结构（v1.2.2）：`library/<项目>/shikigami/*.yaml`（式神卡，一式神一文件、上限 49）+ `cards/*.yaml`（≤299）+ `images/`（上传卡图按 `<id 或卡名><ext>` 命名，改 id 不重命名已有卡图）；文件名与卡名脱钩（卡名=文件内 name），式神改名由 store 层联动更新同项目引用。
 - 卡牌 yaml 分引擎段（与 BWPro 口径对齐，按类型分字段；协战所属式神为 `shikigami1`/`shikigami2`）与渲染段（`artwork.images` 列表，全可缺省）。schema 字段只增不改。
-- 描述文本（description）支持 `[[关键字]]` 高亮标记（双英文方括号、括号不绘制、按框品异色；单 [ ] 为字面字符；配对校验见 `render/text.py` parse_keyword_segments）与 `#xx` 内嵌图标（v1.3.0，两位拼音首字母代码见 `render/text.py` ICON_CODES，未知代码报错；派系图标墨染框用 `_black` 变体；大小=字号×desc 区 `icon_scale`，与相邻文字间自动加半宽空格（0.5em），宽度计入换行与居中）。
+- 描述文本（description）支持 `[[关键字]]` 高亮标记（双英文方括号、括号不绘制、按框品异色；单 [ ] 为字面字符；配对校验见 `render/text.py` parse_keyword_segments）与 `#xx` 内嵌图标（v1.3.0，两位拼音首字母代码见 `render/text.py` ICON_CODES，未知代码报错；派系图标墨染框用 `_black` 变体；大小=字号×desc 区 `icon_scale`，与相邻文字间自动加四分之一宽空格（0.25em），宽度计入换行与居中）。
 - 机制未实现不进数据；字段/枚举变更须同步设计文档与术语表。
 
 ## 工程纪律

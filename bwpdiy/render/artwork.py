@@ -20,7 +20,9 @@ def fit_artwork(img: Image.Image, target_size: tuple[int, int],
                 cover_base: tuple[int, int] | None = None) -> Image.Image:
     """等比缩放至覆盖 target_size 后乘 scale，按 中心+offset 裁剪为 target_size。
 
-    offset 单位为输出像素（右/下为正），越界钳制到可裁剪范围。
+    offset 单位为输出像素，正 offset = 取景窗向右/下移（显示图更靠右/下的内容，
+    画面内容视觉上向左/上移）。offset 不钳制：与画布同宽高的图（cover 无平移
+    余量）也能自由挪动，平出画面的区域留透明（配合 scale 放大避免露底）。
     cover_base：cover 系数的基准尺寸（缺省=img.size）。旋转扩画布的场景传旋转前
     原图尺寸，保证内容视觉尺度不随旋转角漂移（缩放/裁剪仍作用于 img 本身）。
     """
@@ -29,9 +31,8 @@ def fit_artwork(img: Image.Image, target_size: tuple[int, int],
     w, h = img.size
     cover = max(tw / bw, th / bh) * scale
     nw, nh = max(round(w * cover), 1), max(round(h * cover), 1)
-    resized = img.resize((nw, nh), Image.Resampling.LANCZOS)
-    left = (nw - tw) / 2 + offset_x
-    top = (nh - th) / 2 + offset_y
-    left = min(max(round(left), 0), max(nw - tw, 0))
-    top = min(max(round(top), 0), max(nh - th, 0))
-    return resized.crop((left, top, left + tw, top + th)).convert("RGBA")
+    resized = img.convert("RGBA").resize((nw, nh), Image.Resampling.LANCZOS)
+    # RGBA 下 crop 越界区域填透明（RGB 会填不透明黑），故先转 RGBA
+    left = round((nw - tw) / 2 + offset_x)
+    top = round((nh - th) / 2 + offset_y)
+    return resized.crop((left, top, left + tw, top + th))

@@ -158,7 +158,7 @@ pytest 三层：schema 校验单测、渲染 smoke（各类型各出一张图不
 
 - **M1**：项目骨架 + assets 迁移 + render 管线（含纯文本排版）+ 命令行渲染一张示例卡
 - **M2**：store 层（项目/卡牌 CRUD + schema 校验）——已落地（StoreError 语义 code、名称安全/路径注入防护、原子写）
-- **M3**：WebGUI 编辑器完整流程（列表/表单/预览/导出）——骨架已落地（双 tab 编辑器：CRUD/表单/实时预览/布局调参/卡图上传与 offset 调参）；PNG 导出未做
+- **M3**：WebGUI 编辑器完整流程（列表/表单/预览/导出）——骨架已落地（双 tab 编辑器：CRUD/表单/实时预览/布局调参/卡图上传与 offset 调参）；PNG 导出 v1.4.0 落地（前端「导出」按钮）
 - **M4**：HTTP API + `docs/integration.md` + 与 BWPro 对联调示例
 - **二期**：`#图标` 描述内嵌小图标（`[[关键词]]` 异色高亮 v1.2 已落地）、等级数字 4 色接入对局位置
 
@@ -173,3 +173,4 @@ pytest 三层：schema 校验单测、渲染 smoke（各类型各出一张图不
 3. ~~**式神卡资源核实**~~（已核实）：式神卡外观形状同形态牌，渲染按 `TYPE_FRAME_CODE` 复用 `form` 资源（见 `bwpdiy/render/pipeline.py`），差异化元素为派系标/力量/生命。v1.0 起牌框/蒙版体系已由 PSD 官方素材替换（masks 废弃），legacy 旧资源含 unprocessed 原图封存 `assets/legacy/`。
 4. ~~框品资源映射~~（v1.0 已开放）：常规=norm / 琉璃=blue / 墨染=black / 百炼=red。
 5. **觉醒星美术资源可能需重制**（用户提醒）：`assets/levels/star.png`（126×127，legacy 程序化生成）在正式使用前需用户确认/替换。
+6. **能量/赏金左上角大角标素材缺失**（用户提及时标记以后补充）：能量(energy)/赏金(bounty)的左上角大角标尚未实现亦无素材；描述内嵌 `#sj` 赏金小图标同样缺素材（terminology 已录）。

@@ -8,7 +8,7 @@
 - 空闲自动终止（防占用）：web 层活动统计中间件 + 看门狗线程，连续 2h 无 HTTP 操作则进程退出（`/api/update/check` 自动轮询不计入活动；`create_app(idle_timeout=, on_idle=)` 可注入，≤0 关闭）；GUI 包装 fetch，连接级失败弹「连接已断开」说明窗。
 - `legacy/` 只读封存参考（旧版半成品源码与资源，无版本控制），任何情况下不修改、不删除。
 - `library/` 是用户创作数据，gitignore，不提交。
-- `assets/` 美术资源来自 legacy `basics/` 与 PSD 导出（`scripts/import_psd_assets.py` 生成）：命名约定牌框 `frames/{form,combat,spell,field,reinforce}_{框品}.png`（协战仅 norm）、等级 `levels/{base,evolve_star,level_{1,2,3}_yellow}.png`、稀有度 `rarity/{R,SR,SSR}{,_blue,_red}.png`+`reinforce_*`+`N.png`、数值标 `stats/{power,health,combat_shield,combat_fragile_{1,2},field_intensity}.png`（力量/生命全类型共用，无类型前缀）、正负号 `signs/{plus,minus}.png`；masks 已废弃；旧位图资产封存 `assets/legacy/`。改动须同步 `docs/terminology.md`。
+- `assets/` 美术资源来自 legacy `basics/` 与 PSD 导出（`scripts/import_psd_assets.py` 生成）：命名约定牌框 `frames/{form,combat,spell,field,reinforce}_{框品}.png`（协战仅 norm）、等级 `levels/{base,evolve_star,level_{1,2,3}_{yellow,cyan,purple,red,blue,brown}}.png`（v1.4.0 六色）、稀有度 `rarity/{R,SR,SSR}{,_blue,_red}.png`+`reinforce_*`+`N.png`、数值标 `stats/{power,health,combat_shield,combat_fragile_{1,2},field_intensity}.png`（力量/生命全类型共用，无类型前缀）、正负号 `signs/{plus,minus}.png`；masks 已废弃；旧位图资产封存 `assets/legacy/`。改动须同步 `docs/terminology.md`。
 
 ## 数据纪律
 
@@ -23,4 +23,4 @@
 - 依赖用 uv（`uv add` / `uv sync`），不用 pip 直装。
 - 中文 conventional commit；每次 commit 后 `git push`（失败不阻塞，汇报即可）；rebase/reset/分支操作先问。
 - 大改动先 plan mode；批量新功能委托子代理，收尾全量测试由主上下文亲跑。
-- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`，同时生成 `<exe>.sha256` 校验文件）+ `gh release create`（exe 与 .sha256 两个资产都要上传，客户端下载后强制校验）；**同二级版本（前两位不变）的三级小更新发布时，删去该二级版本下的过往 GitHub release 与本地旧 exe，只保留最新版**。
+- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`，同时生成 `<exe>.sha256` 校验文件）+ `gh release create`（exe 与 .sha256 两个资产都要上传，客户端下载后强制校验）；**同二级版本（前两位不变）的三级小更新发布时，删去该二级版本下的过往 GitHub release 与本地旧 exe，只保留最新版**；**每次发布后清理 `releases/` 中残余的旧版本 .sha256 文件**（旧 exe 同理不留）。

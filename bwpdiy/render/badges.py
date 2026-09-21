@@ -59,7 +59,7 @@ def _paste_element(canvas: Image.Image, img: Image.Image,
 # 数值变色（游戏内采样 examples/colored_num_ref.png）：白=常态，红=debuff/受伤，
 # 绿=buff，紫=中毒；红/紫带竖直渐变（上深下亮），绿近似均匀青绿
 STAT_COLORS = {
-    "red": ((150, 40, 70), (244, 98, 122)),
+    "red": ((138, 32, 62), (222, 75, 105)),
     "green": ((8, 213, 173), (35, 197, 170)),
     "purple": ((105, 12, 120), (223, 97, 235)),
 }

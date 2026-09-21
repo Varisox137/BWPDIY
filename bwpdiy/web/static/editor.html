@@ -1478,18 +1478,20 @@ function buildProps() {
       n.className = 'note';
       n.textContent = '图标按类型与数值字段自动选择（负护甲换破甲）';
       div.appendChild(n);
-      e.sign_offset ??= [0, 0];
-      numRow(div, '符号偏移 x', e.sign_offset[0], v => { e.sign_offset[0] = v; syncElemField(sel.name, 'sign_offset', [...e.sign_offset]); draw(); });
-      numRow(div, '符号偏移 y', e.sign_offset[1], v => { e.sign_offset[1] = v; syncElemField(sel.name, 'sign_offset', [...e.sign_offset]); draw(); });
-      numRow(div, '加号尺寸', e.sign_size_plus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => { e.sign_size_plus = v; syncElemField(sel.name, 'sign_size_plus', v); });
-      numRow(div, '减号尺寸', e.sign_size_minus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => { e.sign_size_minus = v; syncElemField(sel.name, 'sign_size_minus', v); });
-      numRow(div, '描边宽度', e.stroke_width ?? 2, v => { e.stroke_width = v; syncElemField(sel.name, 'stroke_width', v); });
       if (SIGNED_STATS.includes(e.field)) {
+        // 符号类控件仅四类带符号数值（战斗 力量/护甲、法术觉醒 力量/生命）提供；
+        // 式神/形态/幻境无符号，不显示符号偏移/加减号尺寸/整体偏移编辑项
+        e.sign_offset ??= [0, 0];
+        numRow(div, '符号偏移 x', e.sign_offset[0], v => { e.sign_offset[0] = v; syncElemField(sel.name, 'sign_offset', [...e.sign_offset]); draw(); });
+        numRow(div, '符号偏移 y', e.sign_offset[1], v => { e.sign_offset[1] = v; syncElemField(sel.name, 'sign_offset', [...e.sign_offset]); draw(); });
+        numRow(div, '加号尺寸', e.sign_size_plus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => { e.sign_size_plus = v; syncElemField(sel.name, 'sign_size_plus', v); });
+        numRow(div, '减号尺寸', e.sign_size_minus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => { e.sign_size_minus = v; syncElemField(sel.name, 'sign_size_minus', v); });
         // 符号+数字整体相对角标的额外偏移：per-type 键，四类带符号数值各自微调，不跨类型同步
         e.group_offset ??= [0, 0];
         numRow(div, '符号数字整体偏移 x', e.group_offset[0], v => { e.group_offset[0] = v; draw(); });
         numRow(div, '符号数字整体偏移 y', e.group_offset[1], v => { e.group_offset[1] = v; draw(); });
       }
+      numRow(div, '描边宽度', e.stroke_width ?? 2, v => { e.stroke_width = v; syncElemField(sel.name, 'stroke_width', v); });
       if (curType === '战斗' && e.field === 'shield+') {
         // 破甲（负护甲）与护甲分离的四个键：坐标/图标大小/数字偏移/符号偏移；
         // 坐标为 per-type 不同步，其余三个尺寸偏移类跨类型同步（仅战斗有该元素，同步无实际对象）

@@ -60,9 +60,13 @@
   #update-banner { display: none; background: #fff3cd; color: #664d03; padding: 5px 10px; font-size: 13px; text-align: center; }
   #update-banner button { margin-left: 8px; font-size: 12px; }
 
-  /* ---- 使用说明 / 服务失联弹窗 ---- */
-  #help-modal, #server-down-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100; }
+  /* ---- 使用说明 / 服务失联 / 导出弹窗 ---- */
+  #help-modal, #server-down-modal, #export-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100; }
   #help-box, #server-down-box { background: #fff; width: 580px; max-height: 80vh; overflow-y: auto; margin: 8vh auto; padding: 14px 20px; border-radius: 4px; font-size: 13px; line-height: 1.7; }
+  #export-box { background: #fff; width: 340px; margin: 20vh auto; padding: 14px 20px; border-radius: 4px; font-size: 13px; line-height: 1.7; }
+  #export-box input[type=text] { width: 200px; }
+  #export-box .btnrow { margin-top: 10px; }
+  #export-error { color: #a00; font-size: 12px; margin-top: 6px; white-space: pre-line; }
   #help-box h3 { margin: 0 0 6px; }
   #help-box h4 { margin: 12px 0 2px; }
   #help-box code { background: #f0ead8; padding: 0 3px; }
@@ -148,7 +152,7 @@
     <button id="help-close">关闭</button>
     <h3>BWPDIY 使用说明</h3>
     <h4>基本流程</h4>
-    <div>左栏新建项目与卡牌（默认新建式神；非式神卡的「所属式神」可关联同项目式神）→ 右栏编辑卡牌内容、上传卡图 → 中央实时预览 → 「保存」写盘。卡图按 id（留空则按卡名）命名落盘。连续 2 小时无操作时程序会自动停止（防占用），重新启动即可。</div>
+    <div>左栏新建项目与卡牌（默认新建式神；非式神卡的「所属式神」可关联同项目式神）→ 右栏编辑卡牌内容、上传卡图 → 中央实时预览 → 「保存」写盘；「导出」把当前卡牌（含未保存修改）下载为 PNG 图片（默认按卡名命名）。卡图按 id（留空则按卡名）命名落盘。连续 2 小时无操作时程序会自动停止（防占用），重新启动即可。</div>
     <h4>描述文本自适应</h4>
     <div>描述自动换行、每行水平居中、整体竖直居中；排不下时先微调居中点、再自动逐级缩小字号；遇左下/右下角标自动避让，文字不会压到数值。</div>
     <h4>关键字高亮</h4>
@@ -175,6 +179,19 @@
     <h3>连接已断开</h3>
     <div>与工具的连接已断开。若连续 <b>2 小时</b>没有任何操作，程序会自动停止以释放占用；也可能是程序被关闭或已自动更新重启。<br>
     请重新启动 BWPDIY（或等更新重启完成），再刷新本页面。已保存的卡牌/布局不受影响，未保存的表单修改会丢失。</div>
+  </div>
+</div>
+
+<div id="export-modal">
+  <div id="export-box">
+    <h3>导出卡图</h3>
+    <div>把当前卡牌（含未保存修改）渲染并保存为 PNG 图片。</div>
+    <label>文件名 <input id="export-name" type="text"></label>
+    <div class="btnrow">
+      <button id="export-ok">下载</button>
+      <button id="export-cancel">取消</button>
+    </div>
+    <div id="export-error"></div>
   </div>
 </div>
 
@@ -784,10 +801,14 @@ function buildForm() {
   const btn = document.createElement('button');
   btn.textContent = '保存';
   btn.onclick = saveCard;
+  const expBtn = document.createElement('button');
+  expBtn.textContent = '导出';
+  expBtn.style.marginLeft = '6px';
+  expBtn.onclick = openExport;
   const dirty = document.createElement('span');
   dirty.id = 'c-dirty';
   dirty.textContent = cDirty ? '● 未保存' : '';
-  row.appendChild(btn); row.appendChild(dirty);
+  row.appendChild(btn); row.appendChild(expBtn); row.appendChild(dirty);
   div.appendChild(row);
   const errs = document.createElement('div');
   errs.id = 'c-form-errors';
@@ -1083,6 +1104,44 @@ async function saveCard() {
   }
   cPreviewProject();  // 落盘后再走项目卡预览，取回项目卡图
 }
+
+// ---- 导出：弹窗确认文件名（默认卡名.png），按当前表单内容（含未保存修改）渲染 PNG 并触发浏览器下载 ----
+const exportModal = document.getElementById('export-modal');
+function openExport() {
+  if (!formData || !curProject || !curCard) return;
+  const base = String(formData.name || curCard).replace(/[<>:"/\\|?*]/g, '').trim() || 'card';
+  document.getElementById('export-name').value = base + '.png';
+  document.getElementById('export-error').textContent = '';
+  exportModal.style.display = 'block';
+}
+document.getElementById('export-cancel').onclick = () => { exportModal.style.display = 'none'; };
+exportModal.onclick = ev => { if (ev.target === exportModal) exportModal.style.display = 'none'; };
+document.getElementById('export-ok').onclick = async () => {
+  const errEl = document.getElementById('export-error');
+  let fname = document.getElementById('export-name').value.trim();
+  if (!fname) { errEl.textContent = '文件名不能为空'; return; }
+  if (!/\.png$/i.test(fname)) fname += '.png';
+  errEl.textContent = '';
+  let r;
+  try {
+    await ensureLayouts();
+    const tl = layouts[formData.type];
+    if (!tl) { errEl.textContent = '布局缺失，无法渲染'; return; }
+    // 与编辑期预览同口径：项目卡预览 + 表单整体覆盖（含未保存修改与实时卡图定位）
+    r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/preview`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({layout: tl, card: formData})});
+  } catch (e) { errEl.textContent = '导出请求失败: ' + e; return; }
+  if (!r.ok) { errEl.textContent = '渲染失败：' + (await parseErrorDetail(r)).join('\n'); return; }
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fname;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  exportModal.style.display = 'none';
+};
 
 // ================= 布局设置 tab =================
 // 自原 static/layout.html 迁入：DOM id 加 l- 前缀、入口改懒初始化 layoutBoot、

@@ -114,10 +114,40 @@ def _render_ink(text: str, font, stroke_width: int = 2):
     return img, (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
 
 
+_DIGIT_GAP = 3  # 相邻数字墨迹的最小水平间距 px
+
+
+def _row_ink_extents(img: Image.Image) -> list[tuple[int, int] | None]:
+    """每行墨迹的 (左缘 x, 右缘 x)；无墨迹行为 None。"""
+    a = img.getchannel("A").load()
+    w, h = img.size
+    rows = []
+    for y in range(h):
+        lo = None
+        for x in range(w):
+            if a[x, y] > 0:
+                lo = x
+                break
+        if lo is None:
+            rows.append(None)
+            continue
+        hi = lo
+        for x in range(w - 1, lo, -1):
+            if a[x, y] > 0:
+                hi = x
+                break
+        rows.append((lo, hi))
+    return rows
+
+
 def _render_digits(text: str, font, stroke_width: int,
                    color: str | None = None) -> Image.Image | None:
-    """数字串渲染：逐字离屏渲染后横向拼接（相邻间距 = 字号/20 px，多位数更美观；
-    各字竖直中心对齐），变色在拼接后整体施加（渐变高度以整串墨迹计）。"""
+    """数字串渲染：逐字离屏渲染后横向拼接，变色在拼接后整体施加（渐变以整串墨迹计）。
+
+    竖直：各字墨迹中点在同一水平线（不同字高取中点对齐）。
+    水平：不按字形 box 等距排（「41」这类窄字会嫌稀），按相邻字墨迹的
+    最小水平距离 = _DIGIT_GAP 约束排放（逐行区间求最大可行左移量）。
+    """
     parts = []
     for ch in text:
         ink = _render_ink(ch, font, stroke_width)
@@ -126,18 +156,30 @@ def _render_digits(text: str, font, stroke_width: int,
         parts.append(ink[0])
     if len(parts) == 1:
         img = parts[0]
-    else:
-        gap = max(1, round(font.size / 20))
-        w = sum(p.width for p in parts) + gap * (len(parts) - 1)
-        h = max(p.height for p in parts)
-        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        x = 0
-        for p in parts:
-            img.alpha_composite(p, (x, (h - p.height) // 2))
-            x += p.width + gap
-    if color is not None:
-        img = _tint(img, *STAT_COLORS[color])
-    return img
+        return _tint(img, *STAT_COLORS[color]) if color is not None else img
+    h = max(p.height for p in parts)
+    offs = [(h - p.height) // 2 for p in parts]
+    acc = Image.new("RGBA", (parts[0].width, h), (0, 0, 0, 0))
+    acc.alpha_composite(parts[0], (0, offs[0]))
+    acc_ext = _row_ink_extents(acc)
+    for p, off_y in zip(parts[1:], offs[1:]):
+        p_ext = _row_ink_extents(p)
+        x = None
+        for y in range(h):
+            py = y - off_y
+            if 0 <= py < p.height and acc_ext[y] and p_ext[py]:
+                req = acc_ext[y][1] + _DIGIT_GAP - p_ext[py][0]
+                x = req if x is None else max(x, req)
+        if x is None:
+            x = acc.width + _DIGIT_GAP  # 逐行无重叠（理论上不会发生）：退回 box 等距
+        x = max(0, x)
+        w_new = max(acc.width, x + p.width)
+        grown = Image.new("RGBA", (w_new, h), (0, 0, 0, 0))
+        grown.alpha_composite(acc, (0, 0))
+        grown.alpha_composite(p, (x, off_y))
+        acc = grown
+        acc_ext = _row_ink_extents(acc)
+    return _tint(acc, *STAT_COLORS[color]) if color is not None else acc
 
 
 # stat 适用矩阵（用户裁定唯一口径，渲染/文本避让/GUI 输入同表）：

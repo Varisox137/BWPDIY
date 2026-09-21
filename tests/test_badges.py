@@ -123,14 +123,34 @@ def test_faction_style(assets_dir):
 
 
 def test_stat_digit_spacing(assets_dir):
-    """多位数逐字拼接：相邻数字间距=字号/20，整体宽度=各字宽之和+间距。"""
-    from bwpdiy.render.badges import _render_digits
+    """多位数逐字拼接：相邻字墨迹最小水平间距=_DIGIT_GAP（窄字「41」不按 box 等距）；
+    各字墨迹中点竖直对齐。"""
+    from bwpdiy.render.badges import _DIGIT_GAP, _render_digits, _row_ink_extents
     lib = AssetLibrary(assets_dir)
     font = lib.font("name", 40)
-    one = _render_digits("2", font, 2)
-    two = _render_digits("22", font, 2)
-    gap = max(1, round(font.size / 20))
-    assert two.width == one.width * 2 + gap
+    one = _render_digits("1", font, 2)
+    four = _render_digits("4", font, 2)
+    pair = _render_digits("41", font, 2)
+    # 「41」宽度应明显小于 box 等距（4 右缘与 1 左缘的 box 间距被墨迹间距取代）
+    assert pair.width < four.width + one.width + _DIGIT_GAP
+    # 精确间距用对称「22」验证：第二字恒位于 pair 右端，逐行回算最小墨迹间距
+    two = _render_digits("2", font, 2)
+    pair2 = _render_digits("22", font, 2)
+    h2 = pair2.height
+    x1 = pair2.width - two.width
+    off1 = (h2 - two.height) // 2
+    extL = _row_ink_extents(pair2.crop((0, 0, x1, h2)))
+    extR = _row_ink_extents(pair2.crop((x1, 0, pair2.width, h2)))
+    dists = [x1 + extR[y - off1][0] - extL[y][1]
+             for y in range(h2)
+             if 0 <= y - off1 < two.height and extL[y] and extR[y - off1]]
+    assert min(dists) == _DIGIT_GAP
+    # 竖直中点对齐：对称「11」两字墨迹行区间完全一致（同字形同中线）
+    pair11 = _render_digits("11", font, 2)
+    x1 = pair11.width - one.width
+    rowsL = [y for y, e in enumerate(_row_ink_extents(pair11.crop((0, 0, x1, pair11.height)))) if e]
+    rowsR = [y for y, e in enumerate(_row_ink_extents(pair11.crop((x1, 0, pair11.width, pair11.height)))) if e]
+    assert rowsL == rowsR
 
 
 @pytest.mark.parametrize("color", ["red", "green", "purple"])

@@ -591,11 +591,31 @@
         "kind": "duo_frame",
         "pos": [
           91,
-          164
+          129
         ],
         "size": [
-          74,
-          147
+          88,
+          80
+        ],
+        "slot2_offset": [
+          0,
+          74
+        ],
+        "frame_offset_1": [
+          0,
+          0
+        ],
+        "frame_offset_2": [
+          0,
+          0
+        ],
+        "faction_offset_1": [
+          17,
+          23
+        ],
+        "faction_offset_2": [
+          17,
+          23
         ]
       },
       "rarity": {

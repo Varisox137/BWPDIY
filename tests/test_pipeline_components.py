@@ -102,8 +102,8 @@ def _neighborhood(card_type: str, name: str) -> tuple:
     """组件全部墨迹应落入的邻域框（局部性断言）：覆盖该 kind 的全部绘制部分。"""
     e = elem(card_type, name)
     kind = e["kind"]
-    if kind == "duo_frame":  # 槽位盒(88×80)大于双框：槽位间距 70 + 盒高 80
-        return (*e["pos"], 44 + 8, 35 + 40 + 8)
+    if kind == "duo_frame":  # pos=槽位1基底中心：槽位2偏移 74 + 盒半高 40 + 派系偏移余量
+        return (*e["pos"], 44 + 8, 74 + 40 + 8)
     if kind == "level_badge":  # 觉醒星标大于底座
         return (*e["pos"], e["star_size"] / 2 + 8, e["star_size"] / 2 + 8)
     if kind == "rarity_flank":  # 左右双标整体

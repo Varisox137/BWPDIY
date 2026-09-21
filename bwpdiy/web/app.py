@@ -194,6 +194,11 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                 else:
                     card[k] = v
         try:
+            # 协战样卡勾双式神框时注入占位派系（无项目上下文）：空菱形+派系标，
+            # 供布局页定位派系标（与官方示例的空槽位观感一致）
+            if (card.get("type") == "协战" and card.get("duo_frame")
+                    and "_duo" not in card):
+                card["_duo"] = [{"faction": "苍叶"}, {"faction": "青岚"}]
             img = render_card(card, assets_dir, layout=request["layout"], crop=False)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
@@ -327,10 +332,10 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
 def _duo_slot(library_dir: Path, project: str, shikigami_name) -> dict | None:
     """双式神框单槽位数据：按名在项目 shikigami/ 找式神卡，取首图（缺省口径同
-    pipeline._artwork_ref）与派系；缺式神/缺图/图越出 images/ → None（空槽位）。
+    pipeline._artwork_ref）与派系；缺式神（未引用/未找到）→ None（空槽位）。
 
-    返回 {"art": {"path": 绝对路径, "offset_x", "offset_y", "scale", "rotate"},
-    "faction": 派系}（faction 可缺，渲染层无相/缺派系不画小标）。
+    返回 {"faction": 派系, "art": {...}}：faction 可缺（渲染层无相/缺派系不画小标）；
+    图缺失/越出 images/ 时 slot 保留 faction 但无 art（空菱形+派系标，便于布局定位）。
     """
     if not isinstance(shikigami_name, str) or not shikigami_name:
         return None
@@ -340,6 +345,10 @@ def _duo_slot(library_dir: Path, project: str, shikigami_name) -> dict | None:
     if stem is None:
         return None
     shiki = load_card(library_dir, project, stem)
+    slot = {}
+    faction = shiki.get("faction")
+    if isinstance(faction, str):
+        slot["faction"] = faction
     images = shiki.get("artwork", {})
     images = images.get("images") if isinstance(images, dict) else None
     first = images[0] if isinstance(images, list) and images else None
@@ -352,18 +361,15 @@ def _duo_slot(library_dir: Path, project: str, shikigami_name) -> dict | None:
     if not art_path.is_absolute():
         art_path = images_dir / art_path
     try:
-        art_path = art_path.resolve(strict=True)  # 不存在即缺图 → None
+        art_path = art_path.resolve(strict=True)  # 不存在即缺图 → slot 不带 art
         art_path.relative_to(images_dir.resolve())  # 越界防护口径同卡图
     except (OSError, ValueError):
-        return None
+        return slot
     art = {"path": str(art_path)}
     for k, default in (("offset_x", 0), ("offset_y", 0), ("scale", 1.0), ("rotate", 0)):
         v = ref.get(k)
         art[k] = v if isinstance(v, (int, float)) and not isinstance(v, bool) else default
-    slot = {"art": art}
-    faction = shiki.get("faction")
-    if isinstance(faction, str):
-        slot["faction"] = faction
+    slot["art"] = art
     return slot
 
 

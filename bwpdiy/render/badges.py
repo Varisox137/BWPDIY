@@ -89,8 +89,7 @@ def _tint(img: Image.Image, top: tuple[int, int, int],
 _tint_sign = _tint  # 符号贴图与白字数字同一口径：填充换渐变、描边保留
 
 
-def _render_ink(text: str, font, stroke_width: int = 2,
-                color: str | None = None):
+def _render_ink(text: str, font, stroke_width: int = 2):
     """离屏渲染文本（白字黑描边），返回 (裁到墨迹的 RGBA 图, 相对 mm 锚点的真墨迹 bbox)。
 
     不能用 textbbox 的预测口径：田氏颜体 `-` 字形轮廓含不产墨的延伸点，
@@ -112,9 +111,33 @@ def _render_ink(text: str, font, stroke_width: int = 2,
     if bbox is None:
         return None
     img = img.crop(bbox)
+    return img, (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
+
+
+def _render_digits(text: str, font, stroke_width: int,
+                   color: str | None = None) -> Image.Image | None:
+    """数字串渲染：逐字离屏渲染后横向拼接（相邻间距 = 字号/20 px，多位数更美观；
+    各字竖直中心对齐），变色在拼接后整体施加（渐变高度以整串墨迹计）。"""
+    parts = []
+    for ch in text:
+        ink = _render_ink(ch, font, stroke_width)
+        if ink is None:
+            return None
+        parts.append(ink[0])
+    if len(parts) == 1:
+        img = parts[0]
+    else:
+        gap = max(1, round(font.size / 20))
+        w = sum(p.width for p in parts) + gap * (len(parts) - 1)
+        h = max(p.height for p in parts)
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        x = 0
+        for p in parts:
+            img.alpha_composite(p, (x, (h - p.height) // 2))
+            x += p.width + gap
     if color is not None:
         img = _tint(img, *STAT_COLORS[color])
-    return img, (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
+    return img
 
 
 # stat 适用矩阵（用户裁定唯一口径，渲染/文本避让/GUI 输入同表）：
@@ -247,10 +270,9 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         digits = str(abs(value)) if signed else str(value)
         # 符号贴图（如有）+ 数字作为一个整体块，块的视觉中心对齐 num_pos；
         # sign_offset 为符号相对数字块的微调偏移
-        digit_ink = _render_ink(digits, font, stroke_width, color)
-        if digit_ink is None:
+        digit_img = _render_digits(digits, font, stroke_width, color)
+        if digit_img is None:
             return out
-        digit_img = digit_ink[0]
         sign_img = None
         if signed:
             # 加号/减号尺寸分开可调（sign_size 为旧数据回退）

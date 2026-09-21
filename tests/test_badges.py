@@ -122,6 +122,17 @@ def test_faction_style(assets_dir):
         canvas(), lib, "faction", elem, {"faction": "红莲"}).getdata())
 
 
+def test_stat_digit_spacing(assets_dir):
+    """多位数逐字拼接：相邻数字间距=字号/20，整体宽度=各字宽之和+间距。"""
+    from bwpdiy.render.badges import _render_digits
+    lib = AssetLibrary(assets_dir)
+    font = lib.font("name", 40)
+    one = _render_digits("2", font, 2)
+    two = _render_digits("22", font, 2)
+    gap = max(1, round(font.size / 20))
+    assert two.width == one.width * 2 + gap
+
+
 @pytest.mark.parametrize("color", ["red", "green", "purple"])
 def test_stat_value_colors(assets_dir, color):
     """数值变色（<field>_color）：与默认白字渲染不同；带符号时符号同步变色。"""
@@ -221,7 +232,6 @@ def test_stat_signed_block_centered(assets_dir, value):
     覆盖 + 与 -：符号为 signs/plus|minus.png 贴图（裁 bbox 等比 contain 进
     sign_size 见方框），与数字墨迹中心竖直对齐组成整体块。
     """
-    from bwpdiy.render.badges import _render_ink
     lib = AssetLibrary(assets_dir)
     # num_offset 拉大，使数字带与图标像素分离便于测量；num_pos=(160,485)
     elem = {"kind": "stat", "field": "power+", "pos": [100, 485],
@@ -232,9 +242,10 @@ def test_stat_signed_block_centered(assets_dir, value):
     block = _band_bbox(signed, 120, 260)
     assert block
     assert abs((block[0] + block[2]) / 2 - 160) <= 1  # 块视觉中心对齐 num_pos.x
-    # 符号/数字竖直居中：数字带 = 块右侧 digit_ink 宽（与渲染同源 _render_ink 口径）
+    # 符号/数字竖直居中：数字带 = 块右侧 digit_ink 宽（与渲染同源 _render_digits 口径）
+    from bwpdiy.render.badges import _render_digits
     font = lib.font("name", 30)
-    dw = _render_ink(str(abs(value)), font)[0].width
+    dw = _render_digits(str(abs(value)), font, 2).width
     s_digits = _band_bbox(signed, block[2] - dw, block[2])
     s_sign = _band_bbox(signed, block[0], block[2] - dw - 1)
     assert s_digits and s_sign  # alpha 含符号区（贴图）与数字区

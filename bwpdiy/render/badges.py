@@ -78,20 +78,15 @@ def _vertical_gradient(size: tuple[int, int], top: tuple[int, int, int],
 
 def _tint(img: Image.Image, top: tuple[int, int, int],
           bottom: tuple[int, int, int]) -> Image.Image:
-    """把白字/浅色填充墨迹重着色为竖直渐变：alpha 不变，RGB 换成渐变。"""
-    grad = _vertical_gradient(img.size, top, bottom).convert("RGBA")
-    grad.putalpha(img.getchannel("A"))
-    return grad
-
-
-def _tint_sign(img: Image.Image, top: tuple[int, int, int],
-               bottom: tuple[int, int, int]) -> Image.Image:
-    """符号贴图重着色：近白填充像素换渐变，深色描边保留（亮度软掩膜过渡）。"""
+    """亮色填充重着色为竖直渐变、深色描边原样保留（亮度软掩膜过渡）。"""
     lum = img.convert("L").point(lambda v: min(255, max(0, (v - 60) * 3)))
     grad = _vertical_gradient(img.size, top, bottom)
     out = Image.composite(grad, img.convert("RGB"), lum).convert("RGBA")
     out.putalpha(img.getchannel("A"))
     return out
+
+
+_tint_sign = _tint  # 符号贴图与白字数字同一口径：填充换渐变、描边保留
 
 
 def _render_ink(text: str, font, stroke_width: int = 2,

@@ -510,15 +510,15 @@
         "kind": "stat",
         "field": "durability",
         "pos": [
-          361,
-          483
+          359,
+          480
         ],
-        "icon_size": 68,
+        "icon_size": 72,
         "num_offset": [
           2,
-          5
+          4
         ],
-        "font_size": 50,
+        "font_size": 52,
         "sign_offset": [
           0,
           0

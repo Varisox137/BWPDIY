@@ -9,7 +9,8 @@ stat 数值字段口径与 render/badges.py `_STAT_MATRIX` 对齐（store 不 im
 
 标记扩展字段（均可选）：level_color 勾玉颜色（yellow/cyan/purple/red/blue/brown，缺省 yellow，
 凡可带 level 的类型皆可携带）；式神另可携带可选 level（1-3，缺省无等级）与
-faction_style 派系样式（1/2/3，缺省 2）。
+faction_style 派系样式（1/2/3，缺省 2）；各 stat 字段可带 <field>_color 数值变色
+（red/green/purple，缺省白）。
 """
 
 from __future__ import annotations
@@ -41,6 +42,9 @@ _STATS_BY_TYPE = {
     "协战": (),
 }
 _SIGNED_STATS = ("power+", "shield+", "health+")
+# 数值变色：每个 stat 字段可带 <field>_color 伴随字段（缺省白，不写进 yaml）；
+# 红=debuff/受伤，绿=buff，紫=中毒（游戏内采样，见 render/badges.py STAT_COLORS）
+STAT_VALUE_COLORS = ("red", "green", "purple")
 
 
 class SchemaError(Exception):
@@ -61,6 +65,7 @@ def _is_num(v) -> bool:
 
 def _allowed_fields(ctype: str) -> set[str]:
     allowed = set(_COMMON_FIELDS) | set(_MARK_FIELDS)
+    allowed |= {f"{f}_color" for f in _STATS_BY_TYPE[ctype]}  # 数值变色伴随字段
     if ctype == "式神":
         allowed |= set(_SHIKIGAMI_ONLY) | set(_STATS_BY_TYPE["式神"])
         allowed.add("frame_variant")  # 式神牌框同形态，支持四框品（无觉醒）
@@ -129,6 +134,11 @@ def validate_card(data) -> list[str]:
     if "level_color" in data and data["level_color"] not in LEVEL_COLORS:
         errors.append(f"字段 level_color：非法勾玉颜色「{data['level_color']}」，"
                       f"须为 {'/'.join(LEVEL_COLORS)} 之一")
+    for field in _STATS_BY_TYPE[ctype]:
+        cfield = f"{field}_color"
+        if cfield in data and data[cfield] not in STAT_VALUE_COLORS:
+            errors.append(f"字段 {cfield}：非法数值颜色「{data[cfield]}」，"
+                          f"须为 {'/'.join(STAT_VALUE_COLORS)} 之一")
     if ctype == "式神" and "description" in data and not isinstance(data["description"], str):
         errors.append("字段 description：必须是字符串")
 

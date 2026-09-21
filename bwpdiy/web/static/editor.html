@@ -166,7 +166,7 @@
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
     <h4>扩展选项</h4>
-    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步）；<b>标记扩展</b>——稀有度下拉开放 N；等级旁开放勾玉六色（黄/青/紫/红/蓝/棕）；式神开放可选等级与派系样式（1-3，默认 2）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
+    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步）；<b>标记扩展</b>——稀有度下拉开放 N；等级旁开放勾玉六色（黄/青/紫/红/蓝/棕）；式神开放可选等级与派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
   </div>
 </div>
 
@@ -212,6 +212,9 @@ const LEVEL_COLORS = [["yellow", "黄"], ["cyan", "青"], ["purple", "紫"],
                       ["red", "红"], ["blue", "蓝"], ["brown", "棕"]];
 const LEVEL_COLOR_VALUES = new Set(LEVEL_COLORS.map(([v]) => v));
 const FACTION_STYLES = [1, 2, 3];  // 派系样式（缺省 2 不写进 yaml）
+// 数值变色：stat 伴随字段 <field>_color（缺省白不写进 yaml）；红=debuff/受伤、绿=buff、紫=中毒
+const STAT_VALUE_COLORS = [["white", "白"], ["red", "红"], ["green", "绿"], ["purple", "紫"]];
+const STAT_VALUE_COLOR_VALUES = new Set(["red", "green", "purple"]);
 
 let layouts = null;          // 完整布局 dict（/api/layout），两 tab 共享
 let samples = null;          // 六类型样卡字段（/api/samples），布局 tab 用
@@ -710,11 +713,13 @@ function buildForm() {
     }
     textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
   }
-  // stat 数值按矩阵（法术仅觉醒；式神/形态/幻境强制非负，滚轮微调同布局页交互）
+  // stat 数值按矩阵（法术仅觉醒；式神/形态/幻境强制非负，滚轮微调同布局页交互）；
+  // 标记扩展：数值旁加变色下拉（白/红/绿/紫）
   if (t !== '法术' || !!formData.evolve) {
     const nonneg = NONNEG_TYPES.has(t);
     for (const f of STATS_BY_TYPE[t] || []) {
-      numRowC(div, STAT_MATRIX[t][f], formData[f] ?? 0, nonneg, v => setField(f, v));
+      numRowC(div, STAT_MATRIX[t][f], formData[f] ?? 0, nonneg, v => setField(f, v),
+        extOptions.marker ? statColorSelect(f) : null);
     }
   }
   const l = document.createElement('label');
@@ -841,7 +846,7 @@ function afterEdit(rebuild = false) {
   }
   scheduleCardPreview();
 }
-function numRowC(div, label, val, nonneg, set) {
+function numRowC(div, label, val, nonneg, set, extra = null) {
   const l = document.createElement('label');
   l.textContent = label + ' ';
   const i = document.createElement('input');
@@ -860,7 +865,26 @@ function numRowC(div, label, val, nonneg, set) {
     i.value = (parseInt(i.value, 10) || 0) + (ev.deltaY < 0 ? 1 : -1);
     commit();
   };
-  l.appendChild(i); div.appendChild(l);
+  l.appendChild(i);
+  if (extra) { l.appendChild(document.createTextNode(' ')); l.appendChild(extra); }
+  div.appendChild(l);
+}
+// 数值变色下拉（标记扩展）：<field>_color 缺省白不写进 yaml
+function statColorSelect(field) {
+  const s = document.createElement('select');
+  const cur = formData[`${field}_color`] ?? 'white';
+  for (const [v, zh] of STAT_VALUE_COLORS) {
+    const op = document.createElement('option');
+    op.value = v; op.textContent = zh;
+    if (v === cur) op.selected = true;
+    s.appendChild(op);
+  }
+  s.onchange = () => {
+    if (s.value === 'white') delete formData[`${field}_color`];
+    else formData[`${field}_color`] = s.value;
+    afterEdit();
+  };
+  return s;
 }
 function numRowArt(div, label, val, set, step = 1, min = null) {
   // 卡图 offset/scale 输入：浮点、无滚轮微调（用户明确要求不做滚轮/拖拽）
@@ -973,6 +997,7 @@ function validateCardJS(d) {
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   if ('id' in d && typeof d.id !== 'string') errors.push('字段 id：必须是字符串');
   const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color']);
+  (STATS_BY_TYPE[t] || []).forEach(f => allowed.add(`${f}_color`));  // 数值变色伴随字段
   if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {
     // 协战白名单：shikigami 移除，改为可选 shikigami1/shikigami2（与 store schema 同口径）
@@ -1015,6 +1040,12 @@ function validateCardJS(d) {
   }
   if ('level_color' in d && !LEVEL_COLOR_VALUES.has(d.level_color)) {
     errors.push(`字段 level_color：非法勾玉颜色「${d.level_color}」，须为 ${[...LEVEL_COLOR_VALUES].join('/')} 之一`);
+  }
+  for (const f of STATS_BY_TYPE[t]) {
+    const cf = `${f}_color`;
+    if (cf in d && !STAT_VALUE_COLOR_VALUES.has(d[cf])) {
+      errors.push(`字段 ${cf}：非法数值颜色「${d[cf]}」，须为 ${[...STAT_VALUE_COLOR_VALUES].join('/')} 之一`);
+    }
   }
   const evolve = !!d.evolve;
   for (const f of STATS_BY_TYPE[t]) {

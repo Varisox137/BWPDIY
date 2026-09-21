@@ -378,6 +378,9 @@ def test_rename_cascade_only_for_shikigami(lib):
     {**SHIKIGAMI, "level_color": "cyan"},               # 勾玉颜色（凡可带 level 者皆可）
     {**FIGHT, "level_color": "brown"},
     {**ASSIST, "level_color": "purple"},
+    {**SHIKIGAMI, "power_color": "red"},                # 数值变色（红=debuff/受伤）
+    {**FIGHT, "shield+_color": "green"},                # 绿=buff
+    {**FIELD, "durability_color": "purple"},            # 紫=中毒
     FORM,
     FIELD,
     ASSIST,
@@ -428,6 +431,8 @@ def test_validate_ok(card):
     ({**SHIKIGAMI, "faction_style": "2"}, "faction_style"),
     ({**FIGHT, "faction_style": 1}, "faction_style"),   # 派系样式为式神专属（白名单之外）
     ({**FIGHT, "level_color": "gold"}, "level_color"),  # 非法勾玉颜色
+    ({**FIGHT, "power+_color": "blue"}, "power+_color"),  # 数值变色仅 red/green/purple
+    ({**FIGHT, "health_color": "red"}, "health_color"),   # 变色伴随字段须在 stat 矩阵内
     ({**SHIKIGAMI, "rarity": "R"}, "rarity"),         # 式神无稀有度
     ({**FIGHT, "未知字段": 1}, "未知字段"),
     # artwork 结构形状

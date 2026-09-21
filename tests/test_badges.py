@@ -3,7 +3,7 @@ from PIL import Image
 import pytest
 
 from bwpdiy.render.assets import AssetLibrary
-from bwpdiy.render.badges import render_element
+from bwpdiy.render.badges import STAT_COLORS, render_element
 
 
 def canvas():
@@ -120,6 +120,23 @@ def test_faction_style(assets_dir):
     # 缺省 faction_style = 布局 style（2）
     assert list(imgs[1].getdata()) == list(render_element(
         canvas(), lib, "faction", elem, {"faction": "红莲"}).getdata())
+
+
+@pytest.mark.parametrize("color", ["red", "green", "purple"])
+def test_stat_value_colors(assets_dir, color):
+    """数值变色（<field>_color）：与默认白字渲染不同；带符号时符号同步变色。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": "power+", "pos": [160, 485],
+            "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
+    white = render_element(canvas(), lib, "power", elem, {"type": "战斗", "power+": 2})
+    colored = render_element(canvas(), lib, "power", elem,
+                             {"type": "战斗", "power+": 2, "power+_color": color})
+    assert list(white.getdata()) != list(colored.getdata())
+    top, _ = STAT_COLORS[color]
+    # 变色数字墨迹中出现目标色系像素（渐变顶色附近）
+    found = any(abs(r - top[0]) < 40 and abs(g - top[1]) < 40 and abs(b - top[2]) < 40
+                for r, g, b, a in colored.getdata() if a > 200)
+    assert found
 
 
 @pytest.mark.parametrize("color", ["yellow", "cyan", "purple", "red", "blue", "brown"])

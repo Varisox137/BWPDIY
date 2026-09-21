@@ -56,7 +56,46 @@ def _paste_element(canvas: Image.Image, img: Image.Image,
     return paste_centered(canvas, img, pos, fit, composite=composite)
 
 
-def _render_ink(text: str, font, stroke_width: int = 2):
+# 数值变色（游戏内采样 examples/colored_num_ref.png）：白=常态，红=debuff/受伤，
+# 绿=buff，紫=中毒；红/紫带竖直渐变（上深下亮），绿近似均匀青绿
+STAT_COLORS = {
+    "red": ((150, 40, 70), (244, 98, 122)),
+    "green": ((8, 213, 173), (35, 197, 170)),
+    "purple": ((105, 12, 120), (223, 97, 235)),
+}
+
+
+def _vertical_gradient(size: tuple[int, int], top: tuple[int, int, int],
+                       bottom: tuple[int, int, int]) -> Image.Image:
+    """竖直线性渐变 RGB 图（顶→底）。"""
+    w, h = size
+    grad = Image.new("RGB", (1, h))
+    for y in range(h):
+        t = y / max(1, h - 1)
+        grad.putpixel((0, y), tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)))
+    return grad.resize((w, h))
+
+
+def _tint(img: Image.Image, top: tuple[int, int, int],
+          bottom: tuple[int, int, int]) -> Image.Image:
+    """把白字/浅色填充墨迹重着色为竖直渐变：alpha 不变，RGB 换成渐变。"""
+    grad = _vertical_gradient(img.size, top, bottom).convert("RGBA")
+    grad.putalpha(img.getchannel("A"))
+    return grad
+
+
+def _tint_sign(img: Image.Image, top: tuple[int, int, int],
+               bottom: tuple[int, int, int]) -> Image.Image:
+    """符号贴图重着色：近白填充像素换渐变，深色描边保留（亮度软掩膜过渡）。"""
+    lum = img.convert("L").point(lambda v: min(255, max(0, (v - 60) * 3)))
+    grad = _vertical_gradient(img.size, top, bottom)
+    out = Image.composite(grad, img.convert("RGB"), lum).convert("RGBA")
+    out.putalpha(img.getchannel("A"))
+    return out
+
+
+def _render_ink(text: str, font, stroke_width: int = 2,
+                color: str | None = None):
     """离屏渲染文本（白字黑描边），返回 (裁到墨迹的 RGBA 图, 相对 mm 锚点的真墨迹 bbox)。
 
     不能用 textbbox 的预测口径：田氏颜体 `-` 字形轮廓含不产墨的延伸点，
@@ -77,7 +116,10 @@ def _render_ink(text: str, font, stroke_width: int = 2):
     bbox = img.getchannel("A").getbbox()
     if bbox is None:
         return None
-    return img.crop(bbox), (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
+    img = img.crop(bbox)
+    if color is not None:
+        img = _tint(img, *STAT_COLORS[color])
+    return img, (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
 
 
 # stat 适用矩阵（用户裁定唯一口径，渲染/文本避让/GUI 输入同表）：
@@ -206,10 +248,11 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         font = lib.font("name", elem["font_size"])
         stroke_width = elem.get("stroke_width", 2)
         signed = _stat_mode(elem, card) == "signed"
+        color = card.get(f"{field}_color")  # 数值变色：red/green/purple，缺省白
         digits = str(abs(value)) if signed else str(value)
         # 符号贴图（如有）+ 数字作为一个整体块，块的视觉中心对齐 num_pos；
         # sign_offset 为符号相对数字块的微调偏移
-        digit_ink = _render_ink(digits, font, stroke_width)
+        digit_ink = _render_ink(digits, font, stroke_width, color)
         if digit_ink is None:
             return out
         digit_img = digit_ink[0]
@@ -220,6 +263,8 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
             sign_size = elem.get(f"sign_size_{sign_name}",
                                  elem.get("sign_size", round(elem["font_size"] * 0.5)))
             sign_img = _render_sign(lib, sign_name, sign_size)
+            if color is not None:
+                sign_img = _tint_sign(sign_img, *STAT_COLORS[color])
         sign_w = sign_img.width if sign_img is not None else 0
         gap = 2 if sign_img is not None else 0
         left = round(num_pos[0] - (sign_w + gap + digit_img.width) / 2)

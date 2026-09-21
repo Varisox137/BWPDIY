@@ -587,6 +587,17 @@
           0
         ]
       },
+      "duo_frame": {
+        "kind": "duo_frame",
+        "pos": [
+          91,
+          164
+        ],
+        "size": [
+          74,
+          147
+        ]
+      },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [

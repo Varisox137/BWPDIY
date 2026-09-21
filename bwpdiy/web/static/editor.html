@@ -169,6 +169,8 @@
     <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。</div>
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
+    <h4>协战双式神框</h4>
+    <div>协战卡可勾选「双式神框」，在牌框左上外侧渲染双菱形头像框；头像自动取所属式神卡的卡图（式神缺卡图则该槽位留空菱形），派系小标随式神派系。</div>
     <h4>扩展选项</h4>
     <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步）；<b>标记扩展</b>——稀有度下拉开放 N；等级旁开放勾玉六色（黄/青/紫/红/蓝/棕）；式神开放可选等级与派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
   </div>
@@ -725,6 +727,11 @@ function buildForm() {
     if (t === '协战') {  // 协战：shikigami 拆为 shikigami1/shikigami2 两个同构组合框
       shikigamiRow(div, '所属式神1', 'shikigami1');
       shikigamiRow(div, '所属式神2', 'shikigami2');
+      // 双式神框：缺省不绘制不写进 yaml（取消勾选删键，口径同框品 norm）
+      checkRowC(div, '双式神框', !!formData.duo_frame, v => {
+        if (v) formData.duo_frame = true; else delete formData.duo_frame;
+        afterEdit();
+      });
     } else {
       shikigamiRow(div, '所属式神', 'shikigami');
     }
@@ -1023,7 +1030,7 @@ function validateCardJS(d) {
   else {
     // 协战白名单：shikigami 移除，改为可选 shikigami1/shikigami2（与 store schema 同口径）
     const base = ['level', 'rarity', 'special_type', ...STATS_BY_TYPE[t]];
-    if (t === '协战') base.push('shikigami1', 'shikigami2');
+    if (t === '协战') base.push('shikigami1', 'shikigami2', 'duo_frame');
     else base.push('shikigami');
     base.forEach(f => allowed.add(f));
     if (EVOLVE_TYPES.has(t)) allowed.add('evolve');
@@ -1049,6 +1056,7 @@ function validateCardJS(d) {
       errors.push(`字段 rarity：非法稀有度「${d.rarity}」，须为 ${RARITIES.join('/')} 之一`);
     }
     if ('evolve' in d && typeof d.evolve !== 'boolean') errors.push('字段 evolve：必须是布尔值（true/false）');
+    if ('duo_frame' in d && typeof d.duo_frame !== 'boolean') errors.push('字段 duo_frame：必须是布尔值（true/false）');
     if ('frame_variant' in d && !FRAME_VARIANT_VALUES.has(d.frame_variant)) {
       errors.push(`字段 frame_variant：非法框品「${d.frame_variant}」，须为 ${[...FRAME_VARIANT_VALUES].join('/')} 之一`);
     }
@@ -1153,6 +1161,7 @@ const DISP = {
   // 布局元素名 / 文本区名 / 字体键
   level: '等级标', faction: '派系标', rarity: '稀有度', power: '力量', health: '生命',
   shield: '护甲', durability: '耐久', name: '卡名', footer: '脚注', desc: '描述',
+  duo_frame: '双式神框',
   // 元素 kind
   stat: '数值', rarity_flank: '稀有度双标', level_badge: '等级标', text: '文本',
   // stat 字段
@@ -1330,6 +1339,14 @@ function buildCardProps() {
     i.onchange = () => { setCardField('evolve', i.checked); buildCardProps(); };  // 法术 stat 输入随觉醒显隐
     l.appendChild(i); div.appendChild(l);
   }
+  if (curType === '协战') {  // 双式神框预览开关（样卡无 _duo 注入：勾选后渲染空槽位框）
+    const l = document.createElement('label');
+    l.textContent = '双式神框 ';
+    const i = document.createElement('input');
+    i.type = 'checkbox'; i.checked = !!cardField('duo_frame');
+    i.onchange = () => setCardField('duo_frame', i.checked);
+    l.appendChild(i); div.appendChild(l);
+  }
   if ('shikigami' in samples[curType]) {
     textRow(div, '所属式神', cardField('shikigami') || '', v => setCardField('shikigami', v));
   }
@@ -1381,7 +1398,7 @@ function buildLists() {
   const tl = typeLayout();
   const ed = document.getElementById('l-elems'); ed.innerHTML = '';
   const items = [];
-  for (const n of ['level', 'name', 'rarity']) {
+  for (const n of ['level', 'duo_frame', 'name', 'rarity']) {
     if (tl.elements[n]) items.push({kind: 'element', name: n});
   }
   if ((tl.text_regions || {}).desc) items.push({kind: 'region', name: 'desc'});
@@ -1578,6 +1595,12 @@ function buildProps() {
     if (e.kind === 'faction') {
       numRow(div, '尺寸', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
       selRow(div, '样式', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
+    }
+    if (e.kind === 'duo_frame') {
+      // 双框渲染尺寸 [宽, 高]（pos=双框中心即两槽位中点；槽位间距/派系偏移按比例推导，不开放）
+      e.size ??= [74, 147];
+      numRow(div, '宽度', e.size[0], v => { e.size[0] = v; syncElemField(sel.name, 'size', [...e.size]); });
+      numRow(div, '高度', e.size[1], v => { e.size[1] = v; syncElemField(sel.name, 'size', [...e.size]); });
     }
     if (e.kind === 'level_badge') {
       // 等级组件是否绘制由卡面等级决定（等级 0=无等级不绘制），不再提供启用开关

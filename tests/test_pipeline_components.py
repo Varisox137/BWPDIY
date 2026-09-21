@@ -66,9 +66,15 @@ def sample(card_type: str, **overrides) -> dict:
 
 
 def render_one(card_type: str, elem_name: str, card: dict | None = None) -> Image.Image:
-    """透明画布上只渲染指定元素（ctx.name_width 置 0：rarity 双标取 gap 静态位）。"""
-    return render_element(blank(), LIB, elem_name, elem(card_type, elem_name),
-                          card or sample(card_type), {"name_width": 0})
+    """透明画布上只渲染指定元素（ctx.name_width 置 0：rarity 双标取 gap 静态位）。
+
+    duo_frame 默认不绘制（卡面开关）：单元素渲染默认开开关（空槽位框口径）。"""
+    e = elem(card_type, elem_name)
+    if card is None:
+        card = sample(card_type)
+        if e["kind"] == "duo_frame":
+            card["duo_frame"] = True
+    return render_element(blank(), LIB, elem_name, e, card, {"name_width": 0})
 
 
 # ---------- 全类型 × 全元素：每个应当绘制的组件在其锚点区域确有墨迹 ----------
@@ -87,6 +93,8 @@ def _anchor_box(card_type: str, name: str) -> tuple:
         return (*e["pos"], e["icon_size"] / 2, e["icon_size"] / 2)
     if kind == "text":
         return (e["pos"][0], e["pos"][1], 120, e["font_size"])
+    if kind == "duo_frame":
+        return (*e["pos"], e["size"][0] / 2, e["size"][1] / 2)
     raise AssertionError(f"未知 kind: {kind}")
 
 
@@ -94,6 +102,8 @@ def _neighborhood(card_type: str, name: str) -> tuple:
     """组件全部墨迹应落入的邻域框（局部性断言）：覆盖该 kind 的全部绘制部分。"""
     e = elem(card_type, name)
     kind = e["kind"]
+    if kind == "duo_frame":  # 槽位盒(88×80)大于双框：槽位间距 70 + 盒高 80
+        return (*e["pos"], 44 + 8, 35 + 40 + 8)
     if kind == "level_badge":  # 觉醒星标大于底座
         return (*e["pos"], e["star_size"] / 2 + 8, e["star_size"] / 2 + 8)
     if kind == "rarity_flank":  # 左右双标整体

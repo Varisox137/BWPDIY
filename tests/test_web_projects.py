@@ -457,3 +457,54 @@ def test_artwork_upload_card_not_found_404(client, project):
     r = client.post(f"/api/projects/{project}/cards/不存在/artwork?filename=x.png",
                     content=SAMPLE_ART.read_bytes())
     assert r.status_code == 404
+
+
+# ---------- 协战双式神框预览（_duo 注入） ----------
+
+def _duo_card(**kw):
+    card = {"type": "协战", "name": "共鸣", "level": 1, "rarity": "R",
+            "shikigami1": "测试式神", "shikigami2": "式神乙",
+            "duo_frame": True, "description": "测试描述。"}
+    card.update(kw)
+    return card
+
+
+def test_preview_duo_frame_injects_shikigami_art(client, project, library_dir):
+    """协战 duo_frame 预览：_duo 按 shikigami1/2 在项目 shikigami/ 按名找式神卡，
+    注入其卡图（缺省 <卡名>.png）与派系；缺式神引用的槽位留空仍渲染成功。"""
+    images = library_dir / project / "images"
+    shutil.copy2(SAMPLE_ART, images / "测试式神.png")  # 槽位1：缺省 <卡名>.png 命中
+    client.put(f"/api/projects/{project}/cards/shiki-b",
+               json={"type": "式神", "name": "式神乙", "faction": "苍叶", "power": 2,
+                     "health": 5, "artwork": {"images": [{"path": "式神乙.png"}]}})
+    shutil.copy2(SAMPLE_ART, images / "式神乙.png")     # 槽位2：显式 artwork path
+    assert client.put(f"/api/projects/{project}/cards/共鸣", json=_duo_card()).status_code == 200
+    on = client.post(f"/api/projects/{project}/cards/共鸣/preview", json={})
+    assert on.status_code == 200 and _png_size(on) == (512, 512)
+    # 关闭 duo_frame：渲染不同（override 整体替换口径）
+    off = client.post(f"/api/projects/{project}/cards/共鸣/preview",
+                      json={"card": _duo_card(duo_frame=False)})
+    assert off.status_code == 200 and off.content != on.content
+    # 缺式神引用：槽位 None 回退空菱形，仍 200
+    missing = client.post(f"/api/projects/{project}/cards/共鸣/preview",
+                          json={"card": _duo_card(shikigami1="无此人", shikigami2="也无此人")})
+    assert missing.status_code == 200 and _png_size(missing) == (512, 512)
+    assert missing.content != on.content  # 空槽位 ≠ 注入头像
+
+
+def test_preview_duo_frame_missing_image_slot_empty(client, project, library_dir):
+    """式神卡存在但卡图缺失：该槽位 None（不劫持占位图回退），渲染仍成功。"""
+    client.put(f"/api/projects/{project}/cards/shiki-b",
+               json={"type": "式神", "name": "式神乙", "faction": "苍叶", "power": 2,
+                     "health": 5})
+    assert client.put(f"/api/projects/{project}/cards/共鸣", json=_duo_card()).status_code == 200
+    r = client.post(f"/api/projects/{project}/cards/共鸣/preview", json={})
+    assert r.status_code == 200 and _png_size(r) == (512, 512)
+
+
+def test_duo_frame_not_in_saved_card(client, project):
+    """_duo 是预览期内部键：不进 schema 白名单（PUT 带 _duo 拒绝），落盘卡不含 _duo。"""
+    r = client.put(f"/api/projects/{project}/cards/共鸣", json={**_duo_card(), "_duo": [None, None]})
+    assert r.status_code == 422
+    assert client.put(f"/api/projects/{project}/cards/共鸣", json=_duo_card()).status_code == 200
+    assert "_duo" not in client.get(f"/api/projects/{project}/cards/共鸣").json()

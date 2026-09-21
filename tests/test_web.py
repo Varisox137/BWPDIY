@@ -409,11 +409,25 @@ assert.deepStrictEqual(validateCardJS(ok), []);
 const withOld = {{...ok, shikigami: '甲'}};
 assert.ok(validateCardJS(withOld).some(e => e.includes('shikigami') && e.includes('白名单')));
 assert.ok(validateCardJS({{...ok, shikigami1: 3}}).some(e => e.includes('shikigami1')));
+assert.deepStrictEqual(validateCardJS({{...ok, duo_frame: true}}), []);  // 协战双式神框开关
+assert.ok(validateCardJS({{...ok, duo_frame: '是'}}).some(e => e.includes('duo_frame')));
 const battle = {{type: '战斗', name: '斩', level: 2, rarity: 'R', shikigami: '甲',
                 'power+': 1, 'shield+': 1, description: ''}};
 assert.deepStrictEqual(validateCardJS(battle), []);
+assert.ok(validateCardJS({{...battle, duo_frame: true}}).some(e => e.includes('白名单')));
 assert.ok(validateCardJS({{...battle, shikigami1: '甲'}}).some(e => e.includes('白名单')));
 assert.ok(validateCardJS({{...battle, name: ''}}).some(e => e.includes('name')));
 console.log("OK");
 """
     _run_node(tmp_path, driver)
+
+
+def test_preview_duo_frame_override_empty_slots(client):
+    """布局 tab 样卡开 duo_frame：无项目上下文不注入 _duo，渲染空槽位框（与关闭不同图）。"""
+    from bwpdiy.render.layout import load_layouts, get_type_layout
+    tl = get_type_layout(load_layouts(client.app.state.assets_dir), "协战")
+    on = client.post("/api/preview", json={"type": "协战", "layout": tl,
+                                           "card": {"duo_frame": True}})
+    assert on.status_code == 200 and on.headers["content-type"] == "image/png"
+    off = client.post("/api/preview", json={"type": "协战", "layout": tl})
+    assert off.status_code == 200 and on.content != off.content

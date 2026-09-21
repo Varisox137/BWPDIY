@@ -48,7 +48,7 @@ def test_expected_elements_per_type():
     assert set(layouts["法术"]["elements"]) == {"level", "rarity", "power", "health"} | base
     assert set(layouts["形态"]["elements"]) == {"level", "rarity", "power", "health"} | base
     assert set(layouts["幻境"]["elements"]) == {"level", "rarity", "durability"} | base
-    assert set(layouts["协战"]["elements"]) == {"level", "rarity"} | base
+    assert set(layouts["协战"]["elements"]) == {"level", "rarity", "duo_frame"} | base
 
 
 def _stat(font_size):

@@ -336,6 +336,13 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         out.alpha_composite(digit_img,
                             (left + sign_w + gap, round(num_pos[1] - digit_img.height / 2)))
         return out
+    if kind == "duo_frame":
+        # 协战双式神框：卡面 duo_frame: true 且类型为协战时绘制（默认不绘制）；
+        # 头像数据 card["_duo"] 由 web 层按所属式神注入（内部键，不进 schema）
+        if card.get("type") != "协战" or not card.get("duo_frame"):
+            return canvas
+        from bwpdiy.render.duo import render_duo_frame
+        return render_duo_frame(canvas, lib, elem, card)
     if kind == "text":
         # 点文本（卡名/脚注）：以 pos 为中心水平居中单行，不换行不做多边形排版
         text = card.get(name)

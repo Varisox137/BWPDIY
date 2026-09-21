@@ -7,6 +7,8 @@ stat 数值字段口径与 render/badges.py `_STAT_MATRIX` 对齐（store 不 im
 框品 frame_variant（norm/blue/black/red）式神/战斗/法术/形态/幻境可携带（可选，缺省 norm；
 式神牌框同形态）；协战恒 norm，携带属白名单之外字段。
 
+协战另可携带可选布尔 duo_frame（双式神框渲染开关，缺省不绘制、不写进 yaml）。
+
 标记扩展字段（均可选）：level_color 勾玉颜色（yellow/cyan/purple/red/blue/brown，缺省 yellow，
 凡可带 level 的类型皆可携带）；式神另可携带可选 level（1-3，缺省无等级）与
 faction_style 派系样式（1/2/3，缺省 2）；各 stat 字段可带 <field>_color 数值变色
@@ -32,6 +34,8 @@ _NON_SHIKIGAMI_FIELDS = ("level", "rarity", "special_type")
 _ASSIST_FIELDS = ("shikigami1", "shikigami2")
 # 觉醒（evolve）仅战斗/法术/形态/幻境可携带；式神/协战不可
 _EVOLVE_TYPES = ("战斗", "法术", "形态", "幻境")
+# 协战专属可选布尔：双式神框（缺省不绘制、不写进 yaml）
+_REINFORCE_FIELDS = ("duo_frame",)
 
 _STATS_BY_TYPE = {
     "式神": ("power", "health"),
@@ -73,6 +77,8 @@ def _allowed_fields(ctype: str) -> set[str]:
     else:
         allowed |= set(_NON_SHIKIGAMI_FIELDS) | set(_STATS_BY_TYPE[ctype])
         allowed |= set(_ASSIST_FIELDS) if ctype == "协战" else {"shikigami"}
+        if ctype == "协战":
+            allowed |= set(_REINFORCE_FIELDS)
         if ctype in _EVOLVE_TYPES:
             allowed.add("evolve")
             allowed.add("frame_variant")
@@ -122,6 +128,8 @@ def validate_card(data) -> list[str]:
             errors.append(f"字段 rarity：非法稀有度「{rarity}」，须为 {'/'.join(RARITIES)} 之一")
         if "evolve" in data and not isinstance(data["evolve"], bool):
             errors.append("字段 evolve：必须是布尔值（true/false）")
+        if "duo_frame" in data and not isinstance(data["duo_frame"], bool):
+            errors.append("字段 duo_frame：必须是布尔值（true/false）")
         if "frame_variant" in data and data["frame_variant"] not in FRAME_VARIANTS:
             errors.append(
                 f"字段 frame_variant：非法框品「{data['frame_variant']}」，"

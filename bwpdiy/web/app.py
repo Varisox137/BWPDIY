@@ -253,6 +253,9 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                 raise HTTPException(400, "card 必须是对象")
             card_data = copy.deepcopy(override)
         card_data = _with_artwork_fallback(card_data, library_dir / project / "images")
+        if card_data.get("type") == "协战" and card_data.get("duo_frame"):
+            card_data["_duo"] = [_duo_slot(library_dir, project, card_data.get(f))
+                                 for f in ("shikigami1", "shikigami2")]
         try:
             img = render_card(card_data, assets_dir,
                               layout=(request or {}).get("layout"), crop=False)
@@ -320,6 +323,48 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         return {"ok": True, "path": filename}
 
     return app
+
+
+def _duo_slot(library_dir: Path, project: str, shikigami_name) -> dict | None:
+    """双式神框单槽位数据：按名在项目 shikigami/ 找式神卡，取首图（缺省口径同
+    pipeline._artwork_ref）与派系；缺式神/缺图/图越出 images/ → None（空槽位）。
+
+    返回 {"art": {"path": 绝对路径, "offset_x", "offset_y", "scale", "rotate"},
+    "faction": 派系}（faction 可缺，渲染层无相/缺派系不画小标）。
+    """
+    if not isinstance(shikigami_name, str) or not shikigami_name:
+        return None
+    pdir = library_dir / project
+    entries = list_cards(library_dir, project).get("shikigami", [])
+    stem = next((e["stem"] for e in entries if e["name"] == shikigami_name), None)
+    if stem is None:
+        return None
+    shiki = load_card(library_dir, project, stem)
+    images = shiki.get("artwork", {})
+    images = images.get("images") if isinstance(images, dict) else None
+    first = images[0] if isinstance(images, list) and images else None
+    ref = dict(first) if isinstance(first, dict) else {}
+    raw_path = ref.get("path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raw_path = f"{shiki.get('id') or shiki.get('name', '')}.png"
+    images_dir = pdir / "images"
+    art_path = Path(raw_path)
+    if not art_path.is_absolute():
+        art_path = images_dir / art_path
+    try:
+        art_path = art_path.resolve(strict=True)  # 不存在即缺图 → None
+        art_path.relative_to(images_dir.resolve())  # 越界防护口径同卡图
+    except (OSError, ValueError):
+        return None
+    art = {"path": str(art_path)}
+    for k, default in (("offset_x", 0), ("offset_y", 0), ("scale", 1.0), ("rotate", 0)):
+        v = ref.get(k)
+        art[k] = v if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+    slot = {"art": art}
+    faction = shiki.get("faction")
+    if isinstance(faction, str):
+        slot["faction"] = faction
+    return slot
 
 
 def _with_artwork_fallback(card: dict, images_dir: Path) -> dict:

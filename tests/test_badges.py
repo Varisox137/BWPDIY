@@ -536,3 +536,63 @@ def test_stat_mask_composite_covers_faint_edges(assets_dir):
     for row, runs in default_runs.items():
         for x0, x1 in runs:
             assert any(c0 <= x0 and x1 <= c1 for c0, c1 in composite_runs[row])
+
+
+# ---------- 协战双式神框（duo_frame） ----------
+
+def _duo_elem():
+    return {"kind": "duo_frame", "pos": [91, 164], "size": [74, 147]}
+
+
+def _duo_slot(art, faction="苍叶"):
+    return {"art": {"path": str(art), "offset_x": 0, "offset_y": 0, "scale": 1.0, "rotate": 0},
+            "faction": faction}
+
+
+def test_duo_frame_off_by_default(assets_dir):
+    """双式神框默认不绘制：无 duo_frame 字段 / False / 非协战类型均不画。"""
+    lib = AssetLibrary(assets_dir)
+    elem = _duo_elem()
+    assert opaque(render_element(canvas(), lib, "duo_frame", elem, {"type": "协战"})) == 0
+    assert opaque(render_element(canvas(), lib, "duo_frame", elem,
+                                 {"type": "协战", "duo_frame": False})) == 0
+    assert opaque(render_element(canvas(), lib, "duo_frame", elem,
+                                 {"type": "战斗", "duo_frame": True})) == 0
+
+
+def test_duo_frame_empty_slots_fallback(assets_dir):
+    """开启但无 _duo（或槽位 None）：只画底板+双框（空菱形），不报错。"""
+    lib = AssetLibrary(assets_dir)
+    card = {"type": "协战", "duo_frame": True}
+    a = render_element(canvas(), lib, "duo_frame", _duo_elem(), card)
+    assert opaque(a) > 0
+    b = render_element(canvas(), lib, "duo_frame", _duo_elem(), {**card, "_duo": [None, None]})
+    assert list(a.getdata()) == list(b.getdata())
+    # 两槽位中心（91,129)/(91,199) 为黑底板墨迹；槽位盒左上角在菱形外无墨
+    assert a.getpixel((91, 129))[3] > 0 and a.getpixel((91, 199))[3] > 0
+    assert a.getchannel("A").getpixel((47, 89)) == 0
+
+
+def test_duo_frame_slot_art_masked_and_faction(assets_dir, sample_art):
+    """槽位头像 cover 适配槽位盒并按底板 alpha 菱形裁剪；派系小标按 faction 选图。"""
+    lib = AssetLibrary(assets_dir)
+    card = {"type": "协战", "duo_frame": True,
+            "_duo": [_duo_slot(sample_art, "苍叶"), _duo_slot(sample_art, "红莲")]}
+    img = render_element(canvas(), lib, "duo_frame", _duo_elem(), card)
+    empty = render_element(canvas(), lib, "duo_frame", _duo_elem(),
+                           {"type": "协战", "duo_frame": True})
+    assert list(img.getdata()) != list(empty.getdata())  # 头像注入生效
+    # 菱形掩膜：槽位1盒左上角 (47,89) 在菱形外，即使有头像也不落墨
+    assert img.getchannel("A").getpixel((47, 89)) == 0
+    # 无相/缺派系不画小标：与带派系渲染不同
+    no_faction = render_element(canvas(), lib, "duo_frame", _duo_elem(),
+                                {"type": "协战", "duo_frame": True,
+                                 "_duo": [{"art": _duo_slot(sample_art)["art"]},
+                                          _duo_slot(sample_art, "无相")]})
+    assert list(img.getdata()) != list(no_faction.getdata())
+    # 派系异色选图：槽位1 苍叶 vs 青岚 渲染不同
+    other = render_element(canvas(), lib, "duo_frame", _duo_elem(),
+                           {"type": "协战", "duo_frame": True,
+                            "_duo": [_duo_slot(sample_art, "青岚"),
+                                     _duo_slot(sample_art, "红莲")]})
+    assert list(img.getdata()) != list(other.getdata())

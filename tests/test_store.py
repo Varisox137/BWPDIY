@@ -378,6 +378,7 @@ def test_rename_cascade_only_for_shikigami(lib):
     {**SHIKIGAMI, "level_color": "cyan"},               # 勾玉颜色（凡可带 level 者皆可）
     {**FIGHT, "level_color": "brown"},
     {**ASSIST, "level_color": "purple"},
+    {**ASSIST, "duo_frame": True},                      # 协战双式神框开关（可选布尔）
     {**SHIKIGAMI, "power_color": "red"},                # 数值变色（红=debuff/受伤）
     {**FIGHT, "shield+_color": "green"},                # 绿=buff
     {**FIELD, "durability_color": "purple"},            # 紫=中毒
@@ -416,6 +417,8 @@ def test_validate_ok(card):
     ({**FIGHT, "frame_variant": "gold"}, "frame_variant"),   # 非法框品
     ({**FIGHT, "frame_variant": 1}, "frame_variant"),
     ({**ASSIST, "frame_variant": "blue"}, "frame_variant"),     # 协战无框品（白名单之外）
+    ({**ASSIST, "duo_frame": "是"}, "duo_frame"),       # 必须布尔
+    ({**FIGHT, "duo_frame": True}, "duo_frame"),        # 双式神框为协战专属（白名单之外）
     ({**SHIKIGAMI, "power": True}, "power"),          # bool 不算 int
     ({**SHIKIGAMI, "health": -1}, "health"),          # 非负
     ({**FIGHT, "power+": "1"}, "power+"),

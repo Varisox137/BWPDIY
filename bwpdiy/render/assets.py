@@ -38,8 +38,8 @@ class AssetLibrary:
     def level_star(self) -> Image.Image:
         return self._img("levels/evolve_star.png")
 
-    def level_num(self, n: int) -> Image.Image:
-        return self._img(f"levels/level_{n}_yellow.png")
+    def level_num(self, n: int, color: str = "yellow") -> Image.Image:
+        return self._img(f"levels/level_{n}_{color}.png")
 
     def rarity(self, rarity: str, variant: str = "norm") -> Image.Image:
         """稀有度花标：variant="reinforce" 用协战版；其余 {R}_{variant} 缺失回退 {R}；

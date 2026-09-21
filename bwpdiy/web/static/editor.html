@@ -12,7 +12,6 @@
   .navtab.active { background: #d9b96a; }
   #ext-options { margin-left: auto; color: #d9b96a; font-size: 12px; }
   #ext-options label { margin-left: 10px; cursor: pointer; }
-  #ext-options label.disabled { color: #777; cursor: not-allowed; }
   .tabpage { display: none; flex: 1; min-height: 0; }
   .tabpage.active { display: flex; }
 
@@ -80,8 +79,7 @@
   <span id="ext-options">
     扩展选项：
     <label><input type="checkbox" id="ext-layout"> 手动调整布局</label>
-    <label><input type="checkbox" id="ext-rarity-n"> 允许 N 稀有度</label>
-    <label class="disabled" title="二期开放"><input type="checkbox" id="ext-goyu" disabled> 勾玉四色（二期）</label>
+    <label><input type="checkbox" id="ext-marker"> 标记扩展</label>
   </span>
 </nav>
 
@@ -168,7 +166,7 @@
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
     <h4>扩展选项</h4>
-    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步）；<b>允许 N 稀有度</b>——稀有度下拉开放 N。勾玉四色为二期功能，暂未开放。</div>
+    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步）；<b>标记扩展</b>——稀有度下拉开放 N；等级旁开放勾玉六色（黄/青/紫/红/蓝/棕）；式神开放可选等级与派系样式（1-3，默认 2）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
   </div>
 </div>
 
@@ -209,6 +207,11 @@ const EVOLVE_TYPES = new Set(["战斗", "法术", "形态", "幻境"]);
 const FRAME_VARIANTS = [["norm", "常规"], ["blue", "琉璃"], ["black", "墨染"], ["red", "百炼"]];
 const FRAME_VARIANT_VALUES = new Set(FRAME_VARIANTS.map(([v]) => v));
 const FRAME_VARIANT_TYPES = new Set(["式神", "战斗", "法术", "形态", "幻境"]);
+// 勾玉六色：内部值 → 中文显示名（缺省 yellow 不写进 yaml；素材 assets/levels/level_<n>_<color>.png）
+const LEVEL_COLORS = [["yellow", "黄"], ["cyan", "青"], ["purple", "紫"],
+                      ["red", "红"], ["blue", "蓝"], ["brown", "棕"]];
+const LEVEL_COLOR_VALUES = new Set(LEVEL_COLORS.map(([v]) => v));
+const FACTION_STYLES = [1, 2, 3];  // 派系样式（缺省 2 不写进 yaml）
 
 let layouts = null;          // 完整布局 dict（/api/layout），两 tab 共享
 let samples = null;          // 六类型样卡字段（/api/samples），布局 tab 用
@@ -260,29 +263,32 @@ function showTab(name) {
 }
 document.querySelectorAll('.navtab').forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
-// ================= 顶栏扩展选项（localStorage 持久化；勾玉四色二期开放） =================
+// ================= 顶栏扩展选项（localStorage 持久化） =================
+// 标记扩展（marker）：N 稀有度 + 勾玉六色 + 式神等级 + 派系样式；取消勾选只隐藏控件，
+// 已写进卡牌的数据（level_color 等）不回退、渲染照常生效
 const EXT_KEY = 'bwpdiy_ext_options';
-const extOptions = {layout: false, rarity_n: false};
+const extOptions = {layout: false, marker: false};
 try { Object.assign(extOptions, JSON.parse(localStorage.getItem(EXT_KEY) || '{}')); } catch (e) {}
+if (extOptions.rarity_n) { extOptions.marker = true; delete extOptions.rarity_n; }  // 旧键迁移
 function saveExtOptions() { localStorage.setItem(EXT_KEY, JSON.stringify(extOptions)); }
 function applyExtOptions() {
   document.getElementById('ext-layout').checked = extOptions.layout;
-  document.getElementById('ext-rarity-n').checked = extOptions.rarity_n;
+  document.getElementById('ext-marker').checked = extOptions.marker;
   // 不勾选「手动调整布局」时隐藏布局设置 navtab；当前正在布局 tab 则退回卡牌库
   document.querySelector('.navtab[data-tab="layout"]').style.display = extOptions.layout ? '' : 'none';
   if (!extOptions.layout && document.getElementById('tab-layout').classList.contains('active'))
     showTab('cards');
-  if (formData) buildForm();  // 稀有度下拉选项随「允许 N 稀有度」变化
+  if (formData) buildForm();  // 稀有度/勾玉颜色等下拉随扩展选项变化
 }
 document.getElementById('ext-layout').onchange = ev => {
   extOptions.layout = ev.target.checked; saveExtOptions(); applyExtOptions();
 };
-document.getElementById('ext-rarity-n').onchange = ev => {
-  extOptions.rarity_n = ev.target.checked; saveExtOptions(); applyExtOptions();
+document.getElementById('ext-marker').onchange = ev => {
+  extOptions.marker = ev.target.checked; saveExtOptions(); applyExtOptions();
 };
-// 稀有度下拉选项：默认 R/SR/SSR；勾选扩展选项或当前卡已是 N 时含 N
+// 稀有度下拉选项：默认 R/SR/SSR；勾选标记扩展或当前卡已是 N 时含 N
 function rarityOptions() {
-  return (extOptions.rarity_n || (formData && formData.rarity === 'N'))
+  return (extOptions.marker || (formData && formData.rarity === 'N'))
     ? RARITIES : RARITIES.filter(r => r !== 'N');
 }
 
@@ -672,13 +678,16 @@ function buildForm() {
   textRow(div, 'id', formData.id ?? '', v => setOptText('id', v));
   textRow(div, '卡名', formData.name ?? '', v => setField('name', v));
   if (t === '式神') {
-    selRowC(div, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
+    if (extOptions.marker) factionRow(div);  // 标记扩展：派系 + 派系样式并排
+    else selRowC(div, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
     // 框品缺省常规（norm 不写进 yaml，保持字段最小化）
     selRowC(div, '框品', FRAME_VARIANTS.map(([v]) => v), formData.frame_variant ?? 'norm',
       v => { if (v === 'norm') delete formData.frame_variant; else formData.frame_variant = v; afterEdit(); },
       v => FRAME_VARIANTS.find(([val]) => val === v)[1]);
+    if (extOptions.marker) levelColorRow(div, true);  // 标记扩展：式神等级/勾玉颜色（框品与力量之间）
   } else {
-    selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
+    if (extOptions.marker) levelColorRow(div, false);  // 标记扩展：等级 + 勾玉颜色并排
+    else selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
     selRowC(div, '稀有度', rarityOptions(), formData.rarity ?? 'R', v => setField('rarity', v));
     if (EVOLVE_TYPES.has(t)) {
       checkRowC(div, '觉醒', !!formData.evolve, v => {
@@ -717,18 +726,21 @@ function buildForm() {
     setField('description', ta.value);
   };
   l.appendChild(ta); div.appendChild(l);
-  // 卡图上传：直接落盘项目 images/ 并写回 yaml（不走保存按钮），成功后刷新预览
+  // 卡图上传：单按钮——点击弹文件选择框，选中即上传（直接落盘项目 images/ 并写回
+  // yaml，不走保存按钮），成功后刷新预览
   const artLabel = document.createElement('label');
   artLabel.textContent = '卡图 ';
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.accept = 'image/*';
+  fileInput.style.display = 'none';
   const upBtn = document.createElement('button');
-  upBtn.textContent = '上传';
-  upBtn.onclick = async () => {
+  upBtn.textContent = '上传卡图';
+  upBtn.onclick = () => fileInput.click();
+  fileInput.onchange = async () => {
     if (!curProject || !curCard) return;
     const f = fileInput.files[0];
-    if (!f) { showFormErrors(['请先选择图片文件']); return; }
+    if (!f) return;
     let resp;
     try {
       resp = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/artwork?filename=${enc(f.name)}`,
@@ -887,6 +899,71 @@ function checkRowC(div, label, val, set) {
   i.onchange = () => set(i.checked);
   l.appendChild(i); div.appendChild(l);
 }
+// 派系 + 派系样式并排行（标记扩展，式神专用）：样式缺省 2 不写进 yaml
+function factionRow(div) {
+  const l = document.createElement('label');
+  l.textContent = '派系 ';
+  const s = document.createElement('select');
+  for (const o of FACTIONS) {
+    const op = document.createElement('option');
+    op.value = op.textContent = o;
+    if (o === (formData.faction ?? '红莲')) op.selected = true;
+    s.appendChild(op);
+  }
+  s.onchange = () => setField('faction', s.value);
+  const ss = document.createElement('select');
+  const curStyle = String(formData.faction_style ?? 2);
+  for (const o of FACTION_STYLES) {
+    const op = document.createElement('option');
+    op.value = op.textContent = String(o);
+    if (op.value === curStyle) op.selected = true;
+    ss.appendChild(op);
+  }
+  ss.onchange = () => {
+    if (ss.value === '2') delete formData.faction_style;
+    else formData.faction_style = parseInt(ss.value, 10);
+    afterEdit();
+  };
+  l.appendChild(s);
+  l.appendChild(document.createTextNode(' 派系样式 '));
+  l.appendChild(ss); div.appendChild(l);
+}
+// 等级 + 勾玉颜色并排行（标记扩展）：shiki=true 时等级含 0（0=无等级，删 level 键）；
+// 勾玉颜色缺省 yellow 不写进 yaml（取消勾选扩展也不回退已选颜色，仅隐藏控件）
+function levelColorRow(div, shiki) {
+  const l = document.createElement('label');
+  l.textContent = '等级 ';
+  const s = document.createElement('select');
+  const opts = shiki ? ['0', '1', '2', '3'] : ['1', '2', '3'];
+  const cur = String(formData.level ?? (shiki ? 0 : 1));
+  for (const o of opts) {
+    const op = document.createElement('option');
+    op.value = op.textContent = o;
+    if (o === cur) op.selected = true;
+    s.appendChild(op);
+  }
+  s.onchange = () => {
+    if (shiki && s.value === '0') delete formData.level;
+    else formData.level = parseInt(s.value, 10);
+    afterEdit();
+  };
+  const cs = document.createElement('select');
+  const curColor = formData.level_color ?? 'yellow';
+  for (const [v, zh] of LEVEL_COLORS) {
+    const op = document.createElement('option');
+    op.value = v; op.textContent = zh;
+    if (v === curColor) op.selected = true;
+    cs.appendChild(op);
+  }
+  cs.onchange = () => {
+    if (cs.value === 'yellow') delete formData.level_color;
+    else formData.level_color = cs.value;
+    afterEdit();
+  };
+  l.appendChild(s);
+  l.appendChild(document.createTextNode(' 勾玉颜色 '));
+  l.appendChild(cs); div.appendChild(l);
+}
 
 // 即时校验：口径对齐 store/schema.py validate_card（artwork 由服务端把最后一道）
 function validateCardJS(d) {
@@ -895,8 +972,8 @@ function validateCardJS(d) {
   if (!TYPES.includes(t)) return [`字段 type：非法卡牌类型「${t}」，须为 ${TYPES.join('/')} 之一`];
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   if ('id' in d && typeof d.id !== 'string') errors.push('字段 id：必须是字符串');
-  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork']);
-  if (t === '式神') ['faction', 'frame_variant', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
+  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color']);
+  if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {
     // 协战白名单：shikigami 移除，改为可选 shikigami1/shikigami2（与 store schema 同口径）
     const base = ['level', 'rarity', 'special_type', ...STATS_BY_TYPE[t]];
@@ -916,14 +993,14 @@ function validateCardJS(d) {
     if ('faction' in d && !FACTIONS.includes(d.faction)) {
       errors.push(`字段 faction：非法派系「${d.faction}」，须为 ${FACTIONS.join('/')} 之一`);
     }
+    if ('faction_style' in d && (!Number.isInteger(d.faction_style) || !FACTION_STYLES.includes(d.faction_style))) {
+      errors.push(`字段 faction_style：派系样式必须是整数 ${FACTION_STYLES.join('/')} 之一`);
+    }
     if ('description' in d && typeof d.description !== 'string') errors.push('字段 description：必须是字符串');
   } else {
     if (!('rarity' in d)) errors.push('缺少必填字段：rarity');
     else if (!RARITIES.includes(d.rarity)) {
       errors.push(`字段 rarity：非法稀有度「${d.rarity}」，须为 ${RARITIES.join('/')} 之一`);
-    }
-    if ('level' in d && (!Number.isInteger(d.level) || !LEVELS.includes(d.level))) {
-      errors.push(`字段 level：等级必须是整数 ${LEVELS.join('/')} 之一`);
     }
     if ('evolve' in d && typeof d.evolve !== 'boolean') errors.push('字段 evolve：必须是布尔值（true/false）');
     if ('frame_variant' in d && !FRAME_VARIANT_VALUES.has(d.frame_variant)) {
@@ -932,6 +1009,12 @@ function validateCardJS(d) {
     for (const f of ['shikigami', 'shikigami1', 'shikigami2', 'special_type', 'description']) {
       if (f in d && typeof d[f] !== 'string') errors.push(`字段 ${f}：必须是字符串`);
     }
+  }
+  if ('level' in d && (!Number.isInteger(d.level) || !LEVELS.includes(d.level))) {
+    errors.push(`字段 level：等级必须是整数 ${LEVELS.join('/')} 之一`);
+  }
+  if ('level_color' in d && !LEVEL_COLOR_VALUES.has(d.level_color)) {
+    errors.push(`字段 level_color：非法勾玉颜色「${d.level_color}」，须为 ${[...LEVEL_COLOR_VALUES].join('/')} 之一`);
   }
   const evolve = !!d.evolve;
   for (const f of STATS_BY_TYPE[t]) {

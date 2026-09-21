@@ -6,6 +6,10 @@ stat 数值字段口径与 render/badges.py `_STAT_MATRIX` 对齐（store 不 im
 
 框品 frame_variant（norm/blue/black/red）式神/战斗/法术/形态/幻境可携带（可选，缺省 norm；
 式神牌框同形态）；协战恒 norm，携带属白名单之外字段。
+
+标记扩展字段（均可选）：level_color 勾玉颜色（yellow/cyan/purple/red/blue/brown，缺省 yellow，
+凡可带 level 的类型皆可携带）；式神另可携带可选 level（1-3，缺省无等级）与
+faction_style 派系样式（1/2/3，缺省 2）。
 """
 
 from __future__ import annotations
@@ -15,9 +19,13 @@ FACTIONS = ("红莲", "苍叶", "青岚", "紫岩", "无相")
 RARITIES = ("N", "R", "SR", "SSR")
 LEVELS = (1, 2, 3)
 FRAME_VARIANTS = ("norm", "blue", "black", "red")
+LEVEL_COLORS = ("yellow", "cyan", "purple", "red", "blue", "brown")
+FACTION_STYLES = (1, 2, 3)
 
 _COMMON_FIELDS = ("type", "name", "id", "description")
 _SHIKIGAMI_ONLY = ("faction",)
+# 标记扩展字段：勾玉颜色（凡可带等级者皆可）、式神等级/派系样式
+_MARK_FIELDS = ("level_color",)
 _NON_SHIKIGAMI_FIELDS = ("level", "rarity", "special_type")
 # 所属式神按名关联：常规非式神卡单引用 shikigami；协战双引用 shikigami1/shikigami2
 _ASSIST_FIELDS = ("shikigami1", "shikigami2")
@@ -52,10 +60,11 @@ def _is_num(v) -> bool:
 
 
 def _allowed_fields(ctype: str) -> set[str]:
-    allowed = set(_COMMON_FIELDS)
+    allowed = set(_COMMON_FIELDS) | set(_MARK_FIELDS)
     if ctype == "式神":
         allowed |= set(_SHIKIGAMI_ONLY) | set(_STATS_BY_TYPE["式神"])
         allowed.add("frame_variant")  # 式神牌框同形态，支持四框品（无觉醒）
+        allowed |= {"level", "faction_style"}  # 标记扩展：式神可选等级与派系样式
     else:
         allowed |= set(_NON_SHIKIGAMI_FIELDS) | set(_STATS_BY_TYPE[ctype])
         allowed |= set(_ASSIST_FIELDS) if ctype == "协战" else {"shikigami"}
@@ -96,14 +105,16 @@ def validate_card(data) -> list[str]:
         faction = data.get("faction")
         if "faction" in data and faction not in FACTIONS:
             errors.append(f"字段 faction：非法派系「{faction}」，须为 {'/'.join(FACTIONS)} 之一")
+        if "faction_style" in data and (not _is_int(data["faction_style"])
+                                        or data["faction_style"] not in FACTION_STYLES):
+            errors.append(f"字段 faction_style：派系样式必须是整数 "
+                          f"{'/'.join(map(str, FACTION_STYLES))} 之一")
     else:
         rarity = data.get("rarity")
         if "rarity" not in data:
             errors.append("缺少必填字段：rarity")
         elif rarity not in RARITIES:
             errors.append(f"字段 rarity：非法稀有度「{rarity}」，须为 {'/'.join(RARITIES)} 之一")
-        if "level" in data and (not _is_int(data["level"]) or data["level"] not in LEVELS):
-            errors.append(f"字段 level：等级必须是整数 {'/'.join(map(str, LEVELS))} 之一")
         if "evolve" in data and not isinstance(data["evolve"], bool):
             errors.append("字段 evolve：必须是布尔值（true/false）")
         if "frame_variant" in data and data["frame_variant"] not in FRAME_VARIANTS:
@@ -113,6 +124,11 @@ def validate_card(data) -> list[str]:
         for field in ("shikigami", *_ASSIST_FIELDS, "special_type", "description"):
             if field in data and not isinstance(data[field], str):
                 errors.append(f"字段 {field}：必须是字符串")
+    if "level" in data and (not _is_int(data["level"]) or data["level"] not in LEVELS):
+        errors.append(f"字段 level：等级必须是整数 {'/'.join(map(str, LEVELS))} 之一")
+    if "level_color" in data and data["level_color"] not in LEVEL_COLORS:
+        errors.append(f"字段 level_color：非法勾玉颜色「{data['level_color']}」，"
+                      f"须为 {'/'.join(LEVEL_COLORS)} 之一")
     if ctype == "式神" and "description" in data and not isinstance(data["description"], str):
         errors.append("字段 description：必须是字符串")
 

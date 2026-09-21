@@ -144,7 +144,8 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
             out = _paste_element(out, lib.level_star(), (pos[0] + sx, pos[1] + sy),
                                  (elem["star_size"], elem["star_size"]))
         nx, ny = elem.get("num_offset", [0, 0])  # 勾玉相对底座偏移
-        return _paste_element(out, lib.level_num(card["level"]),
+        return _paste_element(out, lib.level_num(card["level"],
+                                                 card.get("level_color", "yellow")),
                               (pos[0] + nx, pos[1] + ny),
                               (elem["num_size"], elem["num_size"]))
     if kind == "rarity_flank":
@@ -164,7 +165,9 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         color = FACTION_COLOR.get(card.get("faction", ""))
         if color is None:
             return canvas
-        return _paste_element(canvas, lib.faction(color, elem.get("style", 2)),
+        # 派系样式：卡面 faction_style（1-3）优先，缺省用布局元素的 style（默认 2）
+        style = card.get("faction_style", elem.get("style", 2))
+        return _paste_element(canvas, lib.faction(color, style),
                               elem["pos"], (elem["size"], elem["size"]))
     if kind == "stat":
         if not stat_rendered(elem, card):

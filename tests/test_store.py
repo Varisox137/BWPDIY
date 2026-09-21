@@ -373,6 +373,11 @@ def test_rename_cascade_only_for_shikigami(lib):
     {**FORM, "frame_variant": "black"},                 # 墨染
     {**FIELD, "frame_variant": "red"},                  # 百炼
     {**SHIKIGAMI, "frame_variant": "black"},            # 式神可携带（牌框同形态）
+    {**SHIKIGAMI, "level": 2},                          # 标记扩展：式神可选等级
+    {**SHIKIGAMI, "faction_style": 1},                  # 标记扩展：派系样式 1-3
+    {**SHIKIGAMI, "level_color": "cyan"},               # 勾玉颜色（凡可带 level 者皆可）
+    {**FIGHT, "level_color": "brown"},
+    {**ASSIST, "level_color": "purple"},
     FORM,
     FIELD,
     ASSIST,
@@ -417,7 +422,12 @@ def test_validate_ok(card):
     ({**FORM, "durability": 3}, "durability"),
     ({**FIELD, "health": 3}, "health"),
     ({**ASSIST, "power+": 1}, "power+"),
-    ({**SHIKIGAMI, "level": 1}, "level"),             # 式神无等级
+    ({**SHIKIGAMI, "level": 4}, "level"),             # 式神等级同样限 1-3
+    ({**SHIKIGAMI, "level": "1"}, "level"),
+    ({**SHIKIGAMI, "faction_style": 4}, "faction_style"),
+    ({**SHIKIGAMI, "faction_style": "2"}, "faction_style"),
+    ({**FIGHT, "faction_style": 1}, "faction_style"),   # 派系样式为式神专属（白名单之外）
+    ({**FIGHT, "level_color": "gold"}, "level_color"),  # 非法勾玉颜色
     ({**SHIKIGAMI, "rarity": "R"}, "rarity"),         # 式神无稀有度
     ({**FIGHT, "未知字段": 1}, "未知字段"),
     # artwork 结构形状

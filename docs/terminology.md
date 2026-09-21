@@ -1,6 +1,6 @@
 # BWPDIY 术语表
 
-定稿日期：2026-09-14。修订：v1.0（2026-09-18，PSD 素材替换/四框品/新合成管线/扩展选项）；v1.2（描述文本关键字高亮）；v1.3.0（描述文本 `#xx` 内嵌图标）。新增/变更术语须同步本表。
+定稿日期：2026-09-14。修订：v1.0（2026-09-18，PSD 素材替换/四框品/新合成管线/扩展选项）；v1.2（描述文本关键字高亮）；v1.3.0（描述文本 `#xx` 内嵌图标）；v1.4.0（标记扩展：勾玉六色/式神等级/派系样式/N 稀有度合并）。新增/变更术语须同步本表。
 
 ## 渲染层级（自底向上合成顺序）
 
@@ -14,8 +14,8 @@
 | ~~蒙版~~ | ~~mask~~ | **v1.0 废弃**：牌框卡图区天然透明，合成顺序改为 卡图→叠牌框→裁框外内容，不再需要蒙版抠图；旧 masks 封存 `assets/legacy/masks/` |
 | 牌框 | frame | 完整卡框（卡图区透明），资源 `frames/{form,combat,spell,field,reinforce}_{框品}.png`（协战仅 norm），PSD 导出经预处理（裁 alpha bbox→等比缩至高 512→居中贴 512×512 透明画布）；版型 `high`/`low` 概念废弃（PSD 框即官方定版） |
 | 框品 | frame_variant | 常规(norm)/琉璃(blue)/墨染(black)/百炼(red)；v1.0 开放——卡牌 yaml 可选字段 `frame_variant`（缺省 norm，式神/战斗/法术/形态/幻境可携带，式神牌框同形态、协战恒 norm），按框品自动切换牌框/稀有度贴图/文字颜色 |
-| 等级标 | level_badge | 三层自底向上叠加（无等级卡牌整体跳过）：① 底座 `levels/base.png`（勾玉底框）→ ② 觉醒图案 `levels/evolve_star.png`（五角星金底，仅觉醒牌；觉醒 = evolve: true，仅战斗/法术/形态/幻境可携带，式神/协战不可）→ ③ 勾玉层 `levels/level_{1,2,3}_yellow.png`（官方勾玉个数制，默认黄色；四色=黄/青/紫/红二期染色生成，BWPro 对战四位己方式神渲染用，另 blue/brown 两色保留生成）；布局参数三组：`pos` 底座坐标、`star_offset` 觉醒星相对底座偏移、`num_offset` 勾玉相对底座偏移（缺省 [0,0]） |
-| 稀有度标 | rarity_mark | N/R/SR/SSR，资源 `rarity/{R,SR,SSR}{,_blue,_red}.png`（罕贵度整带裁单枚花标；black 框品回退 norm 版）+ `rarity/reinforce_{R,SR,SSR}.png`（协战专版：蓝=R/紫=SR/金=SSR）+ `rarity/N.png`（legacy 图，仅「扩展选项」启用时可选） |
+| 等级标 | level_badge | 三层自底向上叠加（无等级卡牌整体跳过）：① 底座 `levels/base.png`（勾玉底框）→ ② 觉醒图案 `levels/evolve_star.png`（五角星金底，仅觉醒牌；觉醒 = evolve: true，仅战斗/法术/形态/幻境可携带，式神/协战不可）→ ③ 勾玉层 `levels/level_{1,2,3}_{yellow,cyan,purple,red,blue,brown}.png`（官方勾玉个数制；默认黄色，v1.4.0 接入 legacy 六色，卡牌 yaml 可选字段 `level_color`，缺省 yellow 不写进 yaml）；布局参数三组：`pos` 底座坐标、`star_offset` 觉醒星相对底座偏移、`num_offset` 勾玉相对底座偏移（缺省 [0,0]） |
+| 稀有度标 | rarity_mark | N/R/SR/SSR，资源 `rarity/{R,SR,SSR}{,_blue,_red}.png`（罕贵度整带裁单枚花标；black 框品回退 norm 版）+ `rarity/reinforce_{R,SR,SSR}.png`（协战专版：蓝=R/紫=SR/金=SSR）+ `rarity/N.png`（legacy 图，仅「标记扩展」启用时可选） |
 | 派系标 | faction_mark | 红莲 red/苍叶 green/青岚 blue/紫岩 purple/无相；式神卡大标沿用 legacy 三变体 `factions/{color}_{1,2,3}.png`（style 默认 2）；`icons/faction_{color}{,_black}.png` 小标为 `#xx` 内嵌图标用（v1.3.0 起，墨染框用 `_black` 变体） |
 | 数值标 | stat | 力量(power)/生命(health)/战斗牌护甲加成(shield)/幻境耐久(intensity)；角标贴图 `stats/{stem}.png`（力量/生命全类型共用 `power.png`/`health.png`；护甲 `combat_shield.png`，负护甲自动换 `stats/combat_fragile_2.png` 破甲图，变体 1/2 可选默认 2；耐久 `field_intensity.png`）；正负号贴图 `signs/{plus,minus}.png`（不经数字字体）；适用矩阵见「元素」行 |
 | 卡名 | name_text | 田氏颜体大字库 2.0（生僻字字形风格已统一，v1.2.3 起） |
@@ -44,12 +44,12 @@
 | 卡名与文件名脱钩 | yaml 文件名任意（方便 BWPro 按 id 取文件），卡名以文件内 `name` 字段为准；式神卡名全项目唯一（引用按名关联），改名时服务端联动改写同项目所有卡的 `shikigami`/`shikigami1`/`shikigami2` |
 | 项目名/卡名合法性 | store 层保存时拒绝：空名、首尾空白、`.`/`..`、路径分隔符与 `<>:"\|?*`、控制字符、以点结尾（防路径注入）、Windows 保留设备名（CON/PRN/AUX/NUL/COM1–9/LPT1–9，大小写不敏感、按 `.` 前缀截断判定）——约束文件 stem 与项目名 |
 | 衍生物 | 项目内由卡效果派生的实体卡，存于 `cards/`，带派生标记 |
-| 引擎段 | 卡牌 yaml 中与 BWPro 口径对齐的字段（type/name/level/rarity/description…；v1.0 增可选 `frame_variant`；v1.3.0 增可选可留空 `id`，上传卡图按 `<id><ext>` 落盘、留空回退 `<卡名><ext>`，改 id 不重命名已有卡图） |
+| 引擎段 | 卡牌 yaml 中与 BWPro 口径对齐的字段（type/name/level/rarity/description…；v1.0 增可选 `frame_variant`；v1.3.0 增可选可留空 `id`，上传卡图按 `<id><ext>` 落盘、留空回退 `<卡名><ext>`，改 id 不重命名已有卡图；v1.4.0 增可选 `level_color`（勾玉六色）与式神专属可选 `level`/`faction_style`） |
 | 渲染段 | `artwork` 段：`images` 列表，每项 `path/offset_x/offset_y/scale` 全可缺省（默认 `<id 或卡名>.png` / 0 / 0 / 1.0） |
 | 布局配置 | `assets/layout.json`（出厂值入 git）+ 包内 `bwpdiy/render/default_layout.json` 回退；按 6 卡牌类型各一套「元素表 + 命名文本区」；同名元素的尺寸类字段（size/icon_size/font_size/num_offset/star_offset/sign_offset/sign_size_plus/sign_size_minus/stroke_width/gap/margin/base_size/fragile_icon_size/fragile_num_offset/fragile_sign_offset 等除 pos/group_offset/fragile_pos 与内容类外的数值字段）跨类型必须一致，load 时不一致按多数值归一并告警（平票取先出现类型）；`group_offset`（四类带符号数值的符号数字整体偏移，叠加在 num_offset 之上）与 `fragile_pos`（破甲角标坐标）为 per-type 键不归一；GUI 保存时的跨类型传播只镜像样式键白名单，kind/field/pos/group_offset/fragile_pos/enabled 一律不镜像 |
-| 元素 | 布局中的可定位渲染单元，kind ∈ level_badge（是否绘制由卡面等级决定：等级 0/无 level 不绘制，v1.1.2 起不再提供启用开关）/ rarity_flank（卡名两侧对称双标：`gap`=默认半间距，短名时双标静态固定在 pos±gap；仅卡名渲染宽度超宽时按与卡名缘固定 `margin` 外移，即 effective=max(gap, name_width/2+margin)，margin 缺省 8）/ faction（`style` 选贴图样式，默认 2）/ stat（图标+数字一组，图标由 field 推导 `stats/{stem}.png`、负护甲自动换破甲图；num_offset 相对偏移；破甲（战斗负护甲）四键分离 `fragile_pos`/`fragile_icon_size`/`fragile_num_offset`/`fragile_sign_offset`（缺省回退基础键，fragile_pos 为 per-type 键），贴图变体 `fragile_variant`（1/2，缺省 2），字号/描边/符号尺寸/group_offset 与护甲共享；符号（如有，signs/plus|minus.png 贴图，sign_size_plus/sign_size_minus 分开缩放、sign_offset 偏移）+ 数字作为整体块，块的视觉中心对齐 num_pos；数字白字黑描边（`stroke_width` 可配，默认 2）；**stat 适用矩阵**为唯一口径（渲染/文本避让/GUI 输入同表）：式神·形态 力量+生命、幻境 耐久——无符号、非负（GUI 输入 min=0 约束，渲染不强制 clamp）、0 照常绘制；战斗 力量+/护甲+、法术觉醒 力量+/生命+——± 号按实际正负贴图、0 值整个角标不渲染；协战/非觉醒法术/其余表外 (type, field) 组合即使 card 带该字段也不绘制、GUI 不提供输入框）/ text（卡名 name 与脚注 footer 点元素：pos 中心水平居中单行，font_size 固定无递减，footer 缺省 = "所属式神-类型[/子类型]"小字（协战为 "式神1×式神2-协战"，缺任一式神只标 "协战"），中立牌（无所属式神）只标 "类型[/子类型]"、式神卡回退卡名；颜色按框品）；贴图统一先裁 alpha 透明边、再等比 contain 进 size 框（size=内容可见尺寸，禁止非等比拉伸） |
+| 元素 | 布局中的可定位渲染单元，kind ∈ level_badge（是否绘制由卡面等级决定：等级 0/无 level 不绘制，v1.1.2 起不再提供启用开关）/ rarity_flank（卡名两侧对称双标：`gap`=默认半间距，短名时双标静态固定在 pos±gap；仅卡名渲染宽度超宽时按与卡名缘固定 `margin` 外移，即 effective=max(gap, name_width/2+margin)，margin 缺省 8）/ faction（`style` 选贴图样式，默认 2；v1.4.0 起卡面可选字段 `faction_style`（1-3）优先于布局 style）/ stat（图标+数字一组，图标由 field 推导 `stats/{stem}.png`、负护甲自动换破甲图；num_offset 相对偏移；破甲（战斗负护甲）四键分离 `fragile_pos`/`fragile_icon_size`/`fragile_num_offset`/`fragile_sign_offset`（缺省回退基础键，fragile_pos 为 per-type 键），贴图变体 `fragile_variant`（1/2，缺省 2），字号/描边/符号尺寸/group_offset 与护甲共享；符号（如有，signs/plus|minus.png 贴图，sign_size_plus/sign_size_minus 分开缩放、sign_offset 偏移）+ 数字作为整体块，块的视觉中心对齐 num_pos；数字白字黑描边（`stroke_width` 可配，默认 2）；**stat 适用矩阵**为唯一口径（渲染/文本避让/GUI 输入同表）：式神·形态 力量+生命、幻境 耐久——无符号、非负（GUI 输入 min=0 约束，渲染不强制 clamp）、0 照常绘制；战斗 力量+/护甲+、法术觉醒 力量+/生命+——± 号按实际正负贴图、0 值整个角标不渲染；协战/非觉醒法术/其余表外 (type, field) 组合即使 card 带该字段也不绘制、GUI 不提供输入框）/ text（卡名 name 与脚注 footer 点元素：pos 中心水平居中单行，font_size 固定无递减，footer 缺省 = "所属式神-类型[/子类型]"小字（协战为 "式神1×式神2-协战"，缺任一式神只标 "协战"），中立牌（无所属式神）只标 "类型[/子类型]"、式神卡回退卡名；颜色按框品）；贴图统一先裁 alpha 透明边、再等比 contain 进 size 框（size=内容可见尺寸，禁止非等比拉伸） |
 | 文本区 | 命名矩形区域（仅 desc：`center`+`width`+`height`，可选 `obstacle_gap` 避让间距、缺省 4；可选 `center_offset` 居中锚点偏移、缺省 [0,0]、per-type 键——区域边界与行宽不变，只平移水平逐行居中与竖直整体居中的视觉基准，如右下角大数字时左移锚点让触界行视觉居中；可选 `icon_scale` 内嵌图标相对文字大小、缺省 1.0、尺寸类跨类型归一——图标高=字号×系数、宽度计入换行与逐行居中），自动换行、逐行居中（行水平中心默认居中锚点；仅当行的实际宽度触到收窄边界时才最小平移避让，短末行不因远处角标偏移）、文本块竖直居中（先定字号与行数，再把文本块中心对齐居中锚点；块整体须落在区域内，出界视为排版失败走字号递减）、字号递减适配——**自适应次序**：当前字号排不下或任一行被障碍挤偏（未水平居中，v1.2.2 起由仅末行放宽为每行都检查）时，先逐 1px 临时上移居中锚点（至多半行高）重试，全部不行才减小字号；显式 `\n` 强制断行（连续 `\n` 合并为一个，每段内再自动换行）；激活的 stat 元素（0 值不渲染的 stat 不参与）在透明层单独渲染，取 alpha≥128 的**碰撞轮廓**作避让掩膜（非组件矩形 bbox，也非原始 alpha 全量墨迹——仿牌框阈值预处理，抗锯齿淡边缘不算墨迹；图标走 alpha_composite 保真源 alpha，不吃默认 paste 的 alpha 平方）：每个描述行 y 带内被占用的 x 区间向外扩 `obstacle_gap` 后逐行收窄，保证竖直贴邻行之间描述墨迹与角标墨迹横向相距 ≥ gap（y 带竖直只外扩 1px——贴邻行之外不收窄，给文本更多可用空间） |
-| 扩展选项 | 顶栏勾选框组（localStorage `bwpdiy_ext_options` 持久化，默认全部不勾选、对应功能不对普通使用者开放）：① 手动调整布局（不勾选则隐藏布局设置 tab）② 允许 N 稀有度（稀有度下拉默认 R/SR/SSR）③ 勾玉四色（disabled 置灰预留，二期） |
+| 扩展选项 | 顶栏勾选框组（localStorage `bwpdiy_ext_options` 持久化，默认全部不勾选、对应功能不对普通使用者开放）：① 手动调整布局（不勾选则隐藏布局设置 tab）② 标记扩展（v1.4.0 合并原「允许 N 稀有度」与勾玉颜色等标记类扩展，旧键 rarity_n 自动迁移）：稀有度下拉开放 N；等级旁开放勾玉六色（黄/青/紫/红/蓝/棕）；式神开放可选等级（0-3，0=无）与派系样式（1-3，默认 2）——取消勾选只隐藏控件，已写入卡牌的 level_color/faction_style/level 不回退、渲染照常生效 |
 | 素材归档 | `assets/legacy/` = 被替换的旧位图资产封存（旧 frames/icons/levels/masks/rarity，含 unprocessed 框品/high 版型原图留待以后）；`assets/psd_export/` = PSD 图层原始镜像档案（中文名，不作运行时资源）；两者均不进 exe（build_exe.py 排除）；运行时资产由 `scripts/import_psd_assets.py` 从 psd_export 再生成 |
 
 ## 二期术语（预留，一期不实现）
@@ -57,5 +57,5 @@
 | 术语 | 说明 |
 |---|---|
 | 关键词上色 | 描述文本中 `[关键词]` 高亮着色 |
-| 勾玉四色 | `levels/level_{1,2,3}_{yellow,cyan,purple,red}.png` 染色生成（另 blue/brown 保留），BWPro 对战四位己方式神渲染用；届时与 legacy 6 色数字版比对取舍 |
+| 勾玉四色 | （已于 v1.4.0 落地并扩展为六色，见「等级标」；BWPro 对战四位己方式神渲染用黄/青/紫/红） |
 | 协战双式神头像框 | 双菱形头像+派系小标（素材在 `psd_export/协战/式神头像框/`）；仅 BWPro 卡组构筑/对战详情用，DIY 工具一般不绘制 |

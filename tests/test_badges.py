@@ -107,6 +107,33 @@ def test_faction(assets_dir):
                                  {"faction": "无相"})) == 0
 
 
+def test_faction_style(assets_dir):
+    """卡面 faction_style（1-3）覆盖布局元素 style（缺省 2）：三样式渲染互不相同。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "faction", "pos": [256, 318], "size": 44, "style": 2}
+    imgs = [render_element(canvas(), lib, "faction", elem,
+                           {"faction": "红莲", "faction_style": s}) for s in (1, 2, 3)]
+    for img in imgs:
+        assert opaque(img) > 0
+    assert list(imgs[0].getdata()) != list(imgs[1].getdata())
+    assert list(imgs[1].getdata()) != list(imgs[2].getdata())
+    # 缺省 faction_style = 布局 style（2）
+    assert list(imgs[1].getdata()) == list(render_element(
+        canvas(), lib, "faction", elem, {"faction": "红莲"}).getdata())
+
+
+@pytest.mark.parametrize("color", ["yellow", "cyan", "purple", "red", "blue", "brown"])
+def test_level_badge_colors(assets_dir, color):
+    """勾玉六色素材齐备可渲染；非黄色与黄色渲染结果不同。"""
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "level_badge", "pos": [120, 65], "base_size": 72, "num_size": 40}
+    img = render_element(canvas(), lib, "level", elem, {"level": 2, "level_color": color})
+    assert opaque(img) > 0
+    if color != "yellow":
+        yellow = render_element(canvas(), lib, "level", elem, {"level": 2})
+        assert list(img.getdata()) != list(yellow.getdata())
+
+
 def test_stat_signed_and_offset(assets_dir):
     lib = AssetLibrary(assets_dir)
     elem = {"kind": "stat", "field": "power+", "pos": [160, 485],

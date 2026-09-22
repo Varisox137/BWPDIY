@@ -568,9 +568,9 @@ def test_duo_frame_empty_slots_fallback(assets_dir):
     assert opaque(a) > 0
     b = render_element(canvas(), lib, "duo_frame", _duo_elem(), {**card, "_duo": [None, None]})
     assert list(a.getdata()) == list(b.getdata())
-    # 两槽位中心（91,129)/(91,199) 为黑底板墨迹；槽位盒左上角在菱形外无墨
-    assert a.getpixel((91, 129))[3] > 0 and a.getpixel((91, 199))[3] > 0
-    assert a.getchannel("A").getpixel((47, 89)) == 0
+    # 两槽位中心（91,164)/(91,238) 为黑底板墨迹；组件盒外 (41,114) 无墨
+    assert a.getpixel((91, 164))[3] > 0 and a.getpixel((91, 238))[3] > 0
+    assert a.getchannel("A").getpixel((41, 114)) == 0
 
 
 def test_duo_frame_slot_art_masked_and_faction(assets_dir, sample_art):
@@ -582,8 +582,8 @@ def test_duo_frame_slot_art_masked_and_faction(assets_dir, sample_art):
     empty = render_element(canvas(), lib, "duo_frame", _duo_elem(),
                            {"type": "协战", "duo_frame": True})
     assert list(img.getdata()) != list(empty.getdata())  # 头像注入生效
-    # 菱形掩膜：槽位1盒左上角 (47,89) 在菱形外，即使有头像也不落墨
-    assert img.getchannel("A").getpixel((47, 89)) == 0
+    # 菱形掩膜：组件盒外 (41,114) 即使有头像也不落墨
+    assert img.getchannel("A").getpixel((41, 114)) == 0
     # 无相/缺派系不画小标：与带派系渲染不同
     no_faction = render_element(canvas(), lib, "duo_frame", _duo_elem(),
                                 {"type": "协战", "duo_frame": True,

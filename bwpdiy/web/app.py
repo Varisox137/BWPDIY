@@ -319,7 +319,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             pass
         try:
             lib = AssetLibrary(Path(assets_dir))
-            img = render_portrait(lib, elem, art_ref, card_data.get("faction"))
+            img = render_portrait(lib, elem, art_ref, card_data.get("faction"),
+                                  faction_style=card_data.get("faction_style"))
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()
@@ -405,6 +406,9 @@ def _duo_slot(library_dir: Path, project: str, shikigami_name) -> dict | None:
     faction = shiki.get("faction")
     if isinstance(faction, str):
         slot["faction"] = faction
+    style = shiki.get("faction_style")  # 派系标样式随式神设置（缺省渲染层回退 2）
+    if isinstance(style, int) and not isinstance(style, bool):
+        slot["faction_style"] = style
     images = shiki.get("artwork", {})
     images = images.get("images") if isinstance(images, dict) else None
     first = images[0] if isinstance(images, list) and images else None

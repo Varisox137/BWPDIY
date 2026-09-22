@@ -590,21 +590,21 @@
       "duo_frame": {
         "kind": "duo_frame",
         "pos": [
-          112,
-          137
+          124,
+          129
         ],
         "slot2_dy": 72,
-        "back_size": 80,
-        "frame_size": 72,
+        "back_size": 56,
+        "frame_size": 67,
         "frame_offset": [
-          11,
-          -8
+          0,
+          0
         ],
         "faction_offset": [
-          30,
-          12
+          19,
+          20
         ],
-        "faction_size": 32
+        "faction_size": 43
       },
       "rarity": {
         "kind": "rarity_flank",

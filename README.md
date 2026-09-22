@@ -8,7 +8,8 @@
 uv sync
 PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest -q
 python -m bwpdiy   # 启动编辑器（http://127.0.0.1:8630，卡牌库/布局设置双 tab；旧 /layout 重定向至此）
-                   # 可选 --host/--port 改监听地址端口；--no-browser 禁用自动打开浏览器
+                   # 可选 --host/--port 改监听地址端口；--no-browser 禁用自动打开浏览器；
+                   # --no-idle-stop 关闭闲置 2h 自动终止（开发用，打包 exe 默认保留）
 ```
 
 也可打包为单文件 exe（资源全内嵌，library/ 落在 exe 同级目录）：

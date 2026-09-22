@@ -49,6 +49,8 @@ def main() -> int:
     ap.add_argument("--port", type=int, default=8630, help="监听端口（默认 8630）")
     ap.add_argument("--no-browser", action="store_true",
                     help="启动后不自动打开浏览器（测试/调试场景）")
+    ap.add_argument("--no-idle-stop", action="store_true",
+                    help="关闭闲置自动终止（开发用；打包 exe 默认保持 2h 防占用）")
     args = ap.parse_args()
 
     import threading
@@ -89,6 +91,7 @@ def main() -> int:
         timer.start()
 
     app = create_app(default_assets_dir(), library_dir=default_library_dir(),
+                     idle_timeout=0 if args.no_idle_stop else 7200.0,
                      loopback_guard=args.host in ("127.0.0.1", "localhost", "::1"))
     if args.host not in ("127.0.0.1", "localhost", "::1"):
         # 非回环监听：局域网内任何人可读写/删除项目（无鉴权），且 Host 校验已关闭

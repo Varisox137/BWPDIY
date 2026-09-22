@@ -111,3 +111,17 @@ def test_probe_non_loopback_skipped(fakes, monkeypatch):
     monkeypatch.setattr(m, "_probe_running", lambda host, port: called.append(1) or "x")
     _run(monkeypatch, ["--host", "0.0.0.0", "--port", "8633"])
     assert called == []
+
+
+def test_no_idle_stop_disables_watchdog(fakes, monkeypatch):
+    """--no-idle-stop：create_app 收到 idle_timeout=0（关闭闲置看门狗）；缺省保持 7200。"""
+    import bwpdiy.web.app as app_mod
+    seen = []
+    real = app_mod.create_app
+    def spy(*a, **kw):
+        seen.append(kw.get("idle_timeout", 7200.0))
+        return real(*a, **kw)
+    monkeypatch.setattr(app_mod, "create_app", spy)
+    _run(monkeypatch, ["--no-idle-stop", "--no-browser"])
+    _run(monkeypatch, ["--no-browser"])
+    assert seen == [0, 7200.0]

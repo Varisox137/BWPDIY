@@ -33,7 +33,8 @@
   #c-ask { border: 1px solid #999; background: #fffbe9; padding: 6px; margin-top: 6px; display: none; font-size: 12px; }
   #c-ask input, #c-ask select { width: 100%; margin: 4px 0; box-sizing: border-box; }
   #c-form label { display: block; font-size: 12px; margin-top: 8px; }
-  #c-form input[type="text"], #c-form input[type="number"] { width: 150px; }
+  #c-form input[type="text"] { width: 150px; }
+  #c-form input[type="number"] { width: 75px; }
   #c-form textarea { width: 100%; height: 110px; font-size: 12px; box-sizing: border-box; }
   #c-form .readonly { color: #666; font-size: 12px; margin-top: 4px; }
   #c-form-errors { color: #c0392b; font-size: 12px; white-space: pre-line; margin-top: 8px; }
@@ -48,8 +49,10 @@
   .tab.active { background: #d9b96a; }
   #l-props label { display: block; font-size: 12px; margin-top: 6px; }
   #l-props input, #l-props select { width: 90px; }
+  #l-props input[type="number"] { width: 45px; }
   #l-cardprops label { display: block; font-size: 12px; margin-top: 4px; }
   #l-cardprops input { width: 100px; }
+  #l-cardprops input[type="number"] { width: 50px; }
   #l-cardprops textarea { width: 195px; height: 64px; font-size: 12px; }
   .note { font-size: 11px; color: #777; }
   #l-status { color: #ffd77a; margin-left: 8px; }
@@ -154,7 +157,7 @@
     <button id="help-close">关闭</button>
     <h3>BWPDIY 使用说明</h3>
     <h4>基本流程</h4>
-    <div>左栏新建项目与卡牌（默认新建式神；非式神卡的「所属式神」可关联同项目式神）→ 右栏编辑卡牌内容、上传卡图 → 中央实时预览 → 「保存」写盘；「导出」把当前卡牌（含未保存修改）下载为 PNG 图片（默认按卡名命名）。卡图按 id（留空则按卡名）命名落盘。连续 2 小时无操作时程序会自动停止（防占用），重新启动即可。</div>
+    <div>左栏新建项目与卡牌（默认新建式神；非式神卡的「所属式神」可关联同项目式神）→ 右栏编辑卡牌内容、上传卡图 → 中央实时预览 → 「保存」写盘；「导出卡图」把当前卡牌（含未保存修改）下载为 PNG 图片（默认按卡名命名）。卡图按 id（留空则按卡名）命名落盘。连续 2 小时无操作时程序会自动停止（防占用），重新启动即可。</div>
     <h4>描述文本自适应</h4>
     <div>描述自动换行、每行水平居中、整体竖直居中；排不下时先微调居中点、再自动逐级缩小字号；遇左下/右下角标自动避让，文字不会压到数值。</div>
     <h4>关键字高亮</h4>
@@ -168,7 +171,7 @@
       </table>
     </div>
     <h4>卡图定位</h4>
-    <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。式神卡的卡图四项右侧另有并排的「头像」设置（同四参数），用于协战双式神框中该式神的头像裁剪，预览框以 2 倍大小实时显示在卡图预览下方。</div>
+    <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。式神卡的卡图四项右侧另有并排的「头像」设置（同四参数），用于协战双式神框中该式神的头像裁剪，预览框以 2 倍大小实时显示在卡图预览下方；「头像框」勾选控制头像预览/导出头像是否绘制斜方框与派系标（不勾选=仅菱形裁剪的裸头像），「导出头像」按当前预览直接下载 PNG。</div>
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
     <h4>协战双式神框</h4>
@@ -841,19 +844,37 @@ function buildForm() {
     artRow(div, '卡图缩放', artFirst.scale ?? 1, v => setArt('scale', v), pv('scale'), ps('scale'), 0.05, 0.01);
     artRow(div, '卡图旋转(°)', artFirst.rotate ?? 0, v => setArt('rotate', v), pv('rotate'), ps('rotate'), 5);
   }
+  if (t === '式神') {
+    // 头像框开关（portrait.frame，缺省画框）：勾选才在头像预览/导出头像中绘制斜方框与派系标
+    const pf = (formData.portrait && typeof formData.portrait === 'object') ? formData.portrait.frame : undefined;
+    checkRowC(div, '头像框', pf !== false, v => {
+      const p = {...(formData.portrait || {})};
+      if (v) delete p.frame; else p.frame = false;  // 缺省 true 不写进 yaml
+      if (Object.keys(p).length) formData.portrait = p; else delete formData.portrait;
+      afterEdit();
+    });
+  }
   const row = document.createElement('div');
   row.style.marginTop = '10px';
   const btn = document.createElement('button');
   btn.textContent = '保存';
   btn.onclick = saveCard;
   const expBtn = document.createElement('button');
-  expBtn.textContent = '导出';
+  expBtn.textContent = '导出卡图';
   expBtn.style.marginLeft = '6px';
   expBtn.onclick = openExport;
+  row.appendChild(btn); row.appendChild(expBtn);
+  if (t === '式神') {
+    const expP = document.createElement('button');
+    expP.textContent = '导出头像';
+    expP.style.marginLeft = '6px';
+    expP.onclick = exportPortrait;
+    row.appendChild(expP);
+  }
   const dirty = document.createElement('span');
   dirty.id = 'c-dirty';
   dirty.textContent = cDirty ? '● 未保存' : '';
-  row.appendChild(btn); row.appendChild(expBtn); row.appendChild(dirty);
+  row.appendChild(dirty);
   div.appendChild(row);
   const errs = document.createElement('div');
   errs.id = 'c-form-errors';
@@ -1102,8 +1123,10 @@ function validateCardJS(d) {
         errors.push('字段 portrait：头像设置必须是映射');
       } else {
         for (const [k, v] of Object.entries(d.portrait)) {
-          if (!['offset_x', 'offset_y', 'scale', 'rotate'].includes(k)) {
+          if (!['offset_x', 'offset_y', 'scale', 'rotate', 'frame'].includes(k)) {
             errors.push(`字段 portrait.${k}：未知键`);
+          } else if (k === 'frame') {
+            if (typeof v !== 'boolean') errors.push('字段 portrait.frame：必须是布尔值（true/false）');
           } else if (typeof v !== 'number' || !Number.isFinite(v)) {
             errors.push(`字段 portrait.${k}：必须是数字`);
           } else if (k === 'scale' && v <= 0) {
@@ -1212,6 +1235,26 @@ document.getElementById('export-ok').onclick = async () => {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
   exportModal.style.display = 'none';
 };
+
+// ---- 导出头像：按当前头像预览（含头像框开关与未保存 portrait 修改）直接下载 PNG ----
+async function exportPortrait() {
+  if (!formData || !curProject || !curCard || formData.type !== '式神') return;
+  const errEl = document.getElementById('c-form-errors');
+  const base = String(formData.name || curCard).replace(/[<>:"/\\|?*]/g, '').trim() || 'card';
+  let r;
+  try {
+    r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/portrait_preview`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({card: formData})});
+  } catch (e) { errEl.textContent = '导出头像请求失败: ' + e; return; }
+  if (!r.ok) { errEl.textContent = '导出头像失败：' + (await parseErrorDetail(r)).join('\n'); return; }
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = base + '_头像.png';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
 
 // ================= 布局设置 tab =================
 // 自原 static/layout.html 迁入：DOM id 加 l- 前缀、入口改懒初始化 layoutBoot、

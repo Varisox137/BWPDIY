@@ -83,10 +83,13 @@ def render_duo_frame(canvas: Image.Image, lib: AssetLibrary,
                 art = _slot_artwork(lib, art_ref, card, back_box,
                                     back_fit.getchannel("A"))
                 out.alpha_composite(art, box)
-        # 斜方框（高光 + 框线，共用 frame_offset 与 frame_size；先裁可见边再居中）
+        # 斜方框（高光 + 框线，共用 frame_offset 与 frame_size；先裁可见边再居中；
+        # 槽位2 高光 = 槽位1 旋转 180°（PSD 两图仅抗锯齿级差异，不单存素材）
         target = (center[0] + round(frame_off[0]), center[1] + round(frame_off[1]))
-        out = _paste_element(out, _crop_visible(lib.duo(f"highlight_{i + 1}")),
-                             target, (frame_size, frame_size))
+        hi = lib.duo("highlight_1")
+        if i == 1:
+            hi = hi.transpose(Image.Transpose.ROTATE_180)
+        out = _paste_element(out, _crop_visible(hi), target, (frame_size, frame_size))
         out = _paste_element(out, _crop_visible(lib.duo(f"frame_{i + 1}")),
                              target, (frame_size, frame_size))
         # 派系小标（复用式神派系素材，样式随式神 faction_style，缺省 2）
@@ -107,11 +110,13 @@ def _faction_style(source: dict) -> int:
 
 def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
                     faction: str | None, scale: int = 2,
-                    faction_style: int | None = None) -> Image.Image:
-    """式神头像预览：单槽位合成（底图→头像菱形裁剪→斜方框→派系标），按布局 ×scale。
+                    faction_style: int | None = None,
+                    with_frame: bool = True) -> Image.Image:
+    """式神头像预览/导出：单槽位合成（底图→头像菱形裁剪→斜方框→派系标），按布局 ×scale。
 
     取协战 duo_frame 布局参数（back_size/frame_size/faction_size/frame_offset/
-    faction_offset）放大 scale 倍；art_ref 缺/缺图只画底图+框+派系标。
+    faction_offset）放大 scale 倍；art_ref 缺/缺图只画底图（+框+派系标）。
+    with_frame=False 时不画斜方框与派系标（仅底图+菱形裁剪头像，导出裸头像用）。
     返回以底图中心为中心的正方形小画布（不做非对称 tightest 裁剪，菱形居中显示）。
     """
     back_size = max(1, round(elem.get("back_size", _DEFAULT_BACK_SIZE) * scale))
@@ -125,12 +130,15 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
     back_box = (max(1, round(back.width * bs)), max(1, round(back.height * bs)))
     back_fit = back.resize(back_box, Image.Resampling.LANCZOS)
 
-    # 正方形小画布：底图中心居中，边长容纳各部件（中心 + 偏移 ± 尺寸半径）的并集
-    ext = max(back_box[0] // 2, back_box[1] // 2,
-              frame_size // 2 + max(abs(round(frame_off[0] * scale)),
-                                    abs(round(frame_off[1] * scale))),
-              faction_size // 2 + max(abs(round(faction_off[0] * scale)),
-                                      abs(round(faction_off[1] * scale))))
+    # 正方形小画布：底图中心居中，边长容纳各部件（中心 + 偏移 ± 尺寸半径）的并集；
+    # 不画框/派系标时只按底图盒计算（裸头像导出更小画布）
+    ext = max(back_box[0] // 2, back_box[1] // 2)
+    if with_frame:
+        ext = max(ext,
+                  frame_size // 2 + max(abs(round(frame_off[0] * scale)),
+                                        abs(round(frame_off[1] * scale))),
+                  faction_size // 2 + max(abs(round(faction_off[0] * scale)),
+                                          abs(round(faction_off[1] * scale))))
     side = ext * 2 + 16
     center = (side // 2, side // 2)
     out = Image.new("RGBA", (side, side), (0, 0, 0, 0))
@@ -146,6 +154,8 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
             art.putalpha(ImageChops.multiply(art.getchannel("A"),
                                              back_fit.getchannel("A")))
             out.alpha_composite(art, box)
+    if not with_frame:
+        return out
     out = _paste_element(out, _crop_visible(lib.duo("highlight_1")),
                          (center[0] + round(frame_off[0] * scale),
                           center[1] + round(frame_off[1] * scale)),

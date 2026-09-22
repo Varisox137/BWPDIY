@@ -381,6 +381,7 @@ def test_rename_cascade_only_for_shikigami(lib):
     {**ASSIST, "duo_frame": True},                      # 协战双式神框开关（可选布尔）
     {**SHIKIGAMI, "portrait": {}},                      # 头像变换段：全键可缺省
     {**SHIKIGAMI, "portrait": {"offset_x": 4, "offset_y": -2, "scale": 1.2, "rotate": 15}},
+    {**SHIKIGAMI, "portrait": {"frame": False}},        # 头像框开关（可选布尔）
     {**SHIKIGAMI, "power_color": "red"},                # 数值变色（红=debuff/受伤）
     {**FIGHT, "shield+_color": "green"},                # 绿=buff
     {**FIELD, "durability_color": "purple"},            # 紫=中毒
@@ -426,6 +427,7 @@ def test_validate_ok(card):
     ({**SHIKIGAMI, "portrait": {"scale": 0}}, "portrait"),        # scale 须正数
     ({**SHIKIGAMI, "portrait": {"offset_x": "1"}}, "portrait"),   # 数值键须数字
     ({**SHIKIGAMI, "portrait": {"zoom": 1}}, "portrait"),         # 未知键
+    ({**SHIKIGAMI, "portrait": {"frame": "否"}}, "portrait"),     # frame 必须布尔
     ({**SHIKIGAMI, "power": True}, "power"),          # bool 不算 int
     ({**SHIKIGAMI, "health": -1}, "health"),          # 非负
     ({**FIGHT, "power+": "1"}, "power+"),

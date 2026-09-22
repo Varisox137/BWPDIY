@@ -319,8 +319,13 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             pass
         try:
             lib = AssetLibrary(Path(assets_dir))
+            portrait_meta = card_data.get("portrait")
+            # 头像框开关（portrait.frame，缺省 true）：不画斜方框与派系标，仅菱形裁剪头像
+            with_frame = (not isinstance(portrait_meta, dict)
+                          or portrait_meta.get("frame", True) is not False)
             img = render_portrait(lib, elem, art_ref, card_data.get("faction"),
-                                  faction_style=card_data.get("faction_style"))
+                                  faction_style=card_data.get("faction_style"),
+                                  with_frame=with_frame)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()

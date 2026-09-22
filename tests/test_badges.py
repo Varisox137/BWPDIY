@@ -629,3 +629,19 @@ def test_render_portrait_faction_badge(assets_dir, sample_art):
     assert list(a.getdata()) != list(b.getdata())
     assert list(a.getdata()) != list(c.getdata())
     assert list(c.getdata()) == list(d.getdata())  # 无相与缺派系同：均不画小标
+
+
+def test_render_portrait_without_frame(assets_dir, sample_art):
+    """with_frame=False：只画底图+菱形裁剪头像（不画斜方框/派系标），画布更小。"""
+    from bwpdiy.render.duo import render_portrait
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "duo_frame", "pos": [91, 164]}
+    art_ref = {"path": str(sample_art), "offset_x": 0, "offset_y": 0,
+               "scale": 1.0, "rotate": 0}
+    framed = render_portrait(lib, elem, art_ref, "苍叶")
+    bare = render_portrait(lib, elem, art_ref, "苍叶", with_frame=False)
+    assert opaque(bare) > 0
+    assert bare.width < framed.width and bare.height < framed.height
+    assert list(bare.getdata()) != list(framed.getdata())
+    # 裸头像 = 带框版隐去框/派系标后的居中部分：画布正方形且菱形居中
+    assert bare.width == bare.height

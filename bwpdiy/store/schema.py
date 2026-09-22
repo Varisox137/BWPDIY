@@ -9,8 +9,8 @@ stat 数值字段口径与 render/badges.py `_STAT_MATRIX` 对齐（store 不 im
 
 协战另可携带可选布尔 duo_frame（双式神框渲染开关，缺省不绘制、不写进 yaml）。
 
-式神另可携带可选 portrait 头像变换段（{offset_x, offset_y, scale, rotate}，全可缺省；
-协战双式神框取该式神卡图作头像时套用，口径同 artwork 变换）。
+式神另可携带可选 portrait 头像变换段（{offset_x, offset_y, scale, rotate} + 可选布尔
+frame 头像框开关，全可缺省；协战双式神框取该式神卡图作头像时套用变换，口径同 artwork）。
 
 标记扩展字段（均可选）：level_color 勾玉颜色（yellow/cyan/purple/red/blue/brown，缺省 yellow，
 凡可带 level 的类型皆可携带）；式神另可携带可选 level（1-3，缺省无等级）与
@@ -30,8 +30,8 @@ FACTION_STYLES = (1, 2, 3)
 
 _COMMON_FIELDS = ("type", "name", "id", "description")
 _SHIKIGAMI_ONLY = ("faction",)
-# 式神专属可选渲染段字段：portrait 头像变换（{offset_x, offset_y, scale, rotate} 全可缺省，
-# 协战双式神框引用该式神卡图作头像时使用；缺省 0/0/1.0/0 自动居中填满）
+# 式神专属可选渲染段字段：portrait 头像设置（{offset_x, offset_y, scale, rotate} 变换 +
+# frame 头像框开关，全可缺省；协战双式神框引用该式神卡图作头像时使用；缺省 0/0/1.0/0/画框）
 _SHIKIGAMI_RENDER_FIELDS = ("portrait",)
 # 标记扩展字段：勾玉颜色（凡可带等级者皆可）、式神等级/派系样式
 _MARK_FIELDS = ("level_color",)
@@ -177,17 +177,20 @@ def validate_card(data) -> list[str]:
 
 
 def _validate_transform(t, field: str) -> list[str]:
-    """变换组宽松校验（portrait 头像设置）：结构形状+数值类型，字段全可缺省。"""
+    """变换组宽松校验（portrait 头像设置）：结构形状+数值类型，字段全可缺省。
+    另允许可选布尔 frame（头像框开关：是否绘制斜方框与派系标，缺省 true）。"""
     if not isinstance(t, dict):
-        return [f"字段 {field}：必须是映射（offset_x/offset_y/scale/rotate 全可缺省）"]
+        return [f"字段 {field}：必须是映射（offset_x/offset_y/scale/rotate/frame 全可缺省）"]
     errors = []
     for key in ("offset_x", "offset_y", "rotate"):
         if key in t and not _is_num(t[key]):
             errors.append(f"字段 {field}.{key}：必须是数字")
     if "scale" in t and (not _is_num(t["scale"]) or t["scale"] <= 0):
         errors.append(f"字段 {field}.scale：必须是正数")
+    if "frame" in t and not isinstance(t["frame"], bool):
+        errors.append(f"字段 {field}.frame：必须是布尔值（true/false）")
     for key in t:
-        if key not in ("offset_x", "offset_y", "scale", "rotate"):
+        if key not in ("offset_x", "offset_y", "scale", "rotate", "frame"):
             errors.append(f"字段 {field}.{key}：未知字段")
     return errors
 

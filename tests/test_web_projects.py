@@ -546,3 +546,16 @@ def test_portrait_preview_rejects_non_shikigami(client, project):
     assert r.status_code == 400
     assert client.post(f"/api/projects/{project}/cards/不存在/portrait_preview",
                        json={}).status_code == 404
+
+
+def test_portrait_preview_frame_toggle(client, project, library_dir):
+    """头像框开关：portrait.frame=false 时预览不画斜方框与派系标（输出不同且仍 200）。"""
+    images = library_dir / project / "images"
+    images.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SAMPLE_ART, images / "测试式神.png")
+    framed = client.post(f"/api/projects/{project}/cards/shikigami/portrait_preview", json={})
+    bare = client.post(
+        f"/api/projects/{project}/cards/shikigami/portrait_preview",
+        json={"card": {**_shikigami_card(), "portrait": {"frame": False}}})
+    assert bare.status_code == 200 and bare.content != framed.content
+    assert _png_size(bare)[0] < _png_size(framed)[0]  # 不画框画布更小

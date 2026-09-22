@@ -4,8 +4,9 @@
 乘底板 alpha 裁菱形）→ 斜方框（突出高光 highlight_i + 框线 frame_i，同一偏移）→
 派系小标（复用式神派系素材 factions/{color}_{style}.png，样式随式神 faction_style、
 缺省 2；无相/缺派系不画）。两槽位竖直对齐（x 一致），槽位2 只有竖直间距。
-duo 素材带半透明光晕，统一先按 alpha≥128 可见 bbox 裁边（_crop_visible）再 contain，
-否则可见图形相对底图中心偏移。
+duo 素材中底板带大范围半透明光晕，先按 alpha≥128 可见 bbox 裁边（_crop_visible）再 contain，
+否则可见菱形相对底图中心偏移；高光/框线层只做 alpha>0 裁边以保持 PSD 层间配准
+（框线含刻意半透明的边，阈值裁边会切断其与高光的互相对齐）。
 
 布局元素（仅协战类型，上下两框共用除 pos/slot2_dy 外的全部参数，共 10 项）：
 - pos：上框底图（槽位1 基底）中心
@@ -83,14 +84,16 @@ def render_duo_frame(canvas: Image.Image, lib: AssetLibrary,
                 art = _slot_artwork(lib, art_ref, card, back_box,
                                     back_fit.getchannel("A"))
                 out.alpha_composite(art, box)
-        # 斜方框（高光 + 框线，共用 frame_offset 与 frame_size；先裁可见边再居中；
+        # 斜方框（高光 + 框线，共用 frame_offset 与 frame_size）：
+        # 高光/框线只做 alpha>0 裁边（_paste_element 内建），不做阈值裁边——
+        # 两层必须保持 PSD 原配准（框线含刻意半透明的边，阈值裁边会切断互相对齐）；
         # 槽位2 高光 = 槽位1 旋转 180°（PSD 两图仅抗锯齿级差异，不单存素材）
         target = (center[0] + round(frame_off[0]), center[1] + round(frame_off[1]))
         hi = lib.duo("highlight_1")
         if i == 1:
             hi = hi.transpose(Image.Transpose.ROTATE_180)
-        out = _paste_element(out, _crop_visible(hi), target, (frame_size, frame_size))
-        out = _paste_element(out, _crop_visible(lib.duo(f"frame_{i + 1}")),
+        out = _paste_element(out, hi, target, (frame_size, frame_size))
+        out = _paste_element(out, lib.duo(f"frame_{i + 1}"),
                              target, (frame_size, frame_size))
         # 派系小标（复用式神派系素材，样式随式神 faction_style，缺省 2）
         if isinstance(slot, dict):
@@ -156,11 +159,11 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
             out.alpha_composite(art, box)
     if not with_frame:
         return out
-    out = _paste_element(out, _crop_visible(lib.duo("highlight_1")),
+    out = _paste_element(out, lib.duo("highlight_1"),
                          (center[0] + round(frame_off[0] * scale),
                           center[1] + round(frame_off[1] * scale)),
                          (frame_size, frame_size))
-    out = _paste_element(out, _crop_visible(lib.duo("frame_1")),
+    out = _paste_element(out, lib.duo("frame_1"),
                          (center[0] + round(frame_off[0] * scale),
                           center[1] + round(frame_off[1] * scale)),
                          (frame_size, frame_size))

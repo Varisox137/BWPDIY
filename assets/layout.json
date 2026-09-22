@@ -590,19 +590,19 @@
       "duo_frame": {
         "kind": "duo_frame",
         "pos": [
-          110,
-          135
+          112,
+          137
         ],
-        "slot2_dy": 74,
-        "back_size": 88,
-        "frame_size": 75,
+        "slot2_dy": 72,
+        "back_size": 80,
+        "frame_size": 72,
         "frame_offset": [
-          0,
-          0
+          11,
+          -8
         ],
         "faction_offset": [
-          17,
-          23
+          30,
+          12
         ],
         "faction_size": 32
       },

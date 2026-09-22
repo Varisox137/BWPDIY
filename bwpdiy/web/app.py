@@ -20,6 +20,8 @@ from PIL import Image
 
 from bwpdiy import __version__
 from bwpdiy import updater
+from bwpdiy.render.assets import AssetLibrary
+from bwpdiy.render.duo import render_portrait
 from bwpdiy.render.layout import load_layouts
 from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
 from bwpdiy.resources import default_library_dir
@@ -270,6 +272,60 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         img.save(buf, "PNG")
         return Response(buf.getvalue(), media_type="image/png")
 
+    @app.post("/api/projects/{project}/cards/{card}/portrait_preview")
+    async def portrait_preview(project: str, card: str, request: dict = Body(None)):
+        """式神头像预览：双式神框单槽位（底图+头像+斜方框+派系标），按布局 2 倍渲染。
+
+        变换取表单/落盘的 portrait 段（缺省 0/0/1/0）；派系标随式神 faction；
+        缺卡图只画空槽位。布局取当前 assets/layout.json 协战 duo_frame 元素。
+        """
+        card_data = load_card(library_dir, project, card)
+        override = (request or {}).get("card")
+        if override is not None:
+            if not isinstance(override, dict):
+                raise HTTPException(400, "card 必须是对象")
+            card_data = copy.deepcopy(override)
+        if card_data.get("type") != "式神":
+            raise HTTPException(400, "头像预览仅适用于式神卡")
+        elem = load_layouts(Path(assets_dir)).get("协战", {}).get(
+            "elements", {}).get("duo_frame")
+        if elem is None:
+            raise HTTPException(422, "渲染失败: 布局缺失协战 duo_frame 元素")
+        # 卡图路径解析与越界防护口径同 _duo_slot；缺图 → None（空槽位）
+        images = card_data.get("artwork", {})
+        images = images.get("images") if isinstance(images, dict) else None
+        first = images[0] if isinstance(images, list) and images else None
+        ref = dict(first) if isinstance(first, dict) else {}
+        raw_path = ref.get("path")
+        if not isinstance(raw_path, str) or not raw_path:
+            raw_path = f"{card_data.get('id') or card_data.get('name', '')}.png"
+        images_dir = library_dir / project / "images"
+        art_path = Path(raw_path)
+        if not art_path.is_absolute():
+            art_path = images_dir / art_path
+        art_ref = None
+        try:
+            art_path = art_path.resolve(strict=True)
+            art_path.relative_to(images_dir.resolve())
+            portrait = card_data.get("portrait")
+            portrait = portrait if isinstance(portrait, dict) else {}
+            art_ref = {"path": str(art_path)}
+            for k, default in (("offset_x", 0), ("offset_y", 0),
+                               ("scale", 1.0), ("rotate", 0)):
+                v = portrait.get(k)
+                art_ref[k] = (v if isinstance(v, (int, float))
+                              and not isinstance(v, bool) else default)
+        except (OSError, ValueError):
+            pass
+        try:
+            lib = AssetLibrary(Path(assets_dir))
+            img = render_portrait(lib, elem, art_ref, card_data.get("faction"))
+        except Exception as e:
+            raise HTTPException(422, f"渲染失败: {e}") from e
+        buf = BytesIO()
+        img.save(buf, "PNG")
+        return Response(buf.getvalue(), media_type="image/png")
+
     _ART_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
     @app.post("/api/projects/{project}/cards/{card}/artwork")
@@ -365,9 +421,12 @@ def _duo_slot(library_dir: Path, project: str, shikigami_name) -> dict | None:
         art_path.relative_to(images_dir.resolve())  # 越界防护口径同卡图
     except (OSError, ValueError):
         return slot
+    # 头像变换取式神卡 portrait 段（缺省 0/0/1/0 自动居中填满），不复用卡图变换
+    portrait = shiki.get("portrait")
+    portrait = portrait if isinstance(portrait, dict) else {}
     art = {"path": str(art_path)}
     for k, default in (("offset_x", 0), ("offset_y", 0), ("scale", 1.0), ("rotate", 0)):
-        v = ref.get(k)
+        v = portrait.get(k)
         art[k] = v if isinstance(v, (int, float)) and not isinstance(v, bool) else default
     slot["art"] = art
     return slot

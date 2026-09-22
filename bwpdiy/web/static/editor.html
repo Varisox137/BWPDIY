@@ -20,6 +20,7 @@
   #c-mid { flex: 1; display: flex; flex-direction: column; align-items: center; background: #3a3a3a; padding-top: 8px; }
   #c-right { width: 300px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
   #c-preview { margin-top: 10px; background: #222; width: 512px; height: 512px; }
+  #c-portrait { display: block; margin-top: 8px; background: #222; }
   .item { padding: 3px 6px; cursor: pointer; }
   .item.active { background: #d9b96a; }
   .item.shiki { font-weight: bold; }
@@ -117,6 +118,7 @@
     </div>
     <div id="c-error"></div>
     <img id="c-preview" width="512" height="512" alt="">
+    <img id="c-portrait" alt="" style="display:none">
   </div>
   <div id="c-right">
     <div id="c-form">未选中卡牌</div>
@@ -166,7 +168,7 @@
       </table>
     </div>
     <h4>卡图定位</h4>
-    <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。</div>
+    <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。式神卡的卡图四项右侧另有并排的「头像」设置（同四参数），用于协战双式神框中该式神的头像裁剪，预览框以 2 倍大小实时显示在卡图预览下方。</div>
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
     <h4>协战双式神框</h4>
@@ -436,6 +438,9 @@ function clearCard() {
   curCard = null; cardData = null; formData = null; cDirty = false;
   document.getElementById('c-form').textContent = '未选中卡牌';
   cPreviewImg.removeAttribute('src');
+  cPortraitImg.style.display = 'none';
+  cPortraitImg.removeAttribute('src');
+  if (cPortraitUrl) { URL.revokeObjectURL(cPortraitUrl); cPortraitUrl = null; }
   if (cPreviewUrl) { URL.revokeObjectURL(cPreviewUrl); cPreviewUrl = null; }
   cErrorEl.textContent = '';
 }
@@ -658,6 +663,7 @@ async function cPreviewProject() {
     return;
   }
   await cHandlePreviewResponse(r, seq);
+  cPreviewPortrait(false);
 }
 async function cPreviewForm() {
   if (!formData || !curProject || !curCard) return;
@@ -677,11 +683,37 @@ async function cPreviewForm() {
     return;
   }
   await cHandlePreviewResponse(r, seq);
+  cPreviewPortrait(true);
 }
 document.getElementById('c-btn-refresh').onclick = () => {
   if (cDirty) scheduleCardPreview();  // 有未保存修改时刷新编辑态预览，避免被已保存内容覆盖
   else cPreviewProject();
 };
+
+// ---- 式神头像预览（卡图下方，双式神框单槽位 2 倍渲染）：仅编辑式神卡时显示 ----
+const cPortraitImg = document.getElementById('c-portrait');
+let cPortraitSeq = 0, cPortraitUrl = null;
+async function cPreviewPortrait(withForm) {
+  const seq = ++cPortraitSeq;
+  if (!curProject || !curCard || !formData || formData.type !== '式神') {
+    cPortraitImg.style.display = 'none';
+    return;
+  }
+  cPortraitImg.style.display = 'block';
+  let r;
+  try {
+    r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/portrait_preview`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(withForm ? {card: formData} : {})});
+  } catch (e) { return; }  // 头像预览失败不抢主预览的错误显示
+  if (seq !== cPortraitSeq) return;
+  if (!r.ok) { cPortraitImg.style.display = 'none'; return; }
+  const url = URL.createObjectURL(await r.blob());
+  const prev = cPortraitUrl;
+  cPortraitUrl = url;
+  cPortraitImg.onload = () => { if (prev) URL.revokeObjectURL(prev); };
+  cPortraitImg.src = url;
+}
 // 使用说明弹窗：开/关（点遮罩空白处同样关闭）
 const helpModal = document.getElementById('help-modal');
 document.getElementById('c-btn-help').onclick = () => { helpModal.style.display = 'block'; };
@@ -794,14 +826,20 @@ function buildForm() {
   curArtRow.id = 'c-cur-art';
   curArtRow.textContent = `当前卡图：${curArt || `（缺省 ${formData.name ?? curCard}.png）`}`;
   div.appendChild(curArtRow);
-  // 卡图定位：dx/dy/scale/旋转数字输入（旋转绕图片中心、画布自动扩展；不做拖拽/滚轮），改动走保存按钮
+  // 卡图定位：dx/dy/scale/旋转数字输入（旋转绕图片中心、画布自动扩展；不做拖拽/滚轮），改动走保存按钮；
+  // 式神卡每项右侧并排「头像」设置（portrait 段，协战双式神框引用本卡图作头像时使用）
   if (curArt) {
     const artFirst = formData.artwork.images[0];
     const setArt = (k, v) => { artFirst[k] = v; afterEdit(); };
-    numRowArt(div, '卡图偏移X', artFirst.offset_x ?? 0, v => setArt('offset_x', v));
-    numRowArt(div, '卡图偏移Y', artFirst.offset_y ?? 0, v => setArt('offset_y', v));
-    numRowArt(div, '卡图缩放', artFirst.scale ?? 1, v => setArt('scale', v), 0.05, 0.01);
-    numRowArt(div, '卡图旋转(°)', artFirst.rotate ?? 0, v => setArt('rotate', v), 5);
+    const isShiki = t === '式神';
+    const port = (isShiki && formData.portrait && typeof formData.portrait === 'object') ? formData.portrait : {};
+    const setPort = (k, v) => { formData.portrait = {...(formData.portrait || {}), [k]: v}; afterEdit(); };
+    const pv = k => isShiki ? (port[k] ?? (k === 'scale' ? 1 : 0)) : null;
+    const ps = k => isShiki ? (v => setPort(k, v)) : null;
+    artRow(div, '卡图偏移X', artFirst.offset_x ?? 0, v => setArt('offset_x', v), pv('offset_x'), ps('offset_x'));
+    artRow(div, '卡图偏移Y', artFirst.offset_y ?? 0, v => setArt('offset_y', v), pv('offset_y'), ps('offset_y'));
+    artRow(div, '卡图缩放', artFirst.scale ?? 1, v => setArt('scale', v), pv('scale'), ps('scale'), 0.05, 0.01);
+    artRow(div, '卡图旋转(°)', artFirst.rotate ?? 0, v => setArt('rotate', v), pv('rotate'), ps('rotate'), 5);
   }
   const row = document.createElement('div');
   row.style.marginTop = '10px';
@@ -914,20 +952,29 @@ function statColorSelect(field) {
   };
   return s;
 }
-function numRowArt(div, label, val, set, step = 1, min = null) {
-  // 卡图 offset/scale 输入：浮点、无滚轮微调（用户明确要求不做滚轮/拖拽）
+function artRow(div, label, val, set, pval, pset, step = 1, min = null) {
+  // 卡图 offset/scale 输入：浮点、无滚轮微调（用户明确要求不做滚轮/拖拽）；
+  // pset 非空（式神卡）时右侧并排一个头像设置输入（portrait 段）
   const l = document.createElement('label');
   l.textContent = label + ' ';
-  const i = document.createElement('input');
-  i.type = 'number'; i.value = val; i.step = step;
-  if (min !== null) i.min = min;
-  let cur = val;
-  i.onchange = () => {
-    let v = parseFloat(i.value);
-    if (isNaN(v) || (min !== null && v < min)) { i.value = cur; return; }
-    i.value = v; cur = v; set(v);
+  const mk = (v, st) => {
+    const i = document.createElement('input');
+    i.type = 'number'; i.value = v; i.step = step;
+    if (min !== null) i.min = min;
+    let cur = v;
+    i.onchange = () => {
+      let nv = parseFloat(i.value);
+      if (isNaN(nv) || (min !== null && nv < min)) { i.value = cur; return; }
+      i.value = nv; cur = nv; st(nv);
+    };
+    return i;
   };
-  l.appendChild(i); div.appendChild(l);
+  l.appendChild(mk(val, set));
+  if (pset) {
+    l.appendChild(document.createTextNode(' 头像 '));
+    l.appendChild(mk(pval, pset));
+  }
+  div.appendChild(l);
 }
 function selRowC(div, label, opts, val, set, map = null) {
   const l = document.createElement('label');
@@ -1026,7 +1073,7 @@ function validateCardJS(d) {
   if ('id' in d && typeof d.id !== 'string') errors.push('字段 id：必须是字符串');
   const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color']);
   (STATS_BY_TYPE[t] || []).forEach(f => allowed.add(`${f}_color`));  // 数值变色伴随字段
-  if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
+  if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', 'portrait', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {
     // 协战白名单：shikigami 移除，改为可选 shikigami1/shikigami2（与 store schema 同口径）
     const base = ['level', 'rarity', 'special_type', ...STATS_BY_TYPE[t]];
@@ -1050,6 +1097,21 @@ function validateCardJS(d) {
       errors.push(`字段 faction_style：派系样式必须是整数 ${FACTION_STYLES.join('/')} 之一`);
     }
     if ('description' in d && typeof d.description !== 'string') errors.push('字段 description：必须是字符串');
+    if ('portrait' in d) {
+      if (!d.portrait || typeof d.portrait !== 'object' || Array.isArray(d.portrait)) {
+        errors.push('字段 portrait：头像设置必须是映射');
+      } else {
+        for (const [k, v] of Object.entries(d.portrait)) {
+          if (!['offset_x', 'offset_y', 'scale', 'rotate'].includes(k)) {
+            errors.push(`字段 portrait.${k}：未知键`);
+          } else if (typeof v !== 'number' || !Number.isFinite(v)) {
+            errors.push(`字段 portrait.${k}：必须是数字`);
+          } else if (k === 'scale' && v <= 0) {
+            errors.push('字段 portrait.scale：必须是正数');
+          }
+        }
+      }
+    }
   } else {
     if (!('rarity' in d)) errors.push('缺少必填字段：rarity');
     else if (!RARITIES.includes(d.rarity)) {

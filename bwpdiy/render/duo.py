@@ -80,6 +80,65 @@ def render_duo_frame(canvas: Image.Image, lib: AssetLibrary,
     return out
 
 
+def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
+                    faction: str | None, scale: int = 2) -> Image.Image:
+    """式神头像预览：单槽位合成（底图→头像菱形裁剪→斜方框→派系标），按布局 ×scale。
+
+    取协战 duo_frame 布局参数（back_size/frame_size/faction_size/frame_offset/
+    faction_offset）放大 scale 倍；art_ref 缺/缺图只画底图+框+派系标。
+    返回整组件 tightest alpha bbox 裁剪后的 RGBA 图。
+    """
+    back_size = max(1, round(elem.get("back_size", _DEFAULT_BACK_SIZE) * scale))
+    frame_size = max(1, round(elem.get("frame_size", _DEFAULT_FRAME_SIZE) * scale))
+    faction_size = max(1, round(elem.get("faction_size", _DEFAULT_FACTION_SIZE) * scale))
+    frame_off = elem.get("frame_offset") or [0, 0]
+    faction_off = elem.get("faction_offset") or _DEFAULT_FACTION_OFFSET
+
+    back = lib.duo("back")
+    back = back.crop(back.getchannel("A").getbbox())
+    bs = back_size / max(back.size)
+    back_box = (max(1, round(back.width * bs)), max(1, round(back.height * bs)))
+    back_fit = back.resize(back_box, Image.Resampling.LANCZOS)
+
+    # 画布：容纳各部件（中心 + 偏移 ± 尺寸半径）的并集，最后按 alpha bbox 收紧
+    ext = max(back_box[0] // 2, back_box[1] // 2,
+              frame_size // 2 + max(abs(round(frame_off[0] * scale)),
+                                    abs(round(frame_off[1] * scale))),
+              faction_size // 2 + max(abs(round(faction_off[0] * scale)),
+                                      abs(round(faction_off[1] * scale))))
+    side = ext * 2 + 16
+    center = (side // 2, side // 2)
+    out = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    box = (center[0] - back_box[0] // 2, center[1] - back_box[1] // 2)
+    out.paste(back_fit, box, back_fit)
+    if isinstance(art_ref, dict) and art_ref.get("path"):
+        path = Path(art_ref["path"])
+        if path.is_file():
+            orig_size, art = lib.artwork(path, art_ref.get("rotate", 0))
+            art = fit_artwork(art, back_box, art_ref.get("offset_x", 0) * scale,
+                              art_ref.get("offset_y", 0) * scale,
+                              art_ref.get("scale", 1.0), cover_base=orig_size)
+            art.putalpha(ImageChops.multiply(art.getchannel("A"),
+                                             back_fit.getchannel("A")))
+            out.alpha_composite(art, box)
+    out = _paste_element(out, lib.duo("highlight_1"),
+                         (center[0] + round(frame_off[0] * scale),
+                          center[1] + round(frame_off[1] * scale)),
+                         (frame_size, frame_size))
+    out = _paste_element(out, lib.duo("frame_1"),
+                         (center[0] + round(frame_off[0] * scale),
+                          center[1] + round(frame_off[1] * scale)),
+                         (frame_size, frame_size))
+    color = FACTION_COLOR.get(faction or "")
+    if color is not None:
+        out = _paste_element(out, lib.duo(f"faction_{color}"),
+                             (center[0] + round(faction_off[0] * scale),
+                              center[1] + round(faction_off[1] * scale)),
+                             (faction_size, faction_size))
+    bbox = out.getchannel("A").getbbox()
+    return out.crop(bbox) if bbox else out
+
+
 def _slot_artwork(lib: AssetLibrary, ref: dict, card: dict,
                   slot_box: tuple[int, int], mask: Image.Image) -> Image.Image:
     """槽位头像：复用卡图加载缓存与 cover 适配（目标尺寸=槽位盒），底板 alpha 作菱形掩膜。"""

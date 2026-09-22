@@ -508,3 +508,41 @@ def test_duo_frame_not_in_saved_card(client, project):
     assert r.status_code == 422
     assert client.put(f"/api/projects/{project}/cards/共鸣", json=_duo_card()).status_code == 200
     assert "_duo" not in client.get(f"/api/projects/{project}/cards/共鸣").json()
+
+
+# ---------- 式神头像预览（portrait_preview，双式神框单槽位 2 倍渲染） ----------
+
+def test_portrait_preview_shikigami_200(client, project, library_dir):
+    """式神头像预览：缺图→空槽位（底板+框+派系标）仍 200；上传卡图后输出变化。"""
+    empty = client.post(f"/api/projects/{project}/cards/shikigami/portrait_preview", json={})
+    assert empty.status_code == 200 and empty.headers["content-type"] == "image/png"
+    images = library_dir / project / "images"
+    images.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SAMPLE_ART, images / "测试式神.png")  # 缺省 <卡名>.png 命中
+    with_art = client.post(f"/api/projects/{project}/cards/shikigami/portrait_preview", json={})
+    assert with_art.status_code == 200 and with_art.content != empty.content
+
+
+def test_portrait_preview_override_transform(client, project, library_dir):
+    """override 合并表单数据：portrait 偏移改变输出；派系标随 faction。"""
+    images = library_dir / project / "images"
+    images.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(SAMPLE_ART, images / "测试式神.png")
+    base = client.post(f"/api/projects/{project}/cards/shikigami/portrait_preview", json={})
+    moved = client.post(
+        f"/api/projects/{project}/cards/shikigami/portrait_preview",
+        json={"card": {**_shikigami_card(), "portrait": {"offset_x": 8, "offset_y": -6}}})
+    assert moved.status_code == 200 and moved.content != base.content
+    other_faction = client.post(
+        f"/api/projects/{project}/cards/shikigami/portrait_preview",
+        json={"card": {**_shikigami_card(), "faction": "青岚"}})
+    assert other_faction.status_code == 200 and other_faction.content != base.content
+
+
+def test_portrait_preview_rejects_non_shikigami(client, project):
+    """非式神卡请求头像预览 → 400；不存在的卡 → 404。"""
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    r = client.post(f"/api/projects/{project}/cards/测试斩/portrait_preview", json={})
+    assert r.status_code == 400
+    assert client.post(f"/api/projects/{project}/cards/不存在/portrait_preview",
+                       json={}).status_code == 404

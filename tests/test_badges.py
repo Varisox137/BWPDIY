@@ -596,3 +596,36 @@ def test_duo_frame_slot_art_masked_and_faction(assets_dir, sample_art):
                             "_duo": [_duo_slot(sample_art, "青岚"),
                                      _duo_slot(sample_art, "红莲")]})
     assert list(img.getdata()) != list(other.getdata())
+
+
+# ---------- 式神头像预览（render_portrait，duo_frame 单槽位 ×2） ----------
+
+def test_render_portrait_layers_and_scale(assets_dir, sample_art):
+    """单槽位合成：空槽=底板+框+派系标有墨迹；头像注入生效；scale=2 比 1 大。"""
+    from bwpdiy.render.duo import render_portrait
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "duo_frame", "pos": [91, 164]}
+    art_ref = {"path": str(sample_art), "offset_x": 0, "offset_y": 0,
+               "scale": 1.0, "rotate": 0}
+    empty = render_portrait(lib, elem, None, "苍叶")
+    assert opaque(empty) > 0
+    with_art = render_portrait(lib, elem, art_ref, "苍叶")
+    assert list(with_art.getdata()) != list(empty.getdata())
+    small = render_portrait(lib, elem, art_ref, "苍叶", scale=1)
+    assert with_art.width > small.width and with_art.height > small.height
+
+
+def test_render_portrait_faction_badge(assets_dir, sample_art):
+    """派系标随 faction：异派系渲染不同，无相/缺派系不画小标。"""
+    from bwpdiy.render.duo import render_portrait
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "duo_frame", "pos": [91, 164]}
+    art_ref = {"path": str(sample_art), "offset_x": 0, "offset_y": 0,
+               "scale": 1.0, "rotate": 0}
+    a = render_portrait(lib, elem, art_ref, "苍叶")
+    b = render_portrait(lib, elem, art_ref, "青岚")
+    c = render_portrait(lib, elem, art_ref, "无相")
+    d = render_portrait(lib, elem, art_ref, None)
+    assert list(a.getdata()) != list(b.getdata())
+    assert list(a.getdata()) != list(c.getdata())
+    assert list(c.getdata()) == list(d.getdata())  # 无相与缺派系同：均不画小标

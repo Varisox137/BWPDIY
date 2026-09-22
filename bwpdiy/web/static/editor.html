@@ -1734,20 +1734,25 @@ function buildProps() {
       selRow(div, '样式', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
     }
     if (e.kind === 'duo_frame') {
-      // 双式神框 10 参数：pos（上框底图中心，通用行已含）+ 底图大小 + 下框间距 +
-      // 框大小/偏移 + 派系标大小/偏移（偏移与大小上下两框共通；仅协战有此元素）
-      e.back_size ??= 88;
+      // 双式神框 12 参数：pos（上框底图中心，通用行已含）+ 底图大小 + 下框间距 +
+      // 框大小/偏移 + 上/下框高光各自 dy + 派系标大小/偏移
+      // （除 pos/下框间距/高光 dy 外上下两框共通；仅协战有此元素）
+      e.back_size ??= 62;
       numRow(div, '底图大小', e.back_size, v => { e.back_size = v; syncElemField(sel.name, 'back_size', v); });
       e.slot2_dy ??= 74;
       numRow(div, '下框间距', e.slot2_dy, v => { e.slot2_dy = v; draw(); });
-      e.frame_size ??= 75;
+      e.frame_size ??= 70;
       numRow(div, '框大小', e.frame_size, v => { e.frame_size = v; syncElemField(sel.name, 'frame_size', v); });
       e.frame_offset ??= [0, 0];
       numRow(div, '框偏移 x', e.frame_offset[0], v => { e.frame_offset[0] = v; draw(); });
       numRow(div, '框偏移 y', e.frame_offset[1], v => { e.frame_offset[1] = v; draw(); });
-      e.faction_size ??= 32;
+      e.highlight_dy_1 ??= 0;
+      numRow(div, '上框高光偏移 y', e.highlight_dy_1, v => { e.highlight_dy_1 = v; draw(); });
+      e.highlight_dy_2 ??= 0;
+      numRow(div, '下框高光偏移 y', e.highlight_dy_2, v => { e.highlight_dy_2 = v; draw(); });
+      e.faction_size ??= 43;
       numRow(div, '派系标大小', e.faction_size, v => { e.faction_size = v; syncElemField(sel.name, 'faction_size', v); });
-      e.faction_offset ??= [17, 23];
+      e.faction_offset ??= [6, 31];
       numRow(div, '派系标偏移 x', e.faction_offset[0], v => { e.faction_offset[0] = v; draw(); });
       numRow(div, '派系标偏移 y', e.faction_offset[1], v => { e.faction_offset[1] = v; draw(); });
     }

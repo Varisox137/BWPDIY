@@ -645,3 +645,20 @@ def test_render_portrait_without_frame(assets_dir, sample_art):
     assert list(bare.getdata()) != list(framed.getdata())
     # 裸头像 = 带框版隐去框/派系标后的居中部分：画布正方形且菱形居中
     assert bare.width == bare.height
+
+
+def test_duo_frame_highlight_dy_per_slot(assets_dir):
+    """highlight_dy_1/2：上/下框高光各自额外竖直偏移（缺省 0 与显式 0 等价）。"""
+    lib = AssetLibrary(assets_dir)
+    card = {"type": "协战", "duo_frame": True}
+    base = render_element(canvas(), lib, "duo_frame", _duo_elem(), card)
+    moved1 = render_element(canvas(), lib, "duo_frame",
+                            {**_duo_elem(), "highlight_dy_1": 3}, card)
+    moved2 = render_element(canvas(), lib, "duo_frame",
+                            {**_duo_elem(), "highlight_dy_2": 3}, card)
+    assert list(base.getdata()) != list(moved1.getdata())
+    assert list(base.getdata()) != list(moved2.getdata())
+    assert list(moved1.getdata()) != list(moved2.getdata())  # 两槽位互不影响
+    explicit = render_element(canvas(), lib, "duo_frame",
+                              {**_duo_elem(), "highlight_dy_1": 0, "highlight_dy_2": 0}, card)
+    assert list(base.getdata()) == list(explicit.getdata())

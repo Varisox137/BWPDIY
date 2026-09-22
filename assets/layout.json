@@ -593,30 +593,18 @@
           110,
           135
         ],
-        "size": [
-          88,
-          80
-        ],
-        "slot2_offset": [
-          0,
-          74
-        ],
-        "frame_offset_1": [
+        "slot2_dy": 74,
+        "back_size": 88,
+        "frame_size": 75,
+        "frame_offset": [
           0,
           0
         ],
-        "frame_offset_2": [
-          0,
-          0
-        ],
-        "faction_offset_1": [
+        "faction_offset": [
           17,
           23
         ],
-        "faction_offset_2": [
-          17,
-          23
-        ]
+        "faction_size": 32
       },
       "rarity": {
         "kind": "rarity_flank",

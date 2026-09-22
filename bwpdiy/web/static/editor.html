@@ -1470,14 +1470,15 @@ function draw() {
       handle(np, sel && sel.name === name ? '#ff4' : '#f8f', 5, true);
     }
     if (e.kind === 'duo_frame') {
-      // 双式神框：pos=槽位1基底中心；槽位2绿点、斜方框青点、派系标粉方块
-      const s2 = e.slot2_offset || [0, 74];
-      const centers = [e.pos, [e.pos[0] + s2[0], e.pos[1] + s2[1]]];
+      // 双式神框：pos=上框底图中心；下框绿点（x 恒同上框）、斜方框青点、派系标粉方块
+      // （框/派系标偏移上下共通，两点同显同改）
+      const dy = e.slot2_dy ?? 74;
+      const centers = [e.pos, [e.pos[0], e.pos[1] + dy]];
       const active = sel && sel.name === name;
-      centers.forEach((c, i) => {
-        const fo = e['frame_offset_' + (i + 1)] || [0, 0];
+      const fo = e.frame_offset || [0, 0];
+      const fao = e.faction_offset || [17, 23];
+      centers.forEach(c => {
         handle([c[0] + fo[0], c[1] + fo[1]], active ? '#ff4' : '#4df', 4);
-        const fao = e['faction_offset_' + (i + 1)] || [17, 23];
         handle([c[0] + fao[0], c[1] + fao[1]], active ? '#ff4' : '#f8f', 5, true);
       });
       handle(centers[1], active ? '#ff4' : '#4f4', 4);
@@ -1532,21 +1533,21 @@ function pick(mx, my) {
     }
     if (e.kind === 'duo_frame') {
       // 双式神框拖拽点（仅协战有该元素，偏移键无需跨类型同步）：
-      // 派系标/斜方框相对各槽位基底中心，槽位2 基底相对槽位1
-      const s2 = e.slot2_offset || [0, 74];
-      const centers = [e.pos, [e.pos[0] + s2[0], e.pos[1] + s2[1]]];
-      for (let i = 0; i < 2; i++) {
-        const fao = e['faction_offset_' + (i + 1)] || [17, 23];
-        if (near(centers[i][0] + fao[0], centers[i][1] + fao[1]))
+      // 派系标/斜方框偏移上下共通（拖任一槽位的点改共享偏移）；下框底图竖直对齐（只改 dy）
+      const dy = e.slot2_dy ?? 74;
+      const centers = [e.pos, [e.pos[0], e.pos[1] + dy]];
+      const fao = e.faction_offset || [17, 23];
+      const fo = e.frame_offset || [0, 0];
+      for (const c of centers) {
+        if (near(c[0] + fao[0], c[1] + fao[1]))
           return { sel: {kind: 'element', name}, set: (x, y) => {
-            e['faction_offset_' + (i + 1)] = [x - centers[i][0], y - centers[i][1]]; } };
-        const fo = e['frame_offset_' + (i + 1)] || [0, 0];
-        if (near(centers[i][0] + fo[0], centers[i][1] + fo[1]))
+            e.faction_offset = [x - c[0], y - c[1]]; } };
+        if (near(c[0] + fo[0], c[1] + fo[1]))
           return { sel: {kind: 'element', name}, set: (x, y) => {
-            e['frame_offset_' + (i + 1)] = [x - centers[i][0], y - centers[i][1]]; } };
+            e.frame_offset = [x - c[0], y - c[1]]; } };
       }
       if (near(...centers[1])) return { sel: {kind: 'element', name},
-        set: (x, y) => { e.slot2_offset = [x - e.pos[0], y - e.pos[1]]; } };
+        set: (x, y) => { e.slot2_dy = y - e.pos[1]; } };
     }
     if (near(...e.pos)) return { sel: {kind: 'element', name}, set: (x, y) => { e.pos = [x, y]; } };
   }
@@ -1628,23 +1629,22 @@ function buildProps() {
       selRow(div, '样式', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
     }
     if (e.kind === 'duo_frame') {
-      // 双式神框：pos=槽位1 基底中心；基底尺寸为全组件缩放基准；
-      // 槽位2/斜方框/派系标偏移键仅协战有此元素，不跨类型同步
-      e.size ??= [88, 80];
-      numRow(div, '基底宽度', e.size[0], v => { e.size[0] = v; syncElemField(sel.name, 'size', [...e.size]); });
-      numRow(div, '基底高度', e.size[1], v => { e.size[1] = v; syncElemField(sel.name, 'size', [...e.size]); });
-      e.slot2_offset ??= [0, 74];
-      numRow(div, '槽位2偏移 x', e.slot2_offset[0], v => { e.slot2_offset[0] = v; draw(); });
-      numRow(div, '槽位2偏移 y', e.slot2_offset[1], v => { e.slot2_offset[1] = v; draw(); });
-      for (let i = 1; i <= 2; i++) {
-        div.appendChild(title(`槽位${i}`));
-        e['frame_offset_' + i] ??= [0, 0];
-        numRow(div, '斜方框偏移 x', e['frame_offset_' + i][0], v => { e['frame_offset_' + i][0] = v; draw(); });
-        numRow(div, '斜方框偏移 y', e['frame_offset_' + i][1], v => { e['frame_offset_' + i][1] = v; draw(); });
-        e['faction_offset_' + i] ??= [17, 23];
-        numRow(div, '派系标偏移 x', e['faction_offset_' + i][0], v => { e['faction_offset_' + i][0] = v; draw(); });
-        numRow(div, '派系标偏移 y', e['faction_offset_' + i][1], v => { e['faction_offset_' + i][1] = v; draw(); });
-      }
+      // 双式神框 10 参数：pos（上框底图中心，通用行已含）+ 底图大小 + 下框间距 +
+      // 框大小/偏移 + 派系标大小/偏移（偏移与大小上下两框共通；仅协战有此元素）
+      e.back_size ??= 88;
+      numRow(div, '底图大小', e.back_size, v => { e.back_size = v; syncElemField(sel.name, 'back_size', v); });
+      e.slot2_dy ??= 74;
+      numRow(div, '下框间距', e.slot2_dy, v => { e.slot2_dy = v; draw(); });
+      e.frame_size ??= 75;
+      numRow(div, '框大小', e.frame_size, v => { e.frame_size = v; syncElemField(sel.name, 'frame_size', v); });
+      e.frame_offset ??= [0, 0];
+      numRow(div, '框偏移 x', e.frame_offset[0], v => { e.frame_offset[0] = v; draw(); });
+      numRow(div, '框偏移 y', e.frame_offset[1], v => { e.frame_offset[1] = v; draw(); });
+      e.faction_size ??= 32;
+      numRow(div, '派系标大小', e.faction_size, v => { e.faction_size = v; syncElemField(sel.name, 'faction_size', v); });
+      e.faction_offset ??= [17, 23];
+      numRow(div, '派系标偏移 x', e.faction_offset[0], v => { e.faction_offset[0] = v; draw(); });
+      numRow(div, '派系标偏移 y', e.faction_offset[1], v => { e.faction_offset[1] = v; draw(); });
     }
     if (e.kind === 'level_badge') {
       // 等级组件是否绘制由卡面等级决定（等级 0=无等级不绘制），不再提供启用开关

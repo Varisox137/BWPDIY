@@ -13,9 +13,10 @@ stat 数值字段口径与 render/badges.py `_STAT_MATRIX` 对齐（store 不 im
 frame 头像框开关，全可缺省；协战双式神框取该式神卡图作头像时套用变换，口径同 artwork）。
 
 标记扩展字段（均可选）：level_color 勾玉颜色（yellow/cyan/purple/red/blue/brown，缺省 yellow，
-凡可带 level 的类型皆可携带）；式神另可携带可选 level（1-3，缺省无等级）与
-faction_style 派系样式（1/2/3，缺省 2）；各 stat 字段可带 <field>_color 数值变色
-（red/green/purple，缺省白）。
+凡可带 level 的类型皆可携带）；level 全类型可缺省（缺省 = 无等级，衍生牌/无等级卡口粮，
+GUI 等级下拉 0 = 删 level 键）；rarity 全类型可缺省（缺省 = 无稀有度，衍生牌口径，
+对齐 BWPro token 卡 rarity 须缺省）；式神另可携带可选 faction_style 派系样式
+（1/2/3，缺省 2）；各 stat 字段可带 <field>_color 数值变色（red/green/purple，缺省白）。
 """
 
 from __future__ import annotations
@@ -129,9 +130,8 @@ def validate_card(data) -> list[str]:
                           f"{'/'.join(map(str, FACTION_STYLES))} 之一")
     else:
         rarity = data.get("rarity")
-        if "rarity" not in data:
-            errors.append("缺少必填字段：rarity")
-        elif rarity not in RARITIES:
+        # rarity 可缺省：缺省 = 无稀有度（衍生牌口径，对齐 BWPro token 卡 rarity 须缺省）
+        if "rarity" in data and rarity not in RARITIES:
             errors.append(f"字段 rarity：非法稀有度「{rarity}」，须为 {'/'.join(RARITIES)} 之一")
         if "evolve" in data and not isinstance(data["evolve"], bool):
             errors.append("字段 evolve：必须是布尔值（true/false）")

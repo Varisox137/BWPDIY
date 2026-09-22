@@ -190,6 +190,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             if not isinstance(override, dict):
                 raise HTTPException(400, "card 必须是对象")
             for k, v in override.items():
+                if k.startswith("_"):
+                    continue  # 内部键（如 _base_dir/_duo）不接受外部注入（纵深防御）
                 # 嵌套 artwork 按键合并而非整体替换（避免丢 images 列表）
                 if k == "artwork" and isinstance(v, dict):
                     card["artwork"].update(v)
@@ -292,37 +294,14 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         if elem is None:
             raise HTTPException(422, "渲染失败: 布局缺失协战 duo_frame 元素")
         # 卡图路径解析与越界防护口径同 _duo_slot；缺图 → None（空槽位）
-        images = card_data.get("artwork", {})
-        images = images.get("images") if isinstance(images, dict) else None
-        first = images[0] if isinstance(images, list) and images else None
-        ref = dict(first) if isinstance(first, dict) else {}
-        raw_path = ref.get("path")
-        if not isinstance(raw_path, str) or not raw_path:
-            raw_path = f"{card_data.get('id') or card_data.get('name', '')}.png"
-        images_dir = library_dir / project / "images"
-        art_path = Path(raw_path)
-        if not art_path.is_absolute():
-            art_path = images_dir / art_path
-        art_ref = None
-        try:
-            art_path = art_path.resolve(strict=True)
-            art_path.relative_to(images_dir.resolve())
-            portrait = card_data.get("portrait")
-            portrait = portrait if isinstance(portrait, dict) else {}
-            art_ref = {"path": str(art_path)}
-            for k, default in (("offset_x", 0), ("offset_y", 0),
-                               ("scale", 1.0), ("rotate", 0)):
-                v = portrait.get(k)
-                art_ref[k] = (v if isinstance(v, (int, float))
-                              and not isinstance(v, bool) else default)
-        except (OSError, ValueError):
-            pass
+        portrait = card_data.get("portrait")
+        portrait = portrait if isinstance(portrait, dict) else {}
+        art_ref = _resolve_art_ref(card_data, library_dir / project / "images",
+                                   transform=portrait)
         try:
             lib = AssetLibrary(Path(assets_dir))
-            portrait_meta = card_data.get("portrait")
             # 头像框开关（portrait.frame，缺省 true）：不画斜方框与派系标，仅菱形裁剪头像
-            with_frame = (not isinstance(portrait_meta, dict)
-                          or portrait_meta.get("frame", True) is not False)
+            with_frame = portrait.get("frame", True) is not False
             img = render_portrait(lib, elem, art_ref, card_data.get("faction"),
                                   faction_style=card_data.get("faction_style"),
                                   with_frame=with_frame)
@@ -362,7 +341,10 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         card_data = load_card(library_dir, project, card)  # 卡牌不存在 → 404；卡名合法性在此校验
         stem = card_data.get("id") or card_data.get("name", "")
         stem = "".join(c for c in str(stem) if c not in '<>:"/\\|?*').strip().rstrip(". ")
-        if not stem:
+        _WIN_RESERVED = {"CON", "PRN", "AUX", "NUL",
+                         *(f"COM{i}" for i in range(1, 10)),
+                         *(f"LPT{i}" for i in range(1, 10))}
+        if not stem or stem.upper() in _WIN_RESERVED:
             raise HTTPException(422, "卡名/id 无法用作文件名：请先填写卡名（或 id）")
         raw_artwork = card_data.get("artwork")
         artwork = dict(raw_artwork) if isinstance(raw_artwork, dict) else {}
@@ -376,9 +358,12 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         images_dir = library_dir / project / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
         target = images_dir / filename
-        old_bytes = target.read_bytes() if target.is_file() else None
-        if old_bytes != data:
-            target.write_bytes(data)  # 同名同内容：复用跳过写盘
+        try:
+            old_bytes = target.read_bytes() if target.is_file() else None
+            if old_bytes != data:
+                target.write_bytes(data)  # 同名同内容：复用跳过写盘
+        except OSError as e:
+            raise HTTPException(422, f"卡图写盘失败: {e}") from e
         try:
             save_card(library_dir, project, card, card_data)
         except Exception:
@@ -390,6 +375,36 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         return {"ok": True, "path": filename}
 
     return app
+
+
+def _resolve_art_ref(card: dict, images_dir: Path,
+                     transform: dict | None = None) -> dict | None:
+    """首图路径解析：缺省 <id 或卡名>.png（id 留空回退卡名），相对路径基于项目 images/；
+    resolve(strict)+relative_to 双重越界防护（符号链接被 strict resolve 解析后拦截）。
+    缺图/越界 → None。transform 非空时按四键提取变换（缺省 0/0/1.0/0，bool 不算数）。"""
+    images = card.get("artwork", {})
+    images = images.get("images") if isinstance(images, dict) else None
+    first = images[0] if isinstance(images, list) and images else None
+    ref = dict(first) if isinstance(first, dict) else {}
+    raw_path = ref.get("path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raw_path = f"{card.get('id') or card.get('name', '')}.png"
+    art_path = Path(raw_path)
+    if not art_path.is_absolute():
+        art_path = images_dir / art_path
+    try:
+        art_path = art_path.resolve(strict=True)
+        art_path.relative_to(images_dir.resolve())
+    except (OSError, ValueError):
+        return None
+    art = {"path": str(art_path)}
+    if transform is not None:
+        for k, default in (("offset_x", 0), ("offset_y", 0),
+                           ("scale", 1.0), ("rotate", 0)):
+            v = transform.get(k)
+            art[k] = (v if isinstance(v, (int, float))
+                      and not isinstance(v, bool) else default)
+    return art
 
 
 def _duo_slot(library_dir: Path, project: str, shikigami_name) -> dict | None:
@@ -414,30 +429,13 @@ def _duo_slot(library_dir: Path, project: str, shikigami_name) -> dict | None:
     style = shiki.get("faction_style")  # 派系标样式随式神设置（缺省渲染层回退 2）
     if isinstance(style, int) and not isinstance(style, bool):
         slot["faction_style"] = style
-    images = shiki.get("artwork", {})
-    images = images.get("images") if isinstance(images, dict) else None
-    first = images[0] if isinstance(images, list) and images else None
-    ref = dict(first) if isinstance(first, dict) else {}
-    raw_path = ref.get("path")
-    if not isinstance(raw_path, str) or not raw_path:
-        raw_path = f"{shiki.get('id') or shiki.get('name', '')}.png"
     images_dir = pdir / "images"
-    art_path = Path(raw_path)
-    if not art_path.is_absolute():
-        art_path = images_dir / art_path
-    try:
-        art_path = art_path.resolve(strict=True)  # 不存在即缺图 → slot 不带 art
-        art_path.relative_to(images_dir.resolve())  # 越界防护口径同卡图
-    except (OSError, ValueError):
-        return slot
     # 头像变换取式神卡 portrait 段（缺省 0/0/1/0 自动居中填满），不复用卡图变换
     portrait = shiki.get("portrait")
     portrait = portrait if isinstance(portrait, dict) else {}
-    art = {"path": str(art_path)}
-    for k, default in (("offset_x", 0), ("offset_y", 0), ("scale", 1.0), ("rotate", 0)):
-        v = portrait.get(k)
-        art[k] = v if isinstance(v, (int, float)) and not isinstance(v, bool) else default
-    slot["art"] = art
+    art = _resolve_art_ref(shiki, images_dir, transform=portrait)
+    if art is not None:
+        slot["art"] = art
     return slot
 
 

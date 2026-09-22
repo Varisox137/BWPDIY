@@ -63,9 +63,9 @@ def render_duo_frame(canvas: Image.Image, lib: AssetLibrary,
     p1 = elem["pos"]
     dy = elem.get("slot2_dy", _DEFAULT_SLOT2_DY)
     centers = [(round(p1[0]), round(p1[1])), (round(p1[0]), round(p1[1] + dy))]
-    back_size = max(1, round(elem.get("back_size", _DEFAULT_BACK_SIZE)))
-    frame_size = max(1, round(elem.get("frame_size", _DEFAULT_FRAME_SIZE)))
-    faction_size = max(1, round(elem.get("faction_size", _DEFAULT_FACTION_SIZE)))
+    back_size = _size(elem, "back_size", _DEFAULT_BACK_SIZE)
+    frame_size = _size(elem, "frame_size", _DEFAULT_FRAME_SIZE)
+    faction_size = _size(elem, "faction_size", _DEFAULT_FACTION_SIZE)
     frame_off = elem.get("frame_offset") or [0, 0]
     frame_off_2 = elem.get("frame_offset_2") or frame_off  # 下内框缺省同上内框
     faction_off = elem.get("faction_offset") or _DEFAULT_FACTION_OFFSET
@@ -113,8 +113,20 @@ def render_duo_frame(canvas: Image.Image, lib: AssetLibrary,
 
 
 def _faction_style(source: dict) -> int:
-    v = source.get("faction_style")
+    return _coerce_faction_style(source.get("faction_style"))
+
+
+def _coerce_faction_style(v) -> int:
     return v if isinstance(v, int) and not isinstance(v, bool) and v in (1, 2, 3) else 2
+
+
+def _size(elem: dict, key: str, default: int, scale: float = 1) -> int:
+    """尺寸键取整并钳制 [1, 4096]：布局数值无校验域，防畸形值触发巨量内存分配。"""
+    try:
+        n = round(float(elem.get(key, default)) * scale)
+    except (TypeError, ValueError):
+        n = round(default * scale)
+    return min(max(n, 1), 4096)
 
 
 def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
@@ -128,9 +140,9 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
     with_frame=False 时不画斜方框与派系标（仅底图+菱形裁剪头像，导出裸头像用）。
     返回以底图中心为中心的正方形小画布（不做非对称 tightest 裁剪，菱形居中显示）。
     """
-    back_size = max(1, round(elem.get("back_size", _DEFAULT_BACK_SIZE) * scale))
-    frame_size = max(1, round(elem.get("frame_size", _DEFAULT_FRAME_SIZE) * scale))
-    faction_size = max(1, round(elem.get("faction_size", _DEFAULT_FACTION_SIZE) * scale))
+    back_size = _size(elem, "back_size", _DEFAULT_BACK_SIZE, scale)
+    frame_size = _size(elem, "frame_size", _DEFAULT_FRAME_SIZE, scale)
+    faction_size = _size(elem, "faction_size", _DEFAULT_FACTION_SIZE, scale)
     frame_off = elem.get("frame_offset") or [0, 0]
     faction_off = elem.get("faction_offset") or _DEFAULT_FACTION_OFFSET
 
@@ -148,7 +160,7 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
                                         abs(round(frame_off[1] * scale))),
                   faction_size // 2 + max(abs(round(faction_off[0] * scale)),
                                           abs(round(faction_off[1] * scale))))
-    side = ext * 2 + 16
+    side = min(ext, 2048) * 2 + 16  # 钳制画布边长，防畸形偏移撑出超大分配
     center = (side // 2, side // 2)
     out = Image.new("RGBA", (side, side), (0, 0, 0, 0))
     box = (center[0] - back_box[0] // 2, center[1] - back_box[1] // 2)
@@ -175,7 +187,7 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
                          (frame_size, frame_size))
     color = FACTION_COLOR.get(faction or "")
     if color is not None:
-        style = faction_style if faction_style in (1, 2, 3) else 2
+        style = _coerce_faction_style(faction_style)
         out = _paste_element(out, lib.faction(color, style),
                              (center[0] + round(faction_off[0] * scale),
                               center[1] + round(faction_off[1] * scale)),

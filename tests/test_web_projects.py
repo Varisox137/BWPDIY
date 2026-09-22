@@ -151,11 +151,11 @@ def test_card_list_sorted_by_name(client, project):
 
 
 def test_card_save_schema_error_422_chinese(client, project):
-    bad = {"type": "战斗", "name": "测试斩", "power+": "很大"}
+    bad = {"type": "战斗", "name": "测试斩", "power+": "很大", "rarity": "UR"}
     r = client.put(f"/api/projects/{project}/cards/测试斩", json=bad)
     assert r.status_code == 422
     detail = r.json()["detail"]
-    assert any("rarity" in m for m in detail)      # 缺 rarity 一次报全
+    assert any("rarity" in m for m in detail)      # 非法稀有度一次报全
     assert any("power+" in m for m in detail)
     assert client.get(f"/api/projects/{project}/cards").json()["cards"] == []  # 未落盘
 

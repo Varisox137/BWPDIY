@@ -313,10 +313,13 @@ document.getElementById('ext-layout').onchange = ev => {
 document.getElementById('ext-marker').onchange = ev => {
   extOptions.marker = ev.target.checked; saveExtOptions(); applyExtOptions();
 };
-// 稀有度下拉选项：默认 R/SR/SSR；勾选标记扩展或当前卡已是 N 时含 N
+// 稀有度下拉选项：默认 R/SR/SSR；勾选标记扩展或当前卡已是 N 时含 N；
+// 「无」（缺省 rarity 键 = 衍生牌口径，不绘制双标）仅在标记扩展下可选，
+// 当前卡无 rarity 时也保留该选项以免 select 显示空白
 function rarityOptions() {
-  return (extOptions.marker || (formData && formData.rarity === 'N'))
+  const base = (extOptions.marker || (formData && formData.rarity === 'N'))
     ? RARITIES : RARITIES.filter(r => r !== 'N');
+  return (extOptions.marker || (formData && !formData.rarity)) ? [...base, '无'] : base;
 }
 
 // ================= 卡牌库 tab =================
@@ -741,11 +744,12 @@ function buildForm() {
     selRowC(div, '框品', FRAME_VARIANTS.map(([v]) => v), formData.frame_variant ?? 'norm',
       v => { if (v === 'norm') delete formData.frame_variant; else formData.frame_variant = v; afterEdit(); },
       v => FRAME_VARIANTS.find(([val]) => val === v)[1]);
-    if (extOptions.marker) levelColorRow(div, true);  // 标记扩展：式神等级/勾玉颜色（框品与力量之间）
+    if (extOptions.marker) levelColorRow(div);  // 标记扩展：式神等级/勾玉颜色（框品与力量之间）
   } else {
-    if (extOptions.marker) levelColorRow(div, false);  // 标记扩展：等级 + 勾玉颜色并排
+    if (extOptions.marker) levelColorRow(div);  // 标记扩展：等级（含 0=无）+ 勾玉颜色并排
     else selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
-    selRowC(div, '稀有度', rarityOptions(), formData.rarity ?? 'R', v => setField('rarity', v));
+    selRowC(div, '稀有度', rarityOptions(), formData.rarity ?? '无',
+      v => { if (v === '无') delete formData.rarity; else formData.rarity = v; afterEdit(); });
     if (EVOLVE_TYPES.has(t)) {
       checkRowC(div, '觉醒', !!formData.evolve, v => {
         formData.evolve = v;
@@ -1048,22 +1052,21 @@ function factionRow(div) {
   l.appendChild(document.createTextNode(' 派系样式 '));
   l.appendChild(ss); div.appendChild(l);
 }
-// 等级 + 勾玉颜色并排行（标记扩展）：shiki=true 时等级含 0（0=无等级，删 level 键）；
+// 等级 + 勾玉颜色并排行（标记扩展）：等级含 0（0=无等级，删 level 键，全类型适用）；
 // 勾玉颜色缺省 yellow 不写进 yaml（取消勾选扩展也不回退已选颜色，仅隐藏控件）
-function levelColorRow(div, shiki) {
+function levelColorRow(div) {
   const l = document.createElement('label');
   l.textContent = '等级 ';
   const s = document.createElement('select');
-  const opts = shiki ? ['0', '1', '2', '3'] : ['1', '2', '3'];
-  const cur = String(formData.level ?? (shiki ? 0 : 1));
-  for (const o of opts) {
+  const cur = String(formData.level ?? 0);
+  for (const o of ['0', '1', '2', '3']) {
     const op = document.createElement('option');
     op.value = op.textContent = o;
     if (o === cur) op.selected = true;
     s.appendChild(op);
   }
   s.onchange = () => {
-    if (shiki && s.value === '0') delete formData.level;
+    if (s.value === '0') delete formData.level;
     else formData.level = parseInt(s.value, 10);
     afterEdit();
   };
@@ -1136,8 +1139,8 @@ function validateCardJS(d) {
       }
     }
   } else {
-    if (!('rarity' in d)) errors.push('缺少必填字段：rarity');
-    else if (!RARITIES.includes(d.rarity)) {
+    // rarity 可缺省（缺省 = 无稀有度，衍生牌口径，与服务端 schema 同口径）
+    if ('rarity' in d && !RARITIES.includes(d.rarity)) {
       errors.push(`字段 rarity：非法稀有度「${d.rarity}」，须为 ${RARITIES.join('/')} 之一`);
     }
     if ('evolve' in d && typeof d.evolve !== 'boolean') errors.push('字段 evolve：必须是布尔值（true/false）');

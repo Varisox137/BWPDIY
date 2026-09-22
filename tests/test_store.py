@@ -278,7 +278,7 @@ def test_save_card_validates_schema(lib):
     create_project(lib, "山风")
     with pytest.raises(SchemaError) as exc:
         save_card(lib, "山风", "斩", {"type": "战斗", "name": "斩", "power": 1})
-    assert "rarity" in str(exc.value) and "power" in str(exc.value)
+    assert "power" in str(exc.value)
     # 校验失败不落盘
     assert not (lib / "山风" / "cards" / "斩.yaml").exists()
 
@@ -395,6 +395,8 @@ def test_rename_cascade_only_for_shikigami(lib):
     ]}},
     {"type": "法术", "name": "最简", "rarity": "N"},
     {"type": "法术", "name": "带 id", "id": "100301", "rarity": "N"},
+    {"type": "法术", "name": "衍生"},                  # rarity/level 均可缺省（衍生牌口径）
+    {"type": "战斗", "name": "衍生斩", "power+": -1},   # 缺稀有度+带符号数值
 ])
 def test_validate_ok(card):
     assert validate_card(card) == []

@@ -60,9 +60,9 @@ def test_rarity_flank_short_name_static(assets_dir):
     assert list(no_name.getdata()) == list(short.getdata())
     assert no_name.getpixel((256 - 32, 358))[3] > 0  # 左标中心 x=224
     assert no_name.getpixel((256 - 32 - 24, 358))[3] == 0  # 左标之左无墨迹
-    # 无 rarity 字段：按默认 R 渲染
-    default_r = render_element(canvas(), lib, "rarity", elem, {}, {"name_width": 0})
-    assert opaque(default_r) > 0
+    # 无 rarity 字段：无稀有度（衍生牌口径），不绘制双标
+    no_rarity = render_element(canvas(), lib, "rarity", elem, {}, {"name_width": 0})
+    assert opaque(no_rarity) == 0
     # margin 缺省回退 8
     no_margin = render_element(canvas(), lib, "rarity",
                                {"kind": "rarity_flank", "pos": [256, 358], "gap": 32, "size": 24},

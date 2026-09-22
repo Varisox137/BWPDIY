@@ -251,7 +251,9 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                               (pos[0] + nx, pos[1] + ny),
                               (elem["num_size"], elem["num_size"]))
     if kind == "rarity_flank":
-        rarity = card.get("rarity", "R")  # 缺省默认 R
+        rarity = card.get("rarity")  # 缺省 = 无稀有度（衍生牌口径），不绘制双标
+        if rarity not in ("N", "R", "SR", "SSR"):
+            return canvas
         cx, y = elem["pos"]
         name_width = (ctx or {}).get("name_width", 0)
         # gap=默认半间距（短名静态固定 pos±gap）；仅卡名超宽时按与卡名缘固定 margin 外移

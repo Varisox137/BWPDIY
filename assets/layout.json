@@ -605,8 +605,12 @@
           20
         ],
         "faction_size": 43,
-        "highlight_dy_1": 1,
-        "highlight_dy_2": 1
+        "highlight_dy_1": 0,
+        "highlight_dy_2": 1,
+        "frame_offset_2": [
+          0,
+          0
+        ]
       },
       "rarity": {
         "kind": "rarity_flank",

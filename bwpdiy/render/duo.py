@@ -8,15 +8,17 @@ duo 素材中底板带大范围半透明光晕，先按 alpha≥128 可见 bbox 
 否则可见菱形相对底图中心偏移；高光/框线层只做 alpha>0 裁边以保持 PSD 层间配准
 （框线含刻意半透明的边，阈值裁边会切断其与高光的互相对齐）。
 
-布局元素（仅协战类型，上下两框共用除 pos/slot2_dy/highlight_dy_i 外的全部参数，共 12 项）：
+布局元素（仅协战类型，共 14 个可调参数）：
 - pos：上框底图（槽位1 基底）中心
-- slot2_dy：下框底图相对上框底图的竖直间距（缺省 74）
-- back_size：底图大小（等比 contain 进该边长方框，缺省 62）
-- frame_size：斜方框大小（高光+框线同一尺寸框，缺省 70）
-- frame_offset：斜方框相对底图中心的偏移（缺省 [0, 0]）
-- highlight_dy_1/highlight_dy_2：上/下框高光各自相对框线位置的额外竖直偏移（缺省 0）
-- faction_offset：派系标中心相对底图中心的偏移（缺省 [6, 31]）
-- faction_size：派系标大小（等比 contain，缺省 43）
+- slot2_dy：下框底图相对上框底图中心的竖直间距（缺省 74，两框 x 恒一致）
+- back_size：底图大小（等比 contain 进该边长方框，缺省 62，上下共通）
+- frame_size：斜方框大小（内框+外框同一尺寸框，缺省 70，上下共通）
+- frame_offset/frame_offset_2：上/下内框（框线层）各自相对本槽位底图中心的偏移
+  （frame_offset_2 缺省回退 frame_offset；frame_offset 缺省 [0, 0]）
+- highlight_dy_1/highlight_dy_2：上/下外框（高光层）各自相对本槽位底图中心的
+  竖直偏移（缺省 0）
+- faction_offset：派系标中心相对底图中心的偏移（缺省 [6, 31]，上下共通）
+- faction_size：派系标大小（等比 contain，缺省 43，上下共通）
 头像内容取自 card["_duo"]（web 层按 shikigami1/2 注入的所属式神卡图，内部键
 不进 schema/yaml）；槽位数据缺失只画底板+框（空菱形，派系标按槽位 faction 照画，
 供布局预览定位）。
@@ -65,6 +67,7 @@ def render_duo_frame(canvas: Image.Image, lib: AssetLibrary,
     frame_size = max(1, round(elem.get("frame_size", _DEFAULT_FRAME_SIZE)))
     faction_size = max(1, round(elem.get("faction_size", _DEFAULT_FACTION_SIZE)))
     frame_off = elem.get("frame_offset") or [0, 0]
+    frame_off_2 = elem.get("frame_offset_2") or frame_off  # 下内框缺省同上内框
     faction_off = elem.get("faction_offset") or _DEFAULT_FACTION_OFFSET
     duo = card.get("_duo")
     slots = duo if isinstance(duo, list) else []
@@ -85,17 +88,16 @@ def render_duo_frame(canvas: Image.Image, lib: AssetLibrary,
                 art = _slot_artwork(lib, art_ref, card, back_box,
                                     back_fit.getchannel("A"))
                 out.alpha_composite(art, box)
-        # 斜方框（高光 + 框线，共用 frame_offset 与 frame_size）：
-        # 高光/框线只做 alpha>0 裁边（_paste_element 内建），不做阈值裁边——
-        # 两层必须保持 PSD 原配准（框线含刻意半透明的边，阈值裁边会切断互相对齐）；
-        # 槽位2 高光 = 槽位1 旋转 180°（PSD 两图仅抗锯齿级差异，不单存素材）；
-        # 高光可再按槽位单独竖直偏移（highlight_dy_1/highlight_dy_2，缺省 0）
-        target = (center[0] + round(frame_off[0]), center[1] + round(frame_off[1]))
+        # 斜方框（内框=框线层 frame_i 按槽位偏移 frame_offset/frame_offset_2（相对各自
+        # 底图中心）；外框=高光层 highlight 按槽位竖直偏移 highlight_dy_i（相对各自底图
+        # 中心）；两层只做 alpha>0 裁边保持 PSD 配准；槽位2 高光 = 槽位1 旋转 180°）
+        fo = frame_off if i == 0 else frame_off_2
+        target = (center[0] + round(fo[0]), center[1] + round(fo[1]))
         hi = lib.duo("highlight_1")
         if i == 1:
             hi = hi.transpose(Image.Transpose.ROTATE_180)
         hi_dy = round(elem.get(f"highlight_dy_{i + 1}", 0))
-        out = _paste_element(out, hi, (target[0], target[1] + hi_dy),
+        out = _paste_element(out, hi, (center[0], center[1] + hi_dy),
                              (frame_size, frame_size))
         out = _paste_element(out, lib.duo(f"frame_{i + 1}"),
                              target, (frame_size, frame_size))
@@ -164,9 +166,8 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
     if not with_frame:
         return out
     out = _paste_element(out, lib.duo("highlight_1"),
-                         (center[0] + round(frame_off[0] * scale),
-                          center[1] + round(frame_off[1] * scale)
-                          + round(elem.get("highlight_dy_1", 0) * scale)),
+                         (center[0],
+                          center[1] + round(elem.get("highlight_dy_1", 0) * scale)),
                          (frame_size, frame_size))
     out = _paste_element(out, lib.duo("frame_1"),
                          (center[0] + round(frame_off[0] * scale),

@@ -598,13 +598,15 @@
         "frame_size": 67,
         "frame_offset": [
           0,
-          0
+          -1
         ],
         "faction_offset": [
           19,
           20
         ],
-        "faction_size": 43
+        "faction_size": 43,
+        "highlight_dy_1": 1,
+        "highlight_dy_2": 1
       },
       "rarity": {
         "kind": "rarity_flank",

@@ -662,3 +662,22 @@ def test_duo_frame_highlight_dy_per_slot(assets_dir):
     explicit = render_element(canvas(), lib, "duo_frame",
                               {**_duo_elem(), "highlight_dy_1": 0, "highlight_dy_2": 0}, card)
     assert list(base.getdata()) == list(explicit.getdata())
+
+
+def test_duo_frame_frame_offset_2(assets_dir):
+    """下内框偏移 frame_offset_2：缺省回退上内框 frame_offset；分开设置互不影响。"""
+    lib = AssetLibrary(assets_dir)
+    card = {"type": "协战", "duo_frame": True}
+    base = render_element(canvas(), lib, "duo_frame", _duo_elem(), card)
+    fallback = render_element(canvas(), lib, "duo_frame",
+                              {**_duo_elem(), "frame_offset": [4, 2]}, card)
+    fallback2 = render_element(canvas(), lib, "duo_frame",
+                               {**_duo_elem(), "frame_offset": [4, 2],
+                                "frame_offset_2": [4, 2]}, card)
+    assert list(fallback.getdata()) == list(fallback2.getdata())  # 缺省回退
+    moved2 = render_element(canvas(), lib, "duo_frame",
+                            {**_duo_elem(), "frame_offset": [4, 2],
+                             "frame_offset_2": [-6, 8]}, card)
+    assert list(moved2.getdata()) != list(fallback.getdata())
+    # 下内框偏移不影响上框：槽位1 中心附近像素一致
+    assert moved2.getpixel((91, 164)) == fallback.getpixel((91, 164))

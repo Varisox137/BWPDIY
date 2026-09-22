@@ -1575,15 +1575,16 @@ function draw() {
       handle(np, sel && sel.name === name ? '#ff4' : '#f8f', 5, true);
     }
     if (e.kind === 'duo_frame') {
-      // 双式神框：pos=上框底图中心；下框绿点（x 恒同上框）、斜方框青点、派系标粉方块
-      // （框/派系标偏移上下共通，两点同显同改）
+      // 双式神框：pos=上框底图中心；下框绿点（x 恒同上框）、内框青点（上下各自偏移）、
+      // 派系标粉方块（偏移上下共通，两点同显同改）
       const dy = e.slot2_dy ?? 74;
       const centers = [e.pos, [e.pos[0], e.pos[1] + dy]];
       const active = sel && sel.name === name;
-      const fo = e.frame_offset || [0, 0];
-      const fao = e.faction_offset || [17, 23];
-      centers.forEach(c => {
-        handle([c[0] + fo[0], c[1] + fo[1]], active ? '#ff4' : '#4df', 4);
+      const fo1 = e.frame_offset || [0, 0];
+      const fos = [fo1, e.frame_offset_2 || fo1];
+      const fao = e.faction_offset || [6, 31];
+      centers.forEach((c, i) => {
+        handle([c[0] + fos[i][0], c[1] + fos[i][1]], active ? '#ff4' : '#4df', 4);
         handle([c[0] + fao[0], c[1] + fao[1]], active ? '#ff4' : '#f8f', 5, true);
       });
       handle(centers[1], active ? '#ff4' : '#4f4', 4);
@@ -1638,18 +1639,22 @@ function pick(mx, my) {
     }
     if (e.kind === 'duo_frame') {
       // 双式神框拖拽点（仅协战有该元素，偏移键无需跨类型同步）：
-      // 派系标/斜方框偏移上下共通（拖任一槽位的点改共享偏移）；下框底图竖直对齐（只改 dy）
+      // 派系标偏移上下共通（拖任一槽位的点改共享偏移）；内框偏移上下各自；
+      // 下框底图竖直对齐（只改 dy）
       const dy = e.slot2_dy ?? 74;
       const centers = [e.pos, [e.pos[0], e.pos[1] + dy]];
-      const fao = e.faction_offset || [17, 23];
-      const fo = e.frame_offset || [0, 0];
-      for (const c of centers) {
+      const fao = e.faction_offset || [6, 31];
+      const fo1 = e.frame_offset || [0, 0];
+      const fos = [fo1, e.frame_offset_2 || fo1];
+      for (let i = 0; i < centers.length; i++) {
+        const c = centers[i];
         if (near(c[0] + fao[0], c[1] + fao[1]))
           return { sel: {kind: 'element', name}, set: (x, y) => {
             e.faction_offset = [x - c[0], y - c[1]]; } };
-        if (near(c[0] + fo[0], c[1] + fo[1]))
+        if (near(c[0] + fos[i][0], c[1] + fos[i][1]))
           return { sel: {kind: 'element', name}, set: (x, y) => {
-            e.frame_offset = [x - c[0], y - c[1]]; } };
+            const off = [x - c[0], y - c[1]];
+            if (i === 0) e.frame_offset = off; else e.frame_offset_2 = off; } };
       }
       if (near(...centers[1])) return { sel: {kind: 'element', name},
         set: (x, y) => { e.slot2_dy = y - e.pos[1]; } };
@@ -1734,9 +1739,9 @@ function buildProps() {
       selRow(div, '样式', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
     }
     if (e.kind === 'duo_frame') {
-      // 双式神框 12 参数：pos（上框底图中心，通用行已含）+ 底图大小 + 下框间距 +
-      // 框大小/偏移 + 上/下框高光各自 dy + 派系标大小/偏移
-      // （除 pos/下框间距/高光 dy 外上下两框共通；仅协战有此元素）
+      // 双式神框 14 参数：pos（上框底图中心，通用行已含）+ 底图大小 + 下框间距 +
+      // 框大小 + 上/下内框偏移（相对各自底图中心）+ 上/下外框偏移 y（相对各自底图中心）
+      // + 派系标大小/偏移（大小与派系标偏移上下两框共通；仅协战有此元素）
       e.back_size ??= 62;
       numRow(div, '底图大小', e.back_size, v => { e.back_size = v; syncElemField(sel.name, 'back_size', v); });
       e.slot2_dy ??= 74;
@@ -1744,12 +1749,15 @@ function buildProps() {
       e.frame_size ??= 70;
       numRow(div, '框大小', e.frame_size, v => { e.frame_size = v; syncElemField(sel.name, 'frame_size', v); });
       e.frame_offset ??= [0, 0];
-      numRow(div, '框偏移 x', e.frame_offset[0], v => { e.frame_offset[0] = v; draw(); });
-      numRow(div, '框偏移 y', e.frame_offset[1], v => { e.frame_offset[1] = v; draw(); });
+      numRow(div, '上内框偏移 x', e.frame_offset[0], v => { e.frame_offset[0] = v; draw(); });
+      numRow(div, '上内框偏移 y', e.frame_offset[1], v => { e.frame_offset[1] = v; draw(); });
+      e.frame_offset_2 ??= [...e.frame_offset];
+      numRow(div, '下内框偏移 x', e.frame_offset_2[0], v => { e.frame_offset_2[0] = v; draw(); });
+      numRow(div, '下内框偏移 y', e.frame_offset_2[1], v => { e.frame_offset_2[1] = v; draw(); });
       e.highlight_dy_1 ??= 0;
-      numRow(div, '上框高光偏移 y', e.highlight_dy_1, v => { e.highlight_dy_1 = v; draw(); });
+      numRow(div, '上外框偏移 y', e.highlight_dy_1, v => { e.highlight_dy_1 = v; draw(); });
       e.highlight_dy_2 ??= 0;
-      numRow(div, '下框高光偏移 y', e.highlight_dy_2, v => { e.highlight_dy_2 = v; draw(); });
+      numRow(div, '下外框偏移 y', e.highlight_dy_2, v => { e.highlight_dy_2 = v; draw(); });
       e.faction_size ??= 43;
       numRow(div, '派系标大小', e.faction_size, v => { e.faction_size = v; syncElemField(sel.name, 'faction_size', v); });
       e.faction_offset ??= [6, 31];

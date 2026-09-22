@@ -25,6 +25,16 @@ from bwpdiy.render.artwork import fit_artwork
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.badges import FACTION_COLOR, _paste_element
 
+
+def _load_art_cropped(lib: AssetLibrary, path: Path, rotate) -> Image.Image:
+    """载入头像卡图（复用旋转缓存），先裁 alpha 透明边再交给 cover 适配居中：
+    卡图常带透明边（如 512×512 两侧留空），不裁则可见内容不居中。"""
+    _, art = lib.artwork(path, rotate)
+    bbox = art.getchannel("A").getbbox()
+    if bbox and bbox != (0, 0, art.width, art.height):
+        art = art.crop(bbox)
+    return art
+
 # 内部几何缺省（512 画布标定值）
 _DEFAULT_BACK_SIZE = 88     # 底图（黑底板 88×80，等比 contain）
 _DEFAULT_FRAME_SIZE = 75    # 斜方框（高光 75×75 / 框线 77×78，等比 contain）
@@ -114,10 +124,10 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
     if isinstance(art_ref, dict) and art_ref.get("path"):
         path = Path(art_ref["path"])
         if path.is_file():
-            orig_size, art = lib.artwork(path, art_ref.get("rotate", 0))
+            art = _load_art_cropped(lib, path, art_ref.get("rotate", 0))
             art = fit_artwork(art, back_box, art_ref.get("offset_x", 0) * scale,
                               art_ref.get("offset_y", 0) * scale,
-                              art_ref.get("scale", 1.0), cover_base=orig_size)
+                              art_ref.get("scale", 1.0))
             art.putalpha(ImageChops.multiply(art.getchannel("A"),
                                              back_fit.getchannel("A")))
             out.alpha_composite(art, box)
@@ -147,8 +157,8 @@ def _slot_artwork(lib: AssetLibrary, ref: dict, card: dict,
         path = Path(card.get("_base_dir", ".")) / path
     if not path.is_file():
         raise FileNotFoundError(f"双式神框头像缺失: {path}")
-    orig_size, art = lib.artwork(path, ref.get("rotate", 0))
+    art = _load_art_cropped(lib, path, ref.get("rotate", 0))
     art = fit_artwork(art, slot_box, ref.get("offset_x", 0), ref.get("offset_y", 0),
-                      ref.get("scale", 1.0), cover_base=orig_size)
+                      ref.get("scale", 1.0))
     art.putalpha(ImageChops.multiply(art.getchannel("A"), mask))
     return art

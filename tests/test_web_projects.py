@@ -276,6 +276,27 @@ def test_preview_layout_override(client, project):
     assert r.content != base.content  # 覆盖生效
 
 
+def test_preview_card_layout_field_merges(client, project):
+    """卡面 layout 段（单卡布局覆盖）：不传 layout 时服务端自动合并覆盖全局布局。"""
+    assert client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card()
+                      ).status_code == 200
+    base = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
+    card = _battle_card()
+    card["layout"] = {"elements": {"name": {"font_size": 20}}}
+    r = client.put(f"/api/projects/{project}/cards/测试斩", json=card)  # layout 字段过 schema
+    assert r.status_code == 200, r.json()
+    r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
+    assert r.status_code == 200 and r.content != base.content  # 同一卡，覆盖后渲染不同
+    # 编辑期表单覆盖（含 layout 段）同样生效
+    r2 = client.post(f"/api/projects/{project}/cards/测试斩/preview",
+                     json={"card": {**card, "layout": {"elements": {"name": {"font_size": 40}}}}})
+    assert r2.status_code == 200 and r2.content != r.content
+    # layout 形状非法：422
+    bad = client.put(f"/api/projects/{project}/cards/测试斩",
+                     json={**card, "layout": {"elements": {"name": "junk"}}})
+    assert bad.status_code == 422
+
+
 def test_preview_missing_image_fallback(client, project):
     """artwork.images 指向缺失文件：回退占位图而非 422。"""
     card = _battle_card()

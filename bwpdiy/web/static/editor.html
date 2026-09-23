@@ -83,7 +83,7 @@
 <nav id="topnav">
   <span class="brand">BWPDIY <span class="ver"></span> by <a href="https://github.com/Varisox137/BWPDIY" target="_blank" rel="noopener">Varisox137</a></span>
   <button class="navtab active" data-tab="cards">卡牌库</button>
-  <button class="navtab" data-tab="layout">布局设置</button>
+  <button class="navtab" data-tab="layout">全局布局设置</button>
   <span id="ext-options">
     扩展选项：
     <label><input type="checkbox" id="ext-layout"> 手动调整布局</label>
@@ -177,7 +177,7 @@
     <h4>协战双式神框</h4>
     <div>协战卡可勾选「双式神框」，在牌框左上外侧渲染双菱形头像框；头像自动取所属式神卡的卡图（式神缺卡图则该槽位留空菱形），派系小标随式神派系。</div>
     <h4>扩展选项</h4>
-    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步）；<b>标记扩展</b>——稀有度下拉开放 N；等级旁开放勾玉六色（黄/青/紫/红/蓝/棕）；式神开放可选等级与派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
+    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「全局布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步）；并在卡牌库右栏开放「调整单卡元素布局」，对当前卡单独覆盖布局（只把与全局不同的项写进该卡，还原/保存互不影响全局）；<b>标记扩展</b>——稀有度下拉开放 N 与「无」（衍生牌）；等级下拉开放 0（无等级）与勾玉六色（黄/青/紫/红/蓝/棕）；式神开放派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
   </div>
 </div>
 
@@ -288,7 +288,29 @@ function showTab(name) {
     layoutBoot();  // 布局 tab 懒初始化（首次进入才拉取样卡/渲染预览）
   }
 }
-document.querySelectorAll('.navtab').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+// tab 切换门卫：未保存修改弹窗提醒（不丢弃——布局/卡牌修改均保留在内存，仅提示）；
+// 单卡布局模式下离开布局 tab：确认后退出单卡模式（布局调整丢弃，卡牌内容修改保留回卡牌库）
+function tryShowTab(name) {
+  const cur = document.getElementById('tab-layout').classList.contains('active') ? 'layout' : 'cards';
+  if (name === cur) return;
+  if (cardLayoutMode) {
+    if ((singleDirty || cDirty) &&
+        !confirm('单卡布局有未保存修改，离开将丢弃布局调整（卡牌内容修改保留），继续？')) return;
+    exitCardLayout();
+    if (formData) { buildForm(); scheduleCardPreview(); }  // 模式内卡牌内容修改同步回卡牌库表单与预览
+  } else if (cur === 'cards' && cDirty) {
+    if (!confirm('当前卡牌有未保存修改（切换栏目不会丢弃，但仍未保存），继续？')) return;
+  } else if (cur === 'layout' && dirty) {
+    if (!confirm('布局有未保存修改（切换栏目不会丢弃，但仍未保存），继续？')) return;
+  }
+  showTab(name);
+}
+document.querySelectorAll('.navtab').forEach(b => b.onclick = () => tryShowTab(b.dataset.tab));
+// 布局 navtab 文案：单卡模式下显示「单卡布局设置」
+function updateLayoutNavtab() {
+  document.querySelector('.navtab[data-tab="layout"]').textContent =
+    cardLayoutMode ? '单卡布局设置' : '全局布局设置';
+}
 
 // ================= 顶栏扩展选项（localStorage 持久化） =================
 // 标记扩展（marker）：N 稀有度 + 勾玉六色 + 式神等级 + 派系样式；取消勾选只隐藏控件，
@@ -303,8 +325,10 @@ function applyExtOptions() {
   document.getElementById('ext-marker').checked = extOptions.marker;
   // 不勾选「手动调整布局」时隐藏布局设置 navtab；当前正在布局 tab 则退回卡牌库
   document.querySelector('.navtab[data-tab="layout"]').style.display = extOptions.layout ? '' : 'none';
-  if (!extOptions.layout && document.getElementById('tab-layout').classList.contains('active'))
-    showTab('cards');
+  if (!extOptions.layout) {
+    if (cardLayoutMode) exitCardLayout();  // 单卡布局模式随扩展关闭退出（布局调整丢弃）
+    if (document.getElementById('tab-layout').classList.contains('active')) showTab('cards');
+  }
   if (formData) buildForm();  // 稀有度/勾玉颜色等下拉随扩展选项变化
 }
 document.getElementById('ext-layout').onchange = ev => {
@@ -677,13 +701,11 @@ async function cPreviewForm() {
   const seq = ++cPreviewSeq;
   let r;
   try {
-    await ensureLayouts();
-    const tl = layouts[formData.type];
-    if (!tl) return;
-    // 走项目卡预览（基准目录=项目 images/），表单整体覆盖：卡图 offset/scale 修改实时可见
+    // 走项目卡预览（基准目录=项目 images/），表单整体覆盖：卡图 offset/scale 修改实时可见；
+    // 不传 layout——服务端自动把卡面 layout 段（单卡布局覆盖）合并到该类型全局布局
     r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/preview`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({layout: tl, card: formData})});
+      body: JSON.stringify({card: formData})});
   } catch (e) {
     if (seq === cPreviewSeq) cErrorEl.textContent = '预览请求失败: ' + e;
     return;
@@ -857,6 +879,16 @@ function buildForm() {
       if (Object.keys(p).length) formData.portrait = p; else delete formData.portrait;
       afterEdit();
     });
+  }
+  if (extOptions.layout) {
+    // 单卡布局覆盖：进入布局 tab 的单卡模式（调整结果存卡面 layout 段，仅与全局不同的键写盘）
+    const lrow = document.createElement('div');
+    lrow.style.marginTop = '10px';
+    const lb = document.createElement('button');
+    lb.textContent = '调整单卡元素布局';
+    lb.onclick = enterCardLayout;
+    lrow.appendChild(lb);
+    div.appendChild(lrow);
   }
   const row = document.createElement('div');
   row.style.marginTop = '10px';
@@ -1095,7 +1127,7 @@ function validateCardJS(d) {
   if (!TYPES.includes(t)) return [`字段 type：非法卡牌类型「${t}」，须为 ${TYPES.join('/')} 之一`];
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   if ('id' in d && typeof d.id !== 'string') errors.push('字段 id：必须是字符串');
-  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color']);
+  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color', 'layout']);
   (STATS_BY_TYPE[t] || []).forEach(f => allowed.add(`${f}_color`));  // 数值变色伴随字段
   if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', 'portrait', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {
@@ -1109,6 +1141,19 @@ function validateCardJS(d) {
   }
   for (const k of Object.keys(d)) {
     if (!allowed.has(k)) errors.push(`字段 ${k}：类型「${t}」白名单之外的字段`);
+  }
+  // 单卡布局覆盖段：形状校验（与服务端 schema 同口径，键名合法性由渲染层兜底）
+  if ('layout' in d) {
+    const lay = d.layout;
+    if (!lay || typeof lay !== 'object' || Array.isArray(lay)) errors.push('字段 layout：必须是映射');
+    else for (const [k, sec] of Object.entries(lay)) {
+      if (!['elements', 'text_regions'].includes(k)) {
+        errors.push(`字段 layout.${k}：未知键（只允许 elements/text_regions）`);
+      } else if (!sec || typeof sec !== 'object' || Array.isArray(sec) ||
+                 Object.values(sec).some(v => !v || typeof v !== 'object' || Array.isArray(v))) {
+        errors.push(`字段 layout.${k}：必须是「名称 → 键值映射」的映射`);
+      }
+    }
   }
   if (t === '式神') {
     for (const f of ['faction', ...STATS_BY_TYPE['式神']]) {
@@ -1178,13 +1223,13 @@ function validateCardJS(d) {
 // ---- 保存：422 错误按三结构解析显示在表单侧 ----
 async function saveCard() {
   const errs = validateCardJS(formData);
-  if (errs.length) { showFormErrors(errs); return; }
+  if (errs.length) { showFormErrors(errs); return false; }
   let r;
   try {
     r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}`, {method: 'PUT',
       headers: {'Content-Type': 'application/json'}, body: JSON.stringify(formData)});
-  } catch (e) { showFormErrors(['保存请求失败: ' + e]); return; }
-  if (!r.ok) { showFormErrors(await parseErrorDetail(r)); return; }
+  } catch (e) { showFormErrors(['保存请求失败: ' + e]); return false; }
+  if (!r.ok) { showFormErrors(await parseErrorDetail(r)); return false; }
   cardData = deepCopy(formData);
   cDirty = false;
   const d = document.getElementById('c-dirty');
@@ -1200,6 +1245,7 @@ async function saveCard() {
   // 总是刷新左侧栏（卡名/文件名变化即时体现）并重新选中当前卡（表单/预览随刷新）
   if (res.stem) curCard = res.stem;
   await loadCards(curCard);
+  return true;
 }
 
 // ---- 导出：弹窗确认文件名（默认卡名.png），按当前表单内容（含未保存修改）渲染 PNG 并触发浏览器下载 ----
@@ -1221,13 +1267,11 @@ document.getElementById('export-ok').onclick = async () => {
   errEl.textContent = '';
   let r;
   try {
-    await ensureLayouts();
-    const tl = layouts[formData.type];
-    if (!tl) { errEl.textContent = '布局缺失，无法渲染'; return; }
-    // 与编辑期预览同口径：项目卡预览 + 表单整体覆盖（含未保存修改与实时卡图定位）
+    // 与编辑期预览同口径：项目卡预览 + 表单整体覆盖（含未保存修改与实时卡图定位）；
+    // 不传 layout——服务端自动合并卡面 layout 段（单卡布局覆盖）
     r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/preview`, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({layout: tl, card: formData})});
+      body: JSON.stringify({card: formData})});
   } catch (e) { errEl.textContent = '导出请求失败: ' + e; return; }
   if (!r.ok) { errEl.textContent = '渲染失败：' + (await parseErrorDetail(r)).join('\n'); return; }
   const blob = await r.blob();
@@ -1301,6 +1345,12 @@ document.querySelectorAll('#l-frame-variants .fv').forEach(b => b.onclick = () =
 let sel = null;              // {kind:'element'|'region', name}
 let dirty = false;
 let layoutSnapshot = null;   // 本轮布局编辑前的已保存快照（「还原」基准；dirty 时不再覆写）
+// ---- 单卡布局模式：从卡牌库「调整单卡元素布局」进入，编辑当前卡的 layout 覆盖段 ----
+// 工作副本 singleLayout = 该卡类型全局布局 深合并 卡面 layout 段；保存时剔同写稀疏覆盖
+let cardLayoutMode = null;   // null | {stem}
+let singleLayout = null;     // 合并后的单类型布局工作副本（typeLayout() 在模式内返回它）
+let singleSnapshot = null;   // 进入模式时的快照（「还原更改」基准）
+let singleDirty = false;
 const canvas = document.getElementById('l-preview');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('l-status');
@@ -1320,10 +1370,10 @@ async function layoutBoot() {
     statusEl.textContent = '布局加载失败: ' + e;
     return;
   }
-  buildTypes(); selectType('式神');  // 默认卡牌类型：式神
+  buildTypes(); selectType(cardLayoutMode ? curType : '式神');  // 默认卡牌类型：式神（单卡模式保持该卡类型）
 }
-function typeLayout() { return layouts[curType]; }
-function markDirty() { dirty = true; }
+function typeLayout() { return cardLayoutMode ? singleLayout : layouts[curType]; }
+function markDirty() { if (cardLayoutMode) singleDirty = true; else dirty = true; }
 // 快照记录：仅在无未保存修改时覆写，保证快照恒为本轮编辑前的已保存状态
 function captureLayoutSnapshot() {
   if (layouts && !dirty) layoutSnapshot = deepCopy(layouts);
@@ -1367,13 +1417,21 @@ function restoreLayout(all) {
   selectType(curType);  // 全套重建（列表/属性/卡牌内容）并刷新预览
   statusEl.textContent = '已还原（未保存）';
 }
-// 当前类型卡牌内容：样卡字段 + 用户覆盖（覆盖优先；不改的不传，后端深拷贝合并）
+// 当前类型卡牌内容：样卡字段 + 用户覆盖（覆盖优先；不改的不传，后端深拷贝合并）；
+// 单卡模式直接读写真实卡牌 formData（内容修改随「保存并返回」写盘）
 function cardField(name) {
+  if (cardLayoutMode) return formData[name];
   const ov = cardOverrides[curType] || {};
   return name in ov ? ov[name] : (samples[curType] || {})[name];
 }
 function setCardField(name, value) {
-  (cardOverrides[curType] = cardOverrides[curType] || {})[name] = value;
+  if (cardLayoutMode) {
+    if (value === null || value === undefined) delete formData[name];
+    else formData[name] = value;
+    cDirty = true;  // 卡牌内容修改：回卡牌库后保持未保存标记
+  } else {
+    (cardOverrides[curType] = cardOverrides[curType] || {})[name] = value;
+  }
   schedulePreview();
 }
 
@@ -1385,28 +1443,47 @@ function schedulePreview() {
   previewTimer = setTimeout(refreshPreview, 300);
 }
 
-// 尺寸类字段跨类型同步：同名元素在所有类型间保持一致（pos 与内容类字段不同步）
+// 尺寸类字段跨类型同步：同名元素在所有类型间保持一致（pos 与内容类字段不同步）；
+// 单卡模式无跨类型同步（只改单卡工作副本）
 function syncElemField(name, key, val) {
+  if (cardLayoutMode) return;
   for (const t of TYPES) {
     const el = layouts[t] && layouts[t].elements && layouts[t].elements[name];
     if (el && key in el) el[key] = val;
   }
 }
 function syncRegionField(name, key, val) {
+  if (cardLayoutMode) return;
   for (const t of TYPES) {
     const r = layouts[t] && layouts[t].text_regions && layouts[t].text_regions[name];
     if (r && key in r) r[key] = val;
   }
 }
 
-// 类型 tab
+// 类型 tab（单卡模式：替换为大标题 + 单个「还原更改」按钮）
 function buildTypes() {
   const div = document.getElementById('l-types');
   div.innerHTML = '';
+  if (cardLayoutMode) {
+    const h = document.createElement('h3');
+    h.textContent = `手动调整单卡：${curType}`;
+    h.style.margin = '4px 0';
+    div.appendChild(h);
+    const b = document.createElement('button');
+    b.textContent = '还原更改';
+    b.onclick = restoreSingleLayout;
+    div.appendChild(b);
+    return;
+  }
   for (const t of TYPES) {
     const b = document.createElement('button');
     b.textContent = t; b.className = 'tab';
-    b.onclick = () => selectType(t);
+    b.onclick = () => {
+      // 切换类型不丢弃修改（layouts 常驻内存），但提醒仍未保存
+      if (t !== curType && dirty &&
+          !confirm('布局有未保存修改（切换类型不会丢弃，但仍未保存），继续？')) return;
+      selectType(t);
+    };
     div.appendChild(b);
   }
   // 还原按钮：无 .tab class，不参与 selectType 的 active 切换
@@ -1422,6 +1499,16 @@ function buildTypes() {
   row.appendChild(bCur);
   div.appendChild(row);
 }
+// 单卡模式「还原更改」：还原到进入模式时的快照（弹窗列出差异；还原本身计入未保存）
+function restoreSingleLayout() {
+  const d = layoutDiffs(singleLayout || {}, singleSnapshot || {});
+  if (!d.length) { statusEl.textContent = '无更改可还原'; return; }
+  if (!confirm('将还原以下单卡布局更改：\n' + formatDiffs(d))) return;
+  singleLayout = deepCopy(singleSnapshot);
+  singleDirty = true;
+  selectType(curType);  // 全套重建（列表/属性/卡牌内容）并刷新预览
+  statusEl.textContent = '已还原（未保存）';
+}
 function selectType(t) {
   curType = t; sel = null; previewImg = null;  // 清旧图，避免与新类型覆盖层短暂共存
   document.querySelectorAll('#l-types .tab').forEach(b =>
@@ -1436,7 +1523,7 @@ function selectType(t) {
 function buildCardProps() {
   const div = document.getElementById('l-cardprops');
   div.innerHTML = '';
-  if (!samples || !samples[curType]) return;
+  if (!cardLayoutMode && (!samples || !samples[curType])) return;  // 单卡模式数据源是 formData，无需样卡
   textRow(div, '卡名', cardField('name') || '', v => setCardField('name', v));
   selRow(div, '等级', ['0', '1', '2', '3'], String(cardField('level') ?? 0),
     v => setCardField('level', v === '0' ? null : parseInt(v, 10)));
@@ -1448,12 +1535,12 @@ function buildCardProps() {
     i.onchange = () => { setCardField('evolve', i.checked); buildCardProps(); };  // 法术 stat 输入随觉醒显隐
     l.appendChild(i); div.appendChild(l);
   }
-  if (curType === '协战') {  // 双式神框预览开关（样卡无 _duo 注入：勾选后渲染空槽位框）
+  if (curType === '协战') {  // 双式神框预览开关（单卡模式写入真实卡；样卡无 _duo 注入：勾选后渲染空槽位框）
     const l = document.createElement('label');
     l.textContent = '双式神框 ';
     const i = document.createElement('input');
     i.type = 'checkbox'; i.checked = !!cardField('duo_frame');
-    i.onchange = () => setCardField('duo_frame', i.checked);
+    i.onchange = () => setCardField('duo_frame', i.checked ? true : null);  // 关闭即删键（保持 yaml 最小化）
     l.appendChild(i); div.appendChild(l);
   }
   if ('shikigami' in samples[curType]) {
@@ -1538,14 +1625,26 @@ async function refreshPreview() {
   const seq = ++previewSeq;
   let r;
   try {
-    const body = {type: curType, layout: typeLayout()};
-    const cardOv = deepCopy(cardOverrides[curType] || {});
-    if (FRAME_VARIANT_TYPES.has(curType)) cardOv.frame_variant = layoutFrameVariant;
-    if (Object.keys(cardOv).length) body.card = cardOv;
-    r = await fetch('/api/preview', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
-    });
+    if (cardLayoutMode) {
+      // 单卡模式：项目卡预览（卡图/协战头像取项目数据），布局传工作副本；
+      // 卡面 layout 键摘除（布局以显式 layout 为准，避免与服务端自动合并重复）
+      const cardOv = deepCopy(formData);
+      delete cardOv.layout;
+      if (FRAME_VARIANT_TYPES.has(curType)) cardOv.frame_variant = layoutFrameVariant;
+      r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(cardLayoutMode.stem)}/preview`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({layout: singleLayout, card: cardOv}),
+      });
+    } else {
+      const body = {type: curType, layout: typeLayout()};
+      const cardOv = deepCopy(cardOverrides[curType] || {});
+      if (FRAME_VARIANT_TYPES.has(curType)) cardOv.frame_variant = layoutFrameVariant;
+      if (Object.keys(cardOv).length) body.card = cardOv;
+      r = await fetch('/api/preview', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+    }
   } catch (e) {
     if (seq !== previewSeq) return;  // 过期请求的失败文案不得覆盖新状态
     statusEl.textContent = '预览请求失败: ' + e;
@@ -1556,7 +1655,7 @@ async function refreshPreview() {
     statusEl.textContent = '预览失败: ' + (await r.json()).detail;
     return;
   }
-  statusEl.textContent = dirty ? '● 未保存' : '';
+  statusEl.textContent = (cardLayoutMode ? singleDirty : dirty) ? '● 未保存' : '';
   const blob = await r.blob();
   const img = new Image();
   img.onload = () => {
@@ -1870,8 +1969,71 @@ function propagateFromCurrentType() {
   }
 }
 
+// ---- 单卡布局模式：进入/退出/保存 ----
+// 深合并：卡面 layout 稀疏覆盖段叠加到该类型全局布局（与 render/layout.py merge_card_layout 同口径）
+function mergeLayoutJS(base, override) {
+  const merged = deepCopy(base);
+  if (!override || typeof override !== 'object') return merged;
+  for (const sec of ['elements', 'text_regions']) {
+    const items = override[sec];
+    if (!items || typeof items !== 'object') continue;
+    for (const [name, item] of Object.entries(items)) {
+      if (item && typeof item === 'object' && !Array.isArray(item))
+        merged[sec][name] = {...(merged[sec][name] || {}), ...item};
+    }
+  }
+  return merged;
+}
+// 稀疏化：只保留与全局布局不同的键（保存时不写相同项；全部相同返回 null → 删 layout 键）
+function diffLayout(eff, base) {
+  const out = {};
+  for (const sec of ['elements', 'text_regions']) {
+    for (const [name, item] of Object.entries((eff || {})[sec] || {})) {
+      const b = ((base || {})[sec] || {})[name] || {};
+      const diff = {};
+      for (const [k, v] of Object.entries(item)) {
+        if (JSON.stringify(v) !== JSON.stringify(b[k])) diff[k] = v;
+      }
+      if (Object.keys(diff).length) (out[sec] = out[sec] || {})[name] = diff;
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}
+async function enterCardLayout() {
+  if (!formData || !curCard || cardLayoutMode) return;
+  try { await ensureLayouts(); } catch (e) { listErr(['布局加载失败: ' + e]); return; }
+  if (!layouts[formData.type]) { listErr([`布局缺失类型：${formData.type}`]); return; }
+  cardLayoutMode = {stem: curCard};
+  singleLayout = mergeLayoutJS(layouts[formData.type], formData.layout);
+  singleSnapshot = deepCopy(singleLayout);
+  singleDirty = false;
+  curType = formData.type;
+  layoutFrameVariant = formData.frame_variant ?? 'norm';
+  document.querySelectorAll('#l-frame-variants .fv').forEach(b =>
+    b.classList.toggle('active', b.dataset.fv === layoutFrameVariant));
+  sel = null; previewImg = null;
+  updateLayoutNavtab();
+  document.getElementById('l-btn-save').textContent = '保存并返回';
+  showTab('layout');
+  if (layoutInited) { buildTypes(); selectType(curType); }  // 非首次：layoutBoot 不走，手动重建
+}
+function exitCardLayout() {
+  cardLayoutMode = null; singleLayout = null; singleSnapshot = null; singleDirty = false;
+  updateLayoutNavtab();
+  document.getElementById('l-btn-save').textContent = '保存';
+}
+async function saveCardLayout() {
+  const ov = diffLayout(singleLayout, layouts[curType]);
+  if (ov) formData.layout = ov; else delete formData.layout;
+  const ok = await saveCard();  // 校验/保存失败：留在单卡模式，错误已在表单栏显示
+  if (!ok) return;
+  exitCardLayout();
+  showTab('cards');  // saveCard 已刷新列表并选中该卡
+}
+
 // 保存
 document.getElementById('l-btn-save').onclick = async () => {
+  if (cardLayoutMode) return saveCardLayout();
   propagateFromCurrentType();
   let r;
   try {
@@ -1935,9 +2097,9 @@ checkUpdate();
 setInterval(checkUpdate, 60000);
 if (location.hash === '#layout' && extOptions.layout) showTab('layout');  // /layout 重定向落点（布局 tab 隐藏时不跳转）
 
-// 未保存修改（布局 dirty / 卡牌 cDirty）时关闭或刷新标签页弹浏览器确认框
+// 未保存修改（布局 dirty / 单卡布局 singleDirty / 卡牌 cDirty）时关闭或刷新标签页弹浏览器确认框
 window.addEventListener('beforeunload', ev => {
-  if (dirty || cDirty) { ev.preventDefault(); ev.returnValue = ''; }
+  if (dirty || singleDirty || cDirty) { ev.preventDefault(); ev.returnValue = ''; }
 });
 </script>
 </body>

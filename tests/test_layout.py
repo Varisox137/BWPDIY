@@ -186,3 +186,23 @@ def test_shipped_layouts_already_normalized():
             warnings.simplefilter("always")
             layout.load_layouts(path)
         assert not [w for w in caught if issubclass(w.category, UserWarning)]
+
+
+def test_merge_card_layout():
+    """单卡布局覆盖：按键两级合并、base 不被修改、畸形 override 安全跳过。"""
+    base = {"elements": {"name": {"kind": "text", "pos": [256, 60], "font_size": 30}},
+            "text_regions": {"desc": {"center": [256, 400], "width": 400}}}
+    override = {"elements": {"name": {"pos": [200, 60]}, "rarity": {"gap": 40}},
+                "text_regions": {"desc": {"width": 300}},
+                "junk_section": {"x": 1}, "bad": "not-dict"}
+    merged = layout.merge_card_layout(base, override)
+    assert merged["elements"]["name"] == {"kind": "text", "pos": [200, 60], "font_size": 30}
+    assert merged["elements"]["rarity"] == {"gap": 40}  # 全局没有的元素也能补入
+    assert merged["text_regions"]["desc"]["width"] == 300
+    assert "junk_section" not in merged and "bad" not in merged
+    # base 未被改动
+    assert base["elements"]["name"]["pos"] == [256, 60]
+    assert "rarity" not in base["elements"]
+    # 非 dict override / None：原样（深拷贝）返回
+    assert layout.merge_card_layout(base, None)["elements"]["name"]["pos"] == [256, 60]
+    assert layout.merge_card_layout(base, "junk")["elements"]["name"]["pos"] == [256, 60]

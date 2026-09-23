@@ -443,6 +443,8 @@ def test_rename_card_illegal_name(lib):
     {"type": "法术", "name": "带 id", "id": "100301", "rarity": "N"},
     {"type": "法术", "name": "衍生"},                  # rarity/level 均可缺省（衍生牌口径）
     {"type": "战斗", "name": "衍生斩", "power+": -1},   # 缺稀有度+带符号数值
+    {**FIGHT, "layout": {"elements": {"name": {"pos": [1, 2]}},
+                         "text_regions": {"desc": {"width": 300}}}},  # 单卡布局覆盖段
 ])
 def test_validate_ok(card):
     assert validate_card(card) == []
@@ -495,6 +497,9 @@ def test_validate_ok(card):
     ({**FIGHT, "health_color": "red"}, "health_color"),   # 变色伴随字段须在 stat 矩阵内
     ({**SHIKIGAMI, "rarity": "R"}, "rarity"),         # 式神无稀有度
     ({**FIGHT, "未知字段": 1}, "未知字段"),
+    ({**FIGHT, "layout": "x"}, "layout"),                        # 布局覆盖段须为映射
+    ({**FIGHT, "layout": {"junk": {}}}, "layout.junk"),          # 只允许 elements/text_regions
+    ({**FIGHT, "layout": {"elements": {"name": "x"}}}, "layout.elements"),  # 项须为键值映射
     # artwork 结构形状
     ({**FIGHT, "artwork": []}, "artwork"),
     ({**FIGHT, "artwork": {"images": "a.png"}}, "images"),

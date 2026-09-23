@@ -9,6 +9,9 @@ stat 数值字段口径与 render/badges.py `_STAT_MATRIX` 对齐（store 不 im
 
 协战另可携带可选布尔 duo_frame（双式神框渲染开关，缺省不绘制、不写进 yaml）。
 
+全类型另可携带可选 layout 单卡布局覆盖段（{elements/text_regions: {名称: {键: 值}}} 稀疏结构，
+渲染时合并覆盖该卡类型的全局布局；只校验形状，键名合法性由渲染层兜底）。
+
 式神另可携带可选 portrait 头像变换段（{offset_x, offset_y, scale, rotate} + 可选布尔
 frame 头像框开关，全可缺省；协战双式神框取该式神卡图作头像时套用变换，口径同 artwork）。
 
@@ -76,6 +79,7 @@ def _is_num(v) -> bool:
 
 def _allowed_fields(ctype: str) -> set[str]:
     allowed = set(_COMMON_FIELDS) | set(_MARK_FIELDS)
+    allowed.add("layout")  # 单卡布局覆盖段（稀疏，渲染时合并覆盖该类型全局布局）
     allowed |= {f"{f}_color" for f in _STATS_BY_TYPE[ctype]}  # 数值变色伴随字段
     if ctype == "式神":
         allowed |= set(_SHIKIGAMI_ONLY) | set(_STATS_BY_TYPE["式神"])
@@ -149,6 +153,18 @@ def validate_card(data) -> list[str]:
     if "level_color" in data and data["level_color"] not in LEVEL_COLORS:
         errors.append(f"字段 level_color：非法勾玉颜色「{data['level_color']}」，"
                       f"须为 {'/'.join(LEVEL_COLORS)} 之一")
+    # 单卡布局覆盖段：形状校验（键名合法性由渲染层兜底）
+    if "layout" in data:
+        lay = data["layout"]
+        if not isinstance(lay, dict):
+            errors.append("字段 layout：必须是映射")
+        else:
+            for key, section in lay.items():
+                if key not in ("elements", "text_regions"):
+                    errors.append(f"字段 layout.{key}：未知键（只允许 elements/text_regions）")
+                elif not isinstance(section, dict) or any(
+                        not isinstance(item, dict) for item in section.values()):
+                    errors.append(f"字段 layout.{key}：必须是「名称 → 键值映射」的映射")
     for field in _STATS_BY_TYPE[ctype]:
         cfield = f"{field}_color"
         if cfield in data and data[cfield] not in STAT_VALUE_COLORS:

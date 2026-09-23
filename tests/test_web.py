@@ -417,6 +417,12 @@ assert.deepStrictEqual(validateCardJS(battle), []);
 assert.ok(validateCardJS({{...battle, duo_frame: true}}).some(e => e.includes('白名单')));
 assert.ok(validateCardJS({{...battle, shikigami1: '甲'}}).some(e => e.includes('白名单')));
 assert.ok(validateCardJS({{...battle, name: ''}}).some(e => e.includes('name')));
+// 单卡布局覆盖段：形状校验（合法稀疏覆盖通过；畸形 422 口径报错）
+assert.deepStrictEqual(validateCardJS({{...battle, layout: {{elements: {{name: {{pos: [1, 2]}}}},
+                                        text_regions: {{desc: {{width: 300}}}}}}}}), []);
+assert.ok(validateCardJS({{...battle, layout: 'junk'}}).some(e => e.includes('layout')));
+assert.ok(validateCardJS({{...battle, layout: {{junk: {{}}}}}}).some(e => e.includes('layout.junk')));
+assert.ok(validateCardJS({{...battle, layout: {{elements: {{name: 'x'}}}}}}).some(e => e.includes('layout.elements')));
 console.log("OK");
 """
     _run_node(tmp_path, driver)

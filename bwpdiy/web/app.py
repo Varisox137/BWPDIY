@@ -22,7 +22,7 @@ from bwpdiy import __version__
 from bwpdiy import updater
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.duo import render_portrait
-from bwpdiy.render.layout import load_layouts
+from bwpdiy.render.layout import get_type_layout, load_layouts, merge_card_layout
 from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
 from bwpdiy.resources import default_library_dir
 from bwpdiy.store import (
@@ -267,8 +267,12 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             card_data["_duo"] = [_duo_slot(library_dir, project, card_data.get(f))
                                  for f in ("shikigami1", "shikigami2")]
         try:
-            img = render_card(card_data, assets_dir,
-                              layout=(request or {}).get("layout"), crop=False)
+            req_layout = (request or {}).get("layout")
+            if req_layout is None and isinstance(card_data.get("layout"), dict):
+                # 单卡布局覆盖：卡面 layout 段按键合并覆盖该类型全局布局（导出同路）
+                base = get_type_layout(load_layouts(Path(assets_dir)), card_data["type"])
+                req_layout = merge_card_layout(base, card_data["layout"])
+            img = render_card(card_data, assets_dir, layout=req_layout, crop=False)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()

@@ -3,6 +3,7 @@
 布局 schema 见 docs/terminology.md「布局配置」。
 """
 
+import copy
 import json
 import warnings
 from collections import Counter
@@ -83,3 +84,22 @@ def get_type_layout(layouts: dict, card_type: str) -> dict:
     if card_type not in layouts:
         raise ValueError(f"布局缺失: {card_type}")
     return layouts[card_type]
+
+
+def merge_card_layout(base: dict, override: dict | None) -> dict:
+    """单卡布局覆盖合并：深拷贝 base（该卡类型的全局布局），按 section→名称→键
+    两级合并 override（卡牌 yaml 的 `layout` 稀疏覆盖段）。base 不被修改；
+    override 缺 section、项非 dict 等畸形数据跳过（schema 已做形状校验，此处纵深防御）。
+    """
+    merged = copy.deepcopy(base)
+    if not isinstance(override, dict):
+        return merged
+    for section in ("elements", "text_regions"):
+        items = override.get(section)
+        if not isinstance(items, dict):
+            continue
+        target = merged.setdefault(section, {})
+        for name, item in items.items():
+            if isinstance(item, dict):
+                target.setdefault(name, {}).update(item)
+    return merged

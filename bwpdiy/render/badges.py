@@ -257,7 +257,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         cx, y = elem["pos"]
         name_width = (ctx or {}).get("name_width", 0)
         # gap=默认半间距（短名静态固定 pos±gap）；仅卡名超宽时按与卡名缘固定 margin 外移
-        offset = round(max(elem["gap"], name_width / 2 + elem.get("margin", 12)))
+        offset = round(max(elem["gap"], name_width / 2 + elem.get("margin", 8)))
         variant = "reinforce" if card.get("type") == "协战" else _frame_variant(card)
         mark = lib.rarity(rarity, variant)
         out = _paste_element(canvas, mark, (cx - offset, y),

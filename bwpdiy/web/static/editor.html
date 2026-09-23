@@ -1735,7 +1735,7 @@ function buildProps() {
     }
     if (e.kind === 'rarity_flank') {
       numRow(div, '默认间距', e.gap, v => { e.gap = v; syncElemField(sel.name, 'gap', v); });
-      numRow(div, '卡名间距', e.margin ?? 12, v => { e.margin = v; syncElemField(sel.name, 'margin', v); });
+      numRow(div, '卡名间距', e.margin ?? 8, v => { e.margin = v; syncElemField(sel.name, 'margin', v); });
       numRow(div, '尺寸', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
     }
     if (e.kind === 'faction') {

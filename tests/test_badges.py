@@ -63,14 +63,14 @@ def test_rarity_flank_short_name_static(assets_dir):
     # 无 rarity 字段：无稀有度（衍生牌口径），不绘制双标
     no_rarity = render_element(canvas(), lib, "rarity", elem, {}, {"name_width": 0})
     assert opaque(no_rarity) == 0
-    # margin 缺省回退 12：长名（name_width/2+margin > gap）时与显式 margin=12 逐像素一致
+    # margin 缺省回退 8：长名（name_width/2+margin > gap）时与显式 margin=8 逐像素一致
     no_margin = render_element(canvas(), lib, "rarity",
                                {"kind": "rarity_flank", "pos": [256, 358], "gap": 32, "size": 24},
                                {"rarity": "SSR"}, {"name_width": 100})
-    explicit12 = render_element(canvas(), lib, "rarity",
-                                {"kind": "rarity_flank", "pos": [256, 358], "gap": 32, "size": 24,
-                                 "margin": 12}, {"rarity": "SSR"}, {"name_width": 100})
-    assert list(no_margin.getdata()) == list(explicit12.getdata())
+    explicit8 = render_element(canvas(), lib, "rarity",
+                               {"kind": "rarity_flank", "pos": [256, 358], "gap": 32, "size": 24,
+                                "margin": 8}, {"rarity": "SSR"}, {"name_width": 100})
+    assert list(no_margin.getdata()) == list(explicit8.getdata())
 
 
 def test_rarity_flank_long_name_moves(assets_dir):

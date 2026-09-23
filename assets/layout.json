@@ -5,13 +5,13 @@
         "kind": "level_badge",
         "pos": [
           128,
-          64
+          70
         ],
-        "base_size": 58,
-        "star_size": 76,
-        "num_size": 40,
+        "base_size": 68,
+        "star_size": 84,
+        "num_size": 48,
         "star_offset": [
-          0,
+          1,
           -4
         ],
         "num_offset": [
@@ -116,13 +116,13 @@
         "kind": "level_badge",
         "pos": [
           128,
-          64
+          70
         ],
-        "base_size": 58,
-        "star_size": 76,
-        "num_size": 40,
+        "base_size": 68,
+        "star_size": 84,
+        "num_size": 48,
         "star_offset": [
-          0,
+          1,
           -4
         ],
         "num_offset": [
@@ -250,13 +250,13 @@
         "kind": "level_badge",
         "pos": [
           124,
-          64
+          70
         ],
-        "base_size": 58,
-        "star_size": 76,
-        "num_size": 40,
+        "base_size": 68,
+        "star_size": 84,
+        "num_size": 48,
         "star_offset": [
-          0,
+          1,
           -4
         ],
         "num_offset": [
@@ -370,13 +370,13 @@
         "kind": "level_badge",
         "pos": [
           128,
-          64
+          70
         ],
-        "base_size": 58,
-        "star_size": 76,
-        "num_size": 40,
+        "base_size": 68,
+        "star_size": 84,
+        "num_size": 48,
         "star_offset": [
-          0,
+          1,
           -4
         ],
         "num_offset": [
@@ -482,13 +482,13 @@
         "kind": "level_badge",
         "pos": [
           126,
-          64
+          70
         ],
-        "base_size": 58,
-        "star_size": 76,
-        "num_size": 40,
+        "base_size": 68,
+        "star_size": 84,
+        "num_size": 48,
         "star_offset": [
-          0,
+          1,
           -4
         ],
         "num_offset": [
@@ -573,13 +573,13 @@
         "kind": "level_badge",
         "pos": [
           128,
-          64
+          70
         ],
-        "base_size": 58,
-        "star_size": 76,
-        "num_size": 40,
+        "base_size": 68,
+        "star_size": 84,
+        "num_size": 48,
         "star_offset": [
-          0,
+          1,
           -4
         ],
         "num_offset": [

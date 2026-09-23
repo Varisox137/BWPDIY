@@ -242,9 +242,10 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     @app.put("/api/projects/{project}/cards/{card}")
     async def put_card(project: str, card: str, request: dict):
         # save_card 返回 (path, updated)：式神卡改名时自动联动同项目卡的所属式神引用，
-        # updated 为被更新卡的卡名列表（前端据此提示并刷新列表）
-        _path, updated = save_card(library_dir, project, card, request)
-        return {"ok": True, "updated": updated}
+        # updated 为被更新卡的卡名列表（前端据此提示并刷新列表）；
+        # stem 为最终文件名——无 id 卡改名时服务端已把 yaml 重命名为新卡名，前端据此切换选中
+        path, updated = save_card(library_dir, project, card, request)
+        return {"ok": True, "updated": updated, "stem": path.stem}
 
     @app.delete("/api/projects/{project}/cards/{card}")
     def remove_card(project: str, card: str):

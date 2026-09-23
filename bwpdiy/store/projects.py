@@ -209,12 +209,30 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
                                    f"引用按名关联，式神卡名必须唯一"])
     # 改名联动：旧盘内容（式神卡）name 变化时，改写全项目其他卡的式神引用
     updated: list[str] = []
-    if sub == "shikigami" and not is_new:
-        old = _read_yaml(path)
-        old_name = old.get("name") if old and old.get("type") == "式神" else None
-        if isinstance(old_name, str) and old_name and old_name != data["name"]:
-            updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
+    old = _read_yaml(path) if not is_new else None
+    old_name = old.get("name") if isinstance(old, dict) else None
+    if (sub == "shikigami" and isinstance(old_name, str) and old_name
+            and old.get("type") == "式神" and old_name != data["name"]):
+        updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
+    # 无 id 且文件名是卡名回退命名（stem == 旧卡名）：改名时同步重命名 yaml。
+    # 有 id 或文件名本就与卡名脱钩（如数字 stem）时不动，供 BWPro 按 id 取文件
+    rename_to: Path | None = None
+    if (not is_new and not data.get("id") and isinstance(old_name, str)
+            and old_name == card_name and data["name"] != card_name):
+        try:
+            _check_name(data["name"], "卡名")
+        except StoreError as e:
+            raise SchemaError([f"无 id 的卡牌配置文件按卡名命名：{e}；"
+                               f"如需保留该卡名请填写 id（文件按 id 命名、与卡名脱钩）"]) from e
+        target = pdir / sub / f"{data['name']}.yaml"
+        if target.is_file() or (pdir / other / f"{data['name']}.yaml").is_file():
+            raise SchemaError([f"卡名「{data['name']}」对应的文件 {data['name']}.yaml 已存在，"
+                               f"无法重命名；请修改卡名或填写 id"])
+        rename_to = target
     _dump_yaml(path, data)
+    if rename_to is not None:
+        os.replace(path, rename_to)
+        path = rename_to
     return path, updated
 
 

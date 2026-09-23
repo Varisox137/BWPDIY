@@ -134,11 +134,22 @@ _SHIKI_ENTRY = {"stem": "shikigami", "name": "测试式神"}
 def test_card_save_and_load_roundtrip(client, project):
     card = _battle_card()
     r = client.put(f"/api/projects/{project}/cards/测试斩", json=card)
-    assert r.status_code == 200 and r.json() == {"ok": True, "updated": []}
+    assert r.status_code == 200 and r.json() == {"ok": True, "updated": [], "stem": "测试斩"}
     assert client.get(f"/api/projects/{project}/cards").json() == {
         "shikigami": [_SHIKI_ENTRY], "cards": [{"stem": "测试斩", "name": "测试斩"}]}
     got = client.get(f"/api/projects/{project}/cards/测试斩").json()
     assert got == card
+
+
+def test_card_rename_without_id_renames_file(client, project):
+    """无 id 卡改名：保存后服务端重命名 yaml，响应 stem 为新文件名。"""
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    r = client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card("斩改"))
+    assert r.status_code == 200 and r.json()["stem"] == "斩改"
+    assert client.get(f"/api/projects/{project}/cards").json()["cards"] == [
+        {"stem": "斩改", "name": "斩改"}]
+    r2 = client.get(f"/api/projects/{project}/cards/测试斩")
+    assert r2.status_code == 404
 
 
 def test_card_list_sorted_by_name(client, project):
@@ -174,7 +185,7 @@ def test_card_save_shikigami_rename_syncs_references(client, project):
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
     r = client.put(f"/api/projects/{project}/cards/shikigami", json=_shikigami_card("新名"))
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "updated": ["测试斩"]}
+    assert r.json() == {"ok": True, "updated": ["测试斩"], "stem": "shikigami"}
     assert client.get(f"/api/projects/{project}/cards/测试斩").json()["shikigami"] == "新名"
     lst = client.get(f"/api/projects/{project}/cards").json()
     assert lst["shikigami"] == [{"stem": "shikigami", "name": "新名"}]

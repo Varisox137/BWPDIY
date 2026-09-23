@@ -357,6 +357,52 @@ def test_rename_cascade_only_for_shikigami(lib):
     assert load_card(lib, "山风", "100307") == SHIKIGAMI
 
 
+def test_rename_card_renames_file_without_id(lib):
+    """无 id 且文件按卡名回退命名（stem == 旧卡名）：改名同步重命名 yaml。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", FIGHT)
+    path, _ = save_card(lib, "山风", "斩", {**FIGHT, "name": "斩改"})
+    assert path.name == "斩改.yaml"
+    assert not (lib / "山风" / "cards" / "斩.yaml").exists()
+    assert load_card(lib, "山风", "斩改")["name"] == "斩改"
+
+
+def test_rename_card_with_id_keeps_stem(lib):
+    """有 id 卡改名：文件名与卡名脱钩保持不动（BWPro 按 id 取文件）。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "100301", {**FIGHT, "id": "100301"})
+    path, _ = save_card(lib, "山风", "100301", {**FIGHT, "id": "100301", "name": "斩改"})
+    assert path.name == "100301.yaml"
+    assert load_card(lib, "山风", "100301")["name"] == "斩改"
+
+
+def test_rename_card_custom_stem_kept(lib):
+    """文件名本就和卡名脱钩（数字 stem 无 id）：改名不重命名。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "100301", FIGHT)  # stem 100301 ≠ 卡名 斩
+    path, _ = save_card(lib, "山风", "100301", {**FIGHT, "name": "斩改"})
+    assert path.name == "100301.yaml"
+
+
+def test_rename_card_file_conflict(lib):
+    """无 id 改名的目标文件名已存在：报 SchemaError，原文件不动。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", FIGHT)
+    save_card(lib, "山风", "突", {**FIGHT, "name": "突"})
+    with pytest.raises(SchemaError, match="已存在"):
+        save_card(lib, "山风", "斩", {**FIGHT, "name": "突"})
+    assert load_card(lib, "山风", "斩")["name"] == "斩"
+
+
+def test_rename_card_illegal_name(lib):
+    """无 id 改名但新卡名不是合法文件名：报 SchemaError 并指引填写 id，不落盘。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", FIGHT)
+    with pytest.raises(SchemaError, match="id"):
+        save_card(lib, "山风", "斩", {**FIGHT, "name": "斩:改"})
+    assert load_card(lib, "山风", "斩")["name"] == "斩"  # 原文件内容不变
+
+
 # ---------- schema 校验：正例 ----------
 
 @pytest.mark.parametrize("card", [

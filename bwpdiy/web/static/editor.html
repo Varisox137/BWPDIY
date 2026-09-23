@@ -1195,10 +1195,11 @@ async function saveCard() {
   if (res.updated && res.updated.length) {
     // 式神卡改名：服务端已联动同项目卡的所属式神引用，列表显示名随之刷新
     cStatusEl.textContent = `已保存；已同步更新 ${res.updated.length} 张卡的所属式神引用：${res.updated.join('、')}`;
-    await loadCards(curCard);  // 重新选中当前卡（表单/预览随刷新，loadCards 内已预览）
-    return;
   }
-  cPreviewProject();  // 落盘后再走项目卡预览，取回项目卡图
+  // 无 id 卡改名时服务端已重命名配置文件（res.stem 为新文件名）；
+  // 总是刷新左侧栏（卡名/文件名变化即时体现）并重新选中当前卡（表单/预览随刷新）
+  if (res.stem) curCard = res.stem;
+  await loadCards(curCard);
 }
 
 // ---- 导出：弹窗确认文件名（默认卡名.png），按当前表单内容（含未保存修改）渲染 PNG 并触发浏览器下载 ----
@@ -1734,7 +1735,7 @@ function buildProps() {
     }
     if (e.kind === 'rarity_flank') {
       numRow(div, '默认间距', e.gap, v => { e.gap = v; syncElemField(sel.name, 'gap', v); });
-      numRow(div, '卡名间距', e.margin ?? 8, v => { e.margin = v; syncElemField(sel.name, 'margin', v); });
+      numRow(div, '卡名间距', e.margin ?? 12, v => { e.margin = v; syncElemField(sel.name, 'margin', v); });
       numRow(div, '尺寸', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
     }
     if (e.kind === 'faction') {

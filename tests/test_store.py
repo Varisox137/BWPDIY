@@ -403,6 +403,30 @@ def test_rename_card_illegal_name(lib):
     assert load_card(lib, "山风", "斩")["name"] == "斩"  # 原文件内容不变
 
 
+def test_rename_conflict_keeps_references_intact(lib):
+    """式神改名但重命名目标冲突：报错时引用联动不得先行落盘（悬空引用回归）。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "山风", SHIKIGAMI)                      # 文件按卡名回退命名
+    save_card(lib, "山风", "岚", {**SHIKIGAMI, "name": "薰"})      # 占用目标文件名（卡名不同）
+    save_card(lib, "山风", "斩", FIGHT)                            # shikigami: 山风
+    with pytest.raises(SchemaError, match="已存在"):
+        save_card(lib, "山风", "山风", {**SHIKIGAMI, "name": "岚"})
+    assert load_card(lib, "山风", "斩")["shikigami"] == "山风"      # 引用未被先行改写
+    assert load_card(lib, "山风", "山风")["name"] == "山风"         # 原卡未落盘
+    # 换一个不冲突的名字重试：联动正常生效
+    _, updated = save_card(lib, "山风", "山风", {**SHIKIGAMI, "name": "山风改"})
+    assert updated == ["斩"]
+    assert load_card(lib, "山风", "斩")["shikigami"] == "山风改"
+
+
+def test_rename_card_case_only(lib):
+    """纯大小写改名（Windows 大小写不敏感）不误判自身为冲突。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "zhan", {**FIGHT, "name": "zhan"})
+    path, _ = save_card(lib, "山风", "zhan", {**FIGHT, "name": "Zhan"})
+    assert load_card(lib, "山风", path.stem)["name"] == "Zhan"
+
+
 # ---------- schema 校验：正例 ----------
 
 @pytest.mark.parametrize("card", [

@@ -207,15 +207,12 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
             if other_data and other_data.get("name") == data["name"]:
                 raise SchemaError([f"式神卡名「{data['name']}」与已有式神卡（{p.stem}.yaml）重复："
                                    f"引用按名关联，式神卡名必须唯一"])
-    # 改名联动：旧盘内容（式神卡）name 变化时，改写全项目其他卡的式神引用
     updated: list[str] = []
     old = _read_yaml(path) if not is_new else None
     old_name = old.get("name") if isinstance(old, dict) else None
-    if (sub == "shikigami" and isinstance(old_name, str) and old_name
-            and old.get("type") == "式神" and old_name != data["name"]):
-        updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
     # 无 id 且文件名是卡名回退命名（stem == 旧卡名）：改名时同步重命名 yaml。
-    # 有 id 或文件名本就与卡名脱钩（如数字 stem）时不动，供 BWPro 按 id 取文件
+    # 有 id 或文件名本就与卡名脱钩（如数字 stem）时不动，供 BWPro 按 id 取文件。
+    # 校验必须先于引用联动落盘：冲突/非法名报错时不得留下悬空引用
     rename_to: Path | None = None
     if (not is_new and not data.get("id") and isinstance(old_name, str)
             and old_name == card_name and data["name"] != card_name):
@@ -225,10 +222,16 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
             raise SchemaError([f"无 id 的卡牌配置文件按卡名命名：{e}；"
                                f"如需保留该卡名请填写 id（文件按 id 命名、与卡名脱钩）"]) from e
         target = pdir / sub / f"{data['name']}.yaml"
-        if target.is_file() or (pdir / other / f"{data['name']}.yaml").is_file():
+        # target != path：Windows 大小写不敏感下纯大小写改名 target 即自身，不算冲突
+        if target != path and (target.is_file()
+                               or (pdir / other / f"{data['name']}.yaml").is_file()):
             raise SchemaError([f"卡名「{data['name']}」对应的文件 {data['name']}.yaml 已存在，"
                                f"无法重命名；请修改卡名或填写 id"])
         rename_to = target
+    # 改名联动：旧盘内容（式神卡）name 变化时，改写全项目其他卡的式神引用
+    if (sub == "shikigami" and isinstance(old_name, str) and old_name
+            and old.get("type") == "式神" and old_name != data["name"]):
+        updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
     _dump_yaml(path, data)
     if rename_to is not None:
         os.replace(path, rename_to)

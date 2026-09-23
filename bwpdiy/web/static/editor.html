@@ -1347,7 +1347,7 @@ let dirty = false;
 let layoutSnapshot = null;   // 本轮布局编辑前的已保存快照（「还原」基准；dirty 时不再覆写）
 // ---- 单卡布局模式：从卡牌库「调整单卡元素布局」进入，编辑当前卡的 layout 覆盖段 ----
 // 工作副本 singleLayout = 该卡类型全局布局 深合并 卡面 layout 段；保存时剔同写稀疏覆盖
-let cardLayoutMode = null;   // null | {stem}
+let cardLayoutMode = null;   // null | 当前卡 stem
 let singleLayout = null;     // 合并后的单类型布局工作副本（typeLayout() 在模式内返回它）
 let singleSnapshot = null;   // 进入模式时的快照（「还原更改」基准）
 let singleDirty = false;
@@ -1631,7 +1631,7 @@ async function refreshPreview() {
       const cardOv = deepCopy(formData);
       delete cardOv.layout;
       if (FRAME_VARIANT_TYPES.has(curType)) cardOv.frame_variant = layoutFrameVariant;
-      r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(cardLayoutMode.stem)}/preview`, {
+      r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(cardLayoutMode)}/preview`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({layout: singleLayout, card: cardOv}),
       });
@@ -2003,7 +2003,7 @@ async function enterCardLayout() {
   if (!formData || !curCard || cardLayoutMode) return;
   try { await ensureLayouts(); } catch (e) { listErr(['布局加载失败: ' + e]); return; }
   if (!layouts[formData.type]) { listErr([`布局缺失类型：${formData.type}`]); return; }
-  cardLayoutMode = {stem: curCard};
+  cardLayoutMode = curCard;
   singleLayout = mergeLayoutJS(layouts[formData.type], formData.layout);
   singleSnapshot = deepCopy(singleLayout);
   singleDirty = false;

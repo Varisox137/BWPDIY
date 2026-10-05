@@ -20,7 +20,7 @@ from PIL import Image
 
 from bwpdiy import __version__
 from bwpdiy import updater
-from bwpdiy.render.assets import AssetLibrary
+from bwpdiy.render.assets import get_library
 from bwpdiy.render.duo import render_portrait
 from bwpdiy.render.layout import get_type_layout, load_layouts, merge_card_layout
 from bwpdiy.render.mech import render_mechanism
@@ -309,7 +309,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         art_ref = _resolve_art_ref(card_data, library_dir / project / "images",
                                    transform=portrait)
         try:
-            lib = AssetLibrary(Path(assets_dir))
+            lib = get_library(Path(assets_dir))
             # 头像框开关（portrait.frame，缺省 true）：不画斜方框与派系标，仅菱形裁剪头像
             with_frame = portrait.get("frame", True) is not False
             img = render_portrait(lib, elem, art_ref, card_data.get("faction"),

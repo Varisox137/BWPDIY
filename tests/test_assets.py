@@ -108,3 +108,23 @@ def test_artwork_pixel_limit(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="像素上限"):
         AssetLibrary(tmp_path).artwork(big)
 
+
+def test_artwork_cache_cap(tmp_path):
+    """卡图缓存设条目上限（v1.5.x）：滚轮旋转每档一个角度键，超限按插入序淘汰，
+    防实时预览时大幅旋转图堆满内存；帧/字体等静态资源不受限。"""
+    p = tmp_path / "图.png"
+    Image.new("RGB", (30, 30)).save(p)
+    lib = AssetLibrary(tmp_path)
+    for angle in range(0, 360, 3):  # 远超上限的角度数
+        lib.artwork(p, angle)
+    art_keys = [k for k in lib._cache if k[0] == "artwork"]
+    assert len(art_keys) == AssetLibrary.ARTWORK_CACHE_CAP
+    assert lib.artwork(p, 0) is not None  # 淘汰后可重载，不报错
+
+
+def test_get_library_shared(assets_dir):
+    """get_library 按资源根目录共享实例（预览提速：帧/字体缓存跨渲染复用）。"""
+    from bwpdiy.render.assets import get_library
+    a = get_library(assets_dir)
+    assert a is get_library(assets_dir)
+

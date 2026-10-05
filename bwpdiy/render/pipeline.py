@@ -20,7 +20,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 from bwpdiy.render.artwork import ARTWORK_MAX_PIXELS, fit_artwork
 
 __all__ = ["ARTWORK_MAX_PIXELS", "TYPE_FRAME_CODE", "render_card"]
-from bwpdiy.render.assets import AssetLibrary
+from bwpdiy.render.assets import get_library
 from bwpdiy.render.badges import TYPE_FRAME_CODE, render_element, stat_rendered
 from bwpdiy.render.layout import get_type_layout, load_layouts
 from bwpdiy.render.text import FRAME_KEYWORD_FILL, FRAME_TEXT_FILL, draw_region
@@ -103,7 +103,7 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     variant = card.get("frame_variant", "norm")
     if card_type == "协战":
         variant = "norm"  # 协战框仅 norm 一种框品
-    lib = AssetLibrary(assets_dir)
+    lib = get_library(assets_dir)
 
     frame = _normalize_frame(lib.frame(code, variant))
     ref = _artwork_ref(card)

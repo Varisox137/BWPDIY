@@ -18,7 +18,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from bwpdiy.render.assets import AssetLibrary
+from bwpdiy.render.assets import AssetLibrary, get_library
 from bwpdiy.render.text import (
     _draw_styled_line,
     _icon_widths,
@@ -119,7 +119,7 @@ def render_mechanism(mech: dict, assets_dir) -> Image.Image:
     marks（unique/instant 金色角标，贴技能名右侧）、badge（bless/eclipse，
     仅 seal 框合法，贴框左上角）。
     """
-    lib = AssetLibrary(Path(assets_dir))
+    lib = get_library(Path(assets_dir))
     frame = mech.get("frame")
     if frame not in MECH_FRAMES:
         raise ValueError(f"未知机制框类型: {frame}")

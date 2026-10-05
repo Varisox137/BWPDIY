@@ -14,7 +14,11 @@ class AssetLibrary:
     """按命名约定加载 assets/ 资源，带内存缓存。
 
     图片以 RGBA 返回；调用方只读使用（paste/resize 不修改原图）。
+    卡图缓存（artwork）设条目上限（LRU 近似，按插入序淘汰）：滚轮旋转每档
+    一个角度键，不设上限会把大幅旋转图堆满内存；帧/字体等静态资源不限。
     """
+
+    ARTWORK_CACHE_CAP = 6
 
     def __init__(self, root: Path):
         self.root = Path(root)
@@ -85,6 +89,9 @@ class AssetLibrary:
                 raise ValueError(f"卡图过大: {img.width}×{img.height} 超像素上限")
             orig_size = img.size
             self._cache[key] = (orig_size, rotate_artwork(img.convert("RGBA"), rotate))
+            art_keys = [k for k in self._cache if k[0] == "artwork"]
+            for old in art_keys[: max(0, len(art_keys) - self.ARTWORK_CACHE_CAP)]:
+                del self._cache[old]
         return self._cache[key]
 
     def font(self, kind: str, size: int) -> ImageFont.FreeTypeFont:
@@ -96,3 +103,19 @@ class AssetLibrary:
                 raise FileNotFoundError(f"字体缺失: {path}")
             self._cache[key] = ImageFont.truetype(str(path), size)
         return self._cache[key]
+
+
+_LIBRARIES: dict[Path, AssetLibrary] = {}
+
+
+def get_library(root: Path) -> AssetLibrary:
+    """按资源根目录共享 AssetLibrary 实例（帧/字体/卡图缓存跨渲染复用）。
+
+    编辑器的实时预览每次渲染都走这里，避免每请求重建库导致帧/字体重新
+    读盘、卡图旋转缓存失效（预览延迟的主要来源）。资源根内容变化（素材
+    替换）需重启进程生效。
+    """
+    key = Path(root).resolve()
+    if key not in _LIBRARIES:
+        _LIBRARIES[key] = AssetLibrary(key)
+    return _LIBRARIES[key]

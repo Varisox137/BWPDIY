@@ -109,7 +109,9 @@ def test_artwork_path_escape_rejected(assets_dir, sample_art, monkeypatch):
     assert render_card(ok, assets_dir).mode == "RGBA"
     # 像素上限（monkeypatch 调低，避免真造大图；校验在 AssetLibrary.artwork 加载缓存时）
     import bwpdiy.render.artwork as aw
+    from bwpdiy.render.assets import _LIBRARIES
     monkeypatch.setattr(aw, "ARTWORK_MAX_PIXELS", 10)
+    _LIBRARIES.clear()  # 共享资源库会缓存上面已加载的卡图，清掉强制重载以触发校验
     with pytest.raises(ValueError, match="超像素上限"):
         render_card(card, assets_dir)
 

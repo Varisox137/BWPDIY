@@ -6,13 +6,18 @@ from bwpdiy.store import (
     StoreError,
     create_project,
     delete_card,
+    delete_mechanism,
     delete_project,
     list_cards,
+    list_mechanisms,
     list_projects,
     load_card,
+    load_mechanism,
     rename_project,
     save_card,
+    save_mechanism,
     validate_card,
+    validate_mechanism,
 )
 
 SHIKIGAMI = {"type": "式神", "name": "山风", "faction": "红莲", "power": 3, "health": 4}
@@ -553,3 +558,104 @@ def test_validate_collects_multiple_errors():
 
 def test_validate_not_a_mapping():
     assert validate_card(["不是映射"])
+
+
+# ---------- 机制（全局共享池 library/mechanisms/） ----------
+
+MECH = {"name": "蛊蚀", "frame": "skill", "text": "敌方式神气绝时结附。"}
+MECH_SEAL = {"name": "加护", "frame": "seal", "text": "恢复2点生命。", "badge": "bless"}
+
+
+def test_mechanism_round_trip(lib):
+    path = save_mechanism(lib, "蛊蚀", MECH)
+    assert path == lib / "mechanisms" / "蛊蚀.yaml"
+    assert load_mechanism(lib, "蛊蚀") == MECH
+    assert list_mechanisms(lib) == [{"stem": "蛊蚀", "name": "蛊蚀"}]
+
+
+def test_mechanisms_global_not_project(lib):
+    """机制是全局共享池：不占项目列表，list_projects 不返回 mechanisms 目录。"""
+    create_project(lib, "山风")
+    save_mechanism(lib, "蛊蚀", MECH)
+    assert list_projects(lib) == ["山风"]
+    with pytest.raises(StoreError, match="保留"):
+        create_project(lib, "mechanisms")
+    with pytest.raises(StoreError, match="保留"):
+        rename_project(lib, "山风", "mechanisms")
+
+
+def test_mechanism_rename_renames_file(lib):
+    save_mechanism(lib, "蛊蚀", MECH)
+    path = save_mechanism(lib, "蛊蚀", {**MECH, "name": "魔蛊"})
+    assert path.stem == "魔蛊"
+    assert not (lib / "mechanisms" / "蛊蚀.yaml").exists()
+    assert load_mechanism(lib, "魔蛊")["name"] == "魔蛊"
+    assert list_mechanisms(lib) == [{"stem": "魔蛊", "name": "魔蛊"}]
+
+
+def test_mechanism_rename_conflict(lib):
+    save_mechanism(lib, "蛊蚀", MECH)
+    save_mechanism(lib, "加护", MECH_SEAL)
+    with pytest.raises(SchemaError, match="已存在"):
+        save_mechanism(lib, "蛊蚀", {**MECH, "name": "加护"})
+    # 冲突报错后原文件保持不动
+    assert load_mechanism(lib, "蛊蚀")["name"] == "蛊蚀"
+    assert load_mechanism(lib, "加护")["name"] == "加护"
+
+
+def test_mechanism_delete(lib):
+    save_mechanism(lib, "蛊蚀", MECH)
+    delete_mechanism(lib, "蛊蚀")
+    assert list_mechanisms(lib) == []
+    with pytest.raises(StoreError) as e:
+        delete_mechanism(lib, "蛊蚀")
+    assert e.value.code == "not_found"
+
+
+def test_mechanism_load_not_found(lib):
+    with pytest.raises(StoreError) as e:
+        load_mechanism(lib, "不存在")
+    assert e.value.code == "not_found"
+
+
+def test_mechanism_name_injection_rejected(lib):
+    with pytest.raises(StoreError) as e:
+        save_mechanism(lib, "../evil", {**MECH, "name": "x"})
+    assert e.value.code == "invalid_name"
+
+
+def test_mechanism_save_validates_schema(lib):
+    with pytest.raises(SchemaError, match="frame"):
+        save_mechanism(lib, "蛊蚀", {**MECH, "frame": "gold"})
+    assert list_mechanisms(lib) == []  # 校验不过不落盘
+
+
+@pytest.mark.parametrize("mech", [
+    MECH,
+    MECH_SEAL,
+    {"name": "灵咒", "frame": "invocation", "marks": ["unique", "instant"]},
+    {"name": "最简", "frame": "skill"},  # text/marks/badge 全可缺省
+    {**MECH, "badge": None},             # badge 可显式留空
+])
+def test_validate_mechanism_ok(mech):
+    assert validate_mechanism(mech) == []
+
+
+@pytest.mark.parametrize("mech, needle", [
+    (["不是映射"], "映射"),
+    ({"frame": "skill"}, "name"),                       # 缺技能名
+    ({**MECH, "name": "  "}, "name"),
+    ({"name": "x"}, "frame"),                           # 缺框类型
+    ({**MECH, "frame": "gold"}, "frame"),               # 非法框类型
+    ({**MECH, "text": 1}, "text"),                      # 描述必须是字符串
+    ({**MECH, "marks": "unique"}, "marks"),             # marks 必须是列表
+    ({**MECH, "marks": ["unique", "burst"]}, "marks"),  # 非法角标
+    ({**MECH, "marks": ["unique", "unique"]}, "marks"), # 角标不能重复
+    ({**MECH_SEAL, "badge": "gold"}, "badge"),          # 非法圆形角标
+    ({**MECH, "badge": "bless"}, "badge"),              # badge 仅 seal 框可携带
+    ({**MECH, "未知字段": 1}, "未知字段"),
+])
+def test_validate_mechanism_rejects(mech, needle):
+    errors = validate_mechanism(mech)
+    assert errors, f"应判非法：{mech}"
+    assert any(needle in e for e in errors), errors

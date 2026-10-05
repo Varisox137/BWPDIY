@@ -23,6 +23,7 @@ from bwpdiy import updater
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.duo import render_portrait
 from bwpdiy.render.layout import get_type_layout, load_layouts, merge_card_layout
+from bwpdiy.render.mech import render_mechanism
 from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
 from bwpdiy.resources import default_library_dir
 from bwpdiy.store import (
@@ -30,12 +31,16 @@ from bwpdiy.store import (
     StoreError,
     create_project,
     delete_card,
+    delete_mechanism,
     delete_project,
     list_cards,
+    list_mechanisms,
     list_projects,
     load_card,
+    load_mechanism,
     rename_project,
     save_card,
+    save_mechanism,
 )
 from bwpdiy.web.sample_cards import SAMPLE_CARDS
 
@@ -378,6 +383,61 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                 target.write_bytes(old_bytes)  # 同名覆盖：还原原文件内容
             raise
         return {"ok": True, "path": filename}
+
+    # ---------- 机制 REST（全局共享池 library/mechanisms/，不属任何项目） ----------
+
+    @app.get("/api/mechanisms")
+    def get_mechanisms():
+        return JSONResponse(list_mechanisms(library_dir))
+
+    @app.post("/api/mechanisms")
+    async def post_mechanism(request: dict):
+        name = request.get("name") if isinstance(request, dict) else None
+        if not isinstance(name, str) or not name.strip():
+            raise HTTPException(422, "字段 name：必填且必须是非空字符串")
+        try:
+            load_mechanism(library_dir, name)
+        except StoreError as e:
+            if e.code != "not_found":
+                raise
+        else:
+            raise StoreError(f"机制已存在：{name}", code="already_exists")
+        path = save_mechanism(library_dir, name, request)
+        return {"ok": True, "stem": path.stem}
+
+    @app.get("/api/mechanisms/{name}")
+    def get_mechanism(name: str):
+        return JSONResponse(load_mechanism(library_dir, name))
+
+    @app.put("/api/mechanisms/{name}")
+    async def put_mechanism(name: str, request: dict):
+        # save_mechanism：data["name"] 与路径名不一致时视为改名，联动重命名文件，
+        # stem 为最终文件名，前端据此切换选中（与卡牌保存口径一致）
+        path = save_mechanism(library_dir, name, request)
+        return {"ok": True, "stem": path.stem}
+
+    @app.delete("/api/mechanisms/{name}")
+    def remove_mechanism(name: str):
+        delete_mechanism(library_dir, name)
+        return {"ok": True}
+
+    @app.post("/api/mechanisms/{name}/preview")
+    async def preview_mechanism(name: str, request: dict = Body(None)):
+        """机制预览：body 可带未保存表单数据（mechanism 键整体替换）直接渲染，
+        与卡牌 preview 同口径；返回 PNG。"""
+        mech = load_mechanism(library_dir, name)  # 不存在 → StoreError → 404
+        override = (request or {}).get("mechanism")
+        if override is not None:
+            if not isinstance(override, dict):
+                raise HTTPException(400, "mechanism 必须是对象")
+            mech = copy.deepcopy(override)
+        try:
+            img = render_mechanism(mech, assets_dir)
+        except Exception as e:
+            raise HTTPException(422, f"渲染失败: {e}") from e
+        buf = BytesIO()
+        img.save(buf, "PNG")
+        return Response(buf.getvalue(), media_type="image/png")
 
     return app
 

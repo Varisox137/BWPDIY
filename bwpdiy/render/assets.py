@@ -68,6 +68,9 @@ class AssetLibrary:
     def duo(self, name: str) -> Image.Image:
         return self._img(f"duo/{name}.png")
 
+    def mech(self, name: str) -> Image.Image:
+        return self._img(f"mech/{name}.png")
+
     def artwork(self, path: Path, rotate: float = 0) -> tuple[tuple[int, int], Image.Image]:
         """用户卡图：按（路径, mtime, 旋转角）缓存；加载即绕中心旋转并扩展画布，
         后续缩放/偏移（fit_artwork）对缓存图进行，锚点始终为图片中心。

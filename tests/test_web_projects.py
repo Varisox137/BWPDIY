@@ -591,3 +591,111 @@ def test_portrait_preview_frame_toggle(client, project, library_dir):
         json={"card": {**_shikigami_card(), "portrait": {"frame": False}}})
     assert bare.status_code == 200 and bare.content != framed.content
     assert _png_size(bare)[0] < _png_size(framed)[0]  # 不画框画布更小
+
+
+# ---------- 机制 REST（全局共享池 /api/mechanisms） ----------
+
+def _mech(name="蛊蚀", **kw):
+    base = {"name": name, "frame": "skill", "text": "敌方式神气绝时结附。"}
+    base.update(kw)
+    return base
+
+
+def test_mechanisms_empty(client):
+    r = client.get("/api/mechanisms")
+    assert r.status_code == 200 and r.json() == []
+
+
+def test_mechanism_crud_roundtrip(client, library_dir):
+    r = client.post("/api/mechanisms", json=_mech())
+    assert r.status_code == 200 and r.json()["stem"] == "蛊蚀"
+    assert (library_dir / "mechanisms" / "蛊蚀.yaml").is_file()
+    assert client.get("/api/mechanisms").json() == [{"stem": "蛊蚀", "name": "蛊蚀"}]
+    assert client.get("/api/mechanisms/蛊蚀").json() == _mech()
+    # 更新（PUT 同名覆盖）
+    r = client.put("/api/mechanisms/蛊蚀", json=_mech(text="改后的描述。"))
+    assert r.status_code == 200
+    assert client.get("/api/mechanisms/蛊蚀").json()["text"] == "改后的描述。"
+    # 删除
+    assert client.delete("/api/mechanisms/蛊蚀").status_code == 200
+    assert client.get("/api/mechanisms").json() == []
+    assert client.delete("/api/mechanisms/蛊蚀").status_code == 404
+
+
+def test_mechanism_create_duplicate_409(client):
+    assert client.post("/api/mechanisms", json=_mech()).status_code == 200
+    r = client.post("/api/mechanisms", json=_mech())
+    assert r.status_code == 409 and "已存在" in r.json()["detail"]
+
+
+def test_mechanism_rename_via_put(client, library_dir):
+    client.post("/api/mechanisms", json=_mech())
+    r = client.put("/api/mechanisms/蛊蚀", json=_mech(name="魔蛊"))
+    assert r.status_code == 200 and r.json()["stem"] == "魔蛊"
+    assert not (library_dir / "mechanisms" / "蛊蚀.yaml").exists()
+    assert client.get("/api/mechanisms").json() == [{"stem": "魔蛊", "name": "魔蛊"}]
+
+
+def test_mechanism_save_schema_error_422_chinese(client):
+    r = client.post("/api/mechanisms", json=_mech(frame="gold"))
+    assert r.status_code == 422
+    assert any("frame" in e for e in r.json()["detail"])
+    assert client.get("/api/mechanisms").json() == []  # 校验不过不落盘
+
+
+def test_mechanism_badge_only_on_seal(client):
+    r = client.post("/api/mechanisms", json=_mech(badge="bless"))
+    assert r.status_code == 422 and any("badge" in e for e in r.json()["detail"])
+    r = client.post("/api/mechanisms",
+                    json=_mech(name="加护", frame="seal", badge="bless"))
+    assert r.status_code == 200
+
+
+def test_mechanism_unknown_field_422(client):
+    r = client.post("/api/mechanisms", json=_mech(未知字段=1))
+    assert r.status_code == 422 and any("未知字段" in e for e in r.json()["detail"])
+
+
+def test_mechanism_not_found_404(client):
+    assert client.get("/api/mechanisms/不存在").status_code == 404
+    assert client.post("/api/mechanisms/不存在/preview", json={}).status_code == 404
+
+
+def test_mechanism_put_upsert_creates(client):
+    """PUT 为 upsert 语义（与卡牌保存一致）：路径名不存在时新建。"""
+    r = client.put("/api/mechanisms/新机制", json=_mech(name="新机制"))
+    assert r.status_code == 200 and r.json()["stem"] == "新机制"
+    assert client.get("/api/mechanisms").json() == [{"stem": "新机制", "name": "新机制"}]
+
+
+def test_mechanism_preview_png(client):
+    client.post("/api/mechanisms", json=_mech())
+    r = client.post("/api/mechanisms/蛊蚀/preview", json={})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert _png_size(r)[0] > 0
+    # 无 body 也可预览（渲染落盘数据）
+    assert client.post("/api/mechanisms/蛊蚀/preview").status_code == 200
+
+
+def test_mechanism_preview_override_unsaved(client):
+    """body 带未保存表单数据（mechanism 键整体替换）直接渲染，不改落盘文件。"""
+    client.post("/api/mechanisms", json=_mech())
+    override = _mech(frame="seal", badge="eclipse", text="受到的伤害+1。")
+    r = client.post("/api/mechanisms/蛊蚀/preview", json={"mechanism": override})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+    assert client.get("/api/mechanisms/蛊蚀").json() == _mech()  # 落盘未变
+
+
+def test_mechanism_preview_unrenderable_422(client):
+    client.post("/api/mechanisms", json=_mech())
+    badge_on_skill = _mech(badge="bless")  # badge 仅 seal：渲染层拒绝
+    r = client.post("/api/mechanisms/蛊蚀/preview", json={"mechanism": badge_on_skill})
+    assert r.status_code == 422 and "渲染失败" in r.json()["detail"]
+
+
+def test_mechanism_cross_project_visible(client):
+    """机制全局共享：不属于任何项目，项目列表不出现 mechanisms。"""
+    client.post("/api/projects", json={"name": "项目甲"})
+    client.post("/api/mechanisms", json=_mech())
+    assert client.get("/api/projects").json() == ["项目甲"]
+    assert client.get("/api/mechanisms").json() == [{"stem": "蛊蚀", "name": "蛊蚀"}]

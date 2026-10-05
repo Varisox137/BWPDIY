@@ -4,6 +4,7 @@
     library/<项目名>/shikigami/<任意文件名>.yaml   式神卡，数量不限，卡名以文件内 name 字段为准
     library/<项目名>/cards/<任意文件名>.yaml       非式神卡，单项目上限 MAX_CARDS 张
     library/<项目名>/images/                       卡图原图
+    library/mechanisms/<机制名>.yaml               机制描述框（全局共享池，不属任何项目）
 """
 
 from __future__ import annotations
@@ -15,10 +16,11 @@ from pathlib import Path
 
 import yaml
 
-from .schema import SchemaError, validate_card
+from .schema import SchemaError, validate_card, validate_mechanism
 
 MAX_CARDS = 299  # 单项目非式神卡上限，对应 BWPro 大版本卡牌量
 MAX_SHIKIGAMI = 49  # 单项目式神（主要式神）上限
+MECH_DIR_NAME = "mechanisms"  # 机制全局共享池目录（保留名，项目不可占用）
 
 _ILLEGAL_CHARS = set('<>:"/\\|?*')
 _RESERVED_NAMES = {
@@ -97,15 +99,18 @@ def _read_yaml(path: Path):
 # ---------- 项目 CRUD ----------
 
 def list_projects(library: Path) -> list[str]:
-    """library 下全部项目名（子目录），按名排序。"""
+    """library 下全部项目名（子目录），按名排序；mechanisms/ 为机制共享池保留目录，不计入。"""
     library = Path(library)
     if not library.is_dir():
         return []
-    return sorted(p.name for p in library.iterdir() if p.is_dir())
+    return sorted(p.name for p in library.iterdir()
+                  if p.is_dir() and p.name != MECH_DIR_NAME)
 
 
 def create_project(library: Path, project: str) -> Path:
     """新建空项目骨架：cards/ 与 images/（不出厂默认式神卡）。"""
+    if project == MECH_DIR_NAME:
+        raise StoreError(f"项目名「{MECH_DIR_NAME}」为机制共享池保留目录名", code="invalid_name")
     pdir = _project_dir(library, project)
     if pdir.exists():
         raise StoreError(f"项目已存在：{project}", code="already_exists")
@@ -115,6 +120,8 @@ def create_project(library: Path, project: str) -> Path:
 
 
 def rename_project(library: Path, old: str, new: str) -> Path:
+    if new == MECH_DIR_NAME:
+        raise StoreError(f"项目名「{MECH_DIR_NAME}」为机制共享池保留目录名", code="invalid_name")
     src = _require_project(library, old)
     dst = _project_dir(library, new)
     if dst.exists():
@@ -288,3 +295,77 @@ def _dump_yaml(path: Path, data: dict) -> None:
         except OSError:
             pass
         raise
+
+
+# ---------- 机制 CRUD（全局共享池 library/mechanisms/，文件名=机制名） ----------
+
+def _mech_dir(library: Path) -> Path:
+    return Path(library) / MECH_DIR_NAME
+
+
+def list_mechanisms(library: Path) -> list[dict]:
+    """全部机制：[{"stem", "name"}]，按 name 排序（损坏文件 name=None 排最后）。"""
+    mdir = _mech_dir(library)
+    if not mdir.is_dir():
+        return []
+    out = []
+    for path in mdir.glob("*.yaml"):
+        data = _read_yaml(path)
+        name = data.get("name") if data else None
+        out.append({"stem": path.stem,
+                    "name": name if isinstance(name, str) else None})
+    out.sort(key=lambda c: (c["name"] is None, c["name"] or ""))
+    return out
+
+
+def load_mechanism(library: Path, name: str) -> dict:
+    """读取机制 yaml；load 不做 schema 校验（校验在保存时执行）。"""
+    _check_name(name, "机制名")
+    path = _mech_dir(library) / f"{name}.yaml"
+    if not path.is_file():
+        raise StoreError(f"机制不存在：{name}", code="not_found")
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise StoreError(f"机制文件不是合法的 yaml：{name}（{e}）",
+                         code="invalid_data") from e
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise StoreError(f"机制文件内容必须是 yaml 映射：{name}", code="invalid_data")
+    return data
+
+
+def save_mechanism(library: Path, name: str, data: dict) -> Path:
+    """schema 校验通过才落盘；文件名=机制名，data["name"] 与 name 不一致时视为改名，
+    联动重命名文件（目标已存在则拒绝）。返回落盘路径。"""
+    _check_name(name, "机制名")
+    errors = validate_mechanism(data)
+    if errors:
+        raise SchemaError(errors)
+    mdir = _mech_dir(library)
+    mdir.mkdir(parents=True, exist_ok=True)
+    path = mdir / f"{name}.yaml"
+    new_name = data["name"]
+    rename_to: Path | None = None
+    if new_name != name:
+        _check_name(new_name, "机制名")
+        target = mdir / f"{new_name}.yaml"
+        # target != path：Windows 大小写不敏感下纯大小写改名 target 即自身，不算冲突
+        if target != path and target.is_file():
+            raise SchemaError([f"机制名「{new_name}」对应的文件 {new_name}.yaml 已存在，"
+                               f"无法重命名"])
+        rename_to = target
+    _dump_yaml(path, data)
+    if rename_to is not None:
+        os.replace(path, rename_to)
+        path = rename_to
+    return path
+
+
+def delete_mechanism(library: Path, name: str) -> None:
+    _check_name(name, "机制名")
+    path = _mech_dir(library) / f"{name}.yaml"
+    if not path.is_file():
+        raise StoreError(f"机制不存在：{name}", code="not_found")
+    path.unlink()

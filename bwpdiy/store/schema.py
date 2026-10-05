@@ -69,6 +69,47 @@ class SchemaError(Exception):
         super().__init__("\n".join(self.errors))
 
 
+# ---------- 机制描述框（全局共享池 library/mechanisms/，渲染见 render/mech.py） ----------
+
+MECH_FRAMES = ("invocation", "skill", "seal")  # 灵咒框 / 技能描述黑框 / 加护蚀印框
+MECH_MARKS = ("unique", "instant")             # 金色文字角标（唯一/瞬发），贴技能名右侧
+MECH_BADGES = ("bless", "eclipse")             # 圆形角标（加护/蚀印），仅 seal 框可携带
+_MECH_FIELDS = ("name", "frame", "text", "marks", "badge")
+
+
+def validate_mechanism(data) -> list[str]:
+    """机制数据白名单校验：返回中文错误列表（空列表 = 合法）；一次报全，不短路。"""
+    if not isinstance(data, dict):
+        return ["机制数据必须是 yaml 映射"]
+    errors: list[str] = []
+    if not isinstance(data.get("name"), str) or not data["name"].strip():
+        errors.append("字段 name：必填且必须是非空字符串")
+    frame = data.get("frame")
+    if "frame" not in data:
+        errors.append("缺少必填字段：frame")
+    elif frame not in MECH_FRAMES:
+        errors.append(f"字段 frame：非法机制框类型「{frame}」，"
+                      f"须为 {'/'.join(MECH_FRAMES)} 之一")
+    for key in data:
+        if key not in _MECH_FIELDS:
+            errors.append(f"字段 {key}：机制白名单之外的字段")
+    if "text" in data and not isinstance(data["text"], str):
+        errors.append("字段 text：必须是字符串")
+    if "marks" in data:
+        marks = data["marks"]
+        if not isinstance(marks, list) or any(m not in MECH_MARKS for m in marks):
+            errors.append(f"字段 marks：必须是 {'/'.join(MECH_MARKS)} 子集的列表")
+        elif len(set(marks)) != len(marks):
+            errors.append("字段 marks：角标不能重复")
+    if "badge" in data and data["badge"] is not None:
+        if data["badge"] not in MECH_BADGES:
+            errors.append(f"字段 badge：非法角标「{data['badge']}」，"
+                          f"须为 {'/'.join(MECH_BADGES)} 之一")
+        elif frame != "seal":
+            errors.append("字段 badge：加护/蚀印角标仅加护蚀印框（seal）可携带")
+    return errors
+
+
 def _is_int(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 

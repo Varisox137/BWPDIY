@@ -110,6 +110,11 @@
     <div class="btnrow">
       <button id="c-new-card">新建</button><button id="c-del-card">删除</button>
     </div>
+    <h4>机制</h4>
+    <div id="c-mechs"></div>
+    <div class="btnrow">
+      <button id="c-new-mech">新建</button><button id="c-ren-mech">重命名</button><button id="c-del-mech">删除</button>
+    </div>
     <div id="c-ask"></div>
     <div id="c-list-error"></div>
   </div>
@@ -171,7 +176,9 @@
       </table>
     </div>
     <h4>卡图定位</h4>
-    <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。式神卡的卡图四项右侧另有并排的「头像」设置（同四参数），用于协战双式神框中该式神的头像裁剪，预览框以 2 倍大小实时显示在卡图预览下方；「头像框」勾选控制头像预览/导出头像是否绘制斜方框与派系标（不勾选=仅菱形裁剪的裸头像），「导出头像」按当前预览直接下载 PNG。</div>
+    <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）；也可直接在预览画布上鼠标操作：<b>左键拖拽</b>=移动、<b>滚轮</b>=缩放、<b>按住右键+滚轮</b>=旋转（主预览与式神头像预览均支持，与数值框双向同步）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。式神卡的卡图四项右侧另有并排的「头像」设置（同四参数），用于协战双式神框中该式神的头像裁剪，预览框以 2 倍大小实时显示在卡图预览下方；「头像框」勾选控制头像预览/导出头像是否绘制斜方框与派系标（不勾选=仅菱形裁剪的裸头像），「导出头像」按当前预览直接下载 PNG。</div>
+    <h4>机制描述框</h4>
+    <div>左栏「机制」为全局共享列表（不随项目切换，所有项目可复用），用于制作灵咒/技能/加护蚀印等机制说明图：选框类型、填技能名与描述即可，框高按描述行数自动扩展（超过 5 行时框体按行高拼接加长，不缩小字号）。描述同样支持 <code>[[关键字]]</code> 高亮与 <code>#xx</code> 内嵌小图标；可选「唯一/瞬发」文字角标，加护蚀印框另可选「加护/蚀印」圆形角标。「导出描述框」把当前机制（含未保存修改）下载为 PNG。</div>
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
     <h4>协战双式神框</h4>
@@ -298,8 +305,8 @@ function tryShowTab(name) {
         !confirm('单卡布局有未保存修改，离开将丢弃布局调整（卡牌内容修改保留），继续？')) return;
     exitCardLayout();
     if (formData) { buildForm(); scheduleCardPreview(); }  // 模式内卡牌内容修改同步回卡牌库表单与预览
-  } else if (cur === 'cards' && cDirty) {
-    if (!confirm('当前卡牌有未保存修改（切换栏目不会丢弃，但仍未保存），继续？')) return;
+  } else if (cur === 'cards' && (cDirty || mDirty)) {
+    if (!confirm('当前卡牌/机制有未保存修改（切换栏目不会丢弃，但仍未保存），继续？')) return;
   } else if (cur === 'layout' && dirty) {
     if (!confirm('布局有未保存修改（切换栏目不会丢弃，但仍未保存），继续？')) return;
   }
@@ -354,6 +361,12 @@ let curCard = null;    // 当前卡的 stem（文件名，不含扩展名）；�
 let cardData = null;   // 服务端已保存内容
 let formData = null;   // 编辑副本（保存前不落盘）
 let cDirty = false;
+// ---- 机制（灵咒/技能/加护蚀印描述框）：全局共享池，不随项目切换；与选中卡牌互斥 ----
+let mechs = [];        // 机制列表（{stem, name}，与卡牌列表同口径）
+let curMech = null;    // 当前选中机制名
+let mechData = null;   // 服务端已保存内容
+let mechForm = null;   // 编辑副本（保存前不落盘）
+let mDirty = false;
 const cStatusEl = document.getElementById('c-status');
 const cErrorEl = document.getElementById('c-error');
 const cPreviewImg = document.getElementById('c-preview');
@@ -370,7 +383,9 @@ function showFormErrors(msgs) {
   if (el) el.textContent = (msgs || []).join('\n');
 }
 function confirmDiscard() {
-  return !cDirty || confirm('当前卡牌有未保存修改，切换将丢弃，继续？');
+  if (cDirty && !confirm('当前卡牌有未保存修改，切换将丢弃，继续？')) return false;
+  if (mDirty && !confirm('当前机制有未保存修改，切换将丢弃，继续？')) return false;
+  return true;
 }
 
 // ---- 项目列表 ----
@@ -381,7 +396,7 @@ async function loadProjects(selectStem = null) {
   if (!projects.includes(curProject)) curProject = null;
   buildProjectList();
   if (curProject) await loadCards(selectStem);
-  else { cards = {shikigami: [], cards: []}; buildCardList(); clearCard(); }
+  else { cards = {shikigami: [], cards: []}; buildCardList(); if (!curMech) clearCard(); }  // 机制编辑态不抢占右栏
 }
 function buildProjectList() {
   const div = document.getElementById('c-projects');
@@ -408,9 +423,10 @@ async function loadCards(selectStem = null) {
   let r;
   try { r = await fetch(`/api/projects/${enc(curProject)}/cards`); }
   catch (e) { listErr(['卡牌列表请求失败: ' + e]); return; }
-  if (!r.ok) { cards = {shikigami: [], cards: []}; buildCardList(); clearCard(); listErr(await parseErrorDetail(r)); return; }
+  if (!r.ok) { cards = {shikigami: [], cards: []}; buildCardList(); if (!curMech) clearCard(); listErr(await parseErrorDetail(r)); return; }
   cards = await r.json();
   buildCardList();
+  if (curMech) return;  // 机制为全局池：机制编辑态下切项目/刷列表不自动选卡抢占右栏
   const all = [...cards.shikigami, ...cards.cards];
   const target = selectStem && all.some(c => c.stem === selectStem) ? selectStem
     : (all.length ? all[0].stem : null);
@@ -448,6 +464,7 @@ function cardItem(c, isShiki) {
 }
 async function selectCard(stem, force = false) {
   if (!force && (stem === curCard || !confirmDiscard())) return;
+  if (curMech) exitMech();  // 选中卡牌与选中机制互斥（mDirty 守卫已在 confirmDiscard 完成）
   curCard = stem;
   buildCardList();
   listErr([]);
@@ -714,6 +731,10 @@ async function cPreviewForm() {
   cPreviewPortrait(true);
 }
 document.getElementById('c-btn-refresh').onclick = () => {
+  if (curMech) {  // 机制编辑态：有未保存修改时刷新表单覆盖预览，避免被已保存内容覆盖
+    if (mDirty) scheduleMechPreview(); else mechPreview(false);
+    return;
+  }
   if (cDirty) scheduleCardPreview();  // 有未保存修改时刷新编辑态预览，避免被已保存内容覆盖
   else cPreviewProject();
 };
@@ -742,6 +763,71 @@ async function cPreviewPortrait(withForm) {
   cPortraitImg.onload = () => { if (prev) URL.revokeObjectURL(prev); };
   cPortraitImg.src = url;
 }
+
+// ---- 卡图/头像鼠标操作（仅卡牌库 tab 卡牌编辑态；布局 tab 画布交互在 #l-preview 上，不受影响）----
+// 左键拖拽=偏移（拖拽方向=图片移动方向）、滚轮=缩放（上滚放大每档 ×1.05，下滚 ÷1.05）、
+// 右键按住+滚轮=旋转（每档 ±1°，正角度顺时针，与 artRow 数值口径一致）；
+// 数值双向同步右侧输入框（artRow 输入框按 id 回写），改动走 afterEdit 的脏标记 + 防抖预览；
+// 无卡图（或机制编辑态/非式神卡的头像框）时不响应
+function artMouseChannel(img) {
+  if (!formData || curMech) return null;
+  const art = formData.artwork && Array.isArray(formData.artwork.images) ? formData.artwork.images[0] : null;
+  if (!art || !art.path) return null;
+  const isPortrait = img === cPortraitImg;
+  if (isPortrait && formData.type !== '式神') return null;
+  const get = k => {
+    const src = isPortrait
+      ? (formData.portrait && typeof formData.portrait === 'object' ? formData.portrait : {})
+      : art;
+    return src[k] ?? (k === 'scale' ? 1 : 0);
+  };
+  const set = (k, v) => {
+    if (isPortrait) formData.portrait = {...(formData.portrait || {}), [k]: v};
+    else art[k] = v;
+    const inp = document.getElementById(`${isPortrait ? 'portrait' : 'art'}-${k}`);
+    if (inp) { inp.value = v; inp._cur = v; }  // 回写输入框（_cur 为手动提交的回退基准）
+    afterEdit();
+  };
+  return {get, set};
+}
+function bindArtMouse(img) {
+  let dragStart = null;
+  img.addEventListener('mousedown', ev => {
+    if (ev.button !== 0) return;
+    const ch = artMouseChannel(img);
+    if (!ch) return;
+    ev.preventDefault();  // 阻止图片原生拖拽/选中
+    dragStart = {x: ev.clientX, y: ev.clientY, ox: ch.get('offset_x'), oy: ch.get('offset_y')};
+  });
+  window.addEventListener('mousemove', ev => {
+    if (!dragStart) return;
+    const ch = artMouseChannel(img);
+    if (!ch) { dragStart = null; return; }
+    // 画布属性像素 vs CSS 显示像素换算（图片可能缩放显示）
+    const rect = img.getBoundingClientRect();
+    const ratio = rect.width > 0 && img.naturalWidth > 0 ? img.naturalWidth / rect.width : 1;
+    ch.set('offset_x', Math.round(dragStart.ox + (ev.clientX - dragStart.x) * ratio));
+    ch.set('offset_y', Math.round(dragStart.oy + (ev.clientY - dragStart.y) * ratio));
+  });
+  window.addEventListener('mouseup', () => { dragStart = null; });
+  img.addEventListener('wheel', ev => {
+    const ch = artMouseChannel(img);
+    if (!ch) return;
+    ev.preventDefault();  // 阻止页面滚动
+    if (ev.buttons & 2) {  // 右键按住 + 滚轮 = 旋转
+      ch.set('rotate', Math.round(ch.get('rotate')) + (ev.deltaY < 0 ? 1 : -1));
+    } else {
+      const s = ch.get('scale') * (ev.deltaY < 0 ? 1.05 : 1 / 1.05);
+      ch.set('scale', Math.round(Math.max(0.01, s) * 1000) / 1000);
+    }
+  }, {passive: false});
+  img.addEventListener('contextmenu', ev => {
+    if (artMouseChannel(img)) ev.preventDefault();  // 编辑态下阻止右键菜单（右键留给旋转组合键）
+  });
+}
+bindArtMouse(cPreviewImg);
+bindArtMouse(cPortraitImg);
+
 // 使用说明弹窗：开/关（点遮罩空白处同样关闭）
 const helpModal = document.getElementById('help-modal');
 document.getElementById('c-btn-help').onclick = () => { helpModal.style.display = 'block'; };
@@ -855,7 +941,7 @@ function buildForm() {
   curArtRow.id = 'c-cur-art';
   curArtRow.textContent = `当前卡图：${curArt || `（缺省 ${formData.name ?? curCard}.png）`}`;
   div.appendChild(curArtRow);
-  // 卡图定位：dx/dy/scale/旋转数字输入（旋转绕图片中心、画布自动扩展；不做拖拽/滚轮），改动走保存按钮；
+  // 卡图定位：dx/dy/scale/旋转数字输入（旋转绕图片中心、画布自动扩展；亦可在预览画布上拖拽/滚轮/右键滚轮操作，双向同步），改动走保存按钮；
   // 式神卡每项右侧并排「头像」设置（portrait 段，协战双式神框引用本卡图作头像时使用）
   if (curArt) {
     const artFirst = formData.artwork.images[0];
@@ -865,10 +951,10 @@ function buildForm() {
     const setPort = (k, v) => { formData.portrait = {...(formData.portrait || {}), [k]: v}; afterEdit(); };
     const pv = k => isShiki ? (port[k] ?? (k === 'scale' ? 1 : 0)) : null;
     const ps = k => isShiki ? (v => setPort(k, v)) : null;
-    artRow(div, '卡图偏移X', artFirst.offset_x ?? 0, v => setArt('offset_x', v), pv('offset_x'), ps('offset_x'));
-    artRow(div, '卡图偏移Y', artFirst.offset_y ?? 0, v => setArt('offset_y', v), pv('offset_y'), ps('offset_y'));
-    artRow(div, '卡图缩放', artFirst.scale ?? 1, v => setArt('scale', v), pv('scale'), ps('scale'), 0.05, 0.01);
-    artRow(div, '卡图旋转(°)', artFirst.rotate ?? 0, v => setArt('rotate', v), pv('rotate'), ps('rotate'), 5);
+    artRow(div, '卡图偏移X', artFirst.offset_x ?? 0, v => setArt('offset_x', v), pv('offset_x'), ps('offset_x'), 1, null, ['art-offset_x', 'portrait-offset_x']);
+    artRow(div, '卡图偏移Y', artFirst.offset_y ?? 0, v => setArt('offset_y', v), pv('offset_y'), ps('offset_y'), 1, null, ['art-offset_y', 'portrait-offset_y']);
+    artRow(div, '卡图缩放', artFirst.scale ?? 1, v => setArt('scale', v), pv('scale'), ps('scale'), 0.05, 0.01, ['art-scale', 'portrait-scale']);
+    artRow(div, '卡图旋转(°)', artFirst.rotate ?? 0, v => setArt('rotate', v), pv('rotate'), ps('rotate'), 5, null, ['art-rotate', 'portrait-rotate']);
   }
   if (t === '式神') {
     // 头像框开关（portrait.frame，缺省画框）：勾选才在头像预览/导出头像中绘制斜方框与派系标
@@ -1009,27 +1095,28 @@ function statColorSelect(field) {
   };
   return s;
 }
-function artRow(div, label, val, set, pval, pset, step = 1, min = null) {
-  // 卡图 offset/scale 输入：浮点、无滚轮微调（用户明确要求不做滚轮/拖拽）；
+function artRow(div, label, val, set, pval, pset, step = 1, min = null, ids = null) {
+  // 卡图 offset/scale 输入：浮点、无滚轮微调（画布上的拖拽/滚轮鼠标操作按 ids 回写这些输入框）；
   // pset 非空（式神卡）时右侧并排一个头像设置输入（portrait 段）
   const l = document.createElement('label');
   l.textContent = label + ' ';
-  const mk = (v, st) => {
+  const mk = (v, st, id) => {
     const i = document.createElement('input');
+    if (id) i.id = id;
     i.type = 'number'; i.value = v; i.step = step;
     if (min !== null) i.min = min;
-    let cur = v;
+    i._cur = v;  // 手动提交的回退基准（画布鼠标操作回写时同步更新）
     i.onchange = () => {
       let nv = parseFloat(i.value);
-      if (isNaN(nv) || (min !== null && nv < min)) { i.value = cur; return; }
-      i.value = nv; cur = nv; st(nv);
+      if (isNaN(nv) || (min !== null && nv < min)) { i.value = i._cur; return; }
+      i.value = nv; i._cur = nv; st(nv);
     };
     return i;
   };
-  l.appendChild(mk(val, set));
+  l.appendChild(mk(val, set, ids && ids[0]));
   if (pset) {
     l.appendChild(document.createTextNode(' 头像 '));
-    l.appendChild(mk(pval, pset));
+    l.appendChild(mk(pval, pset, ids && ids[1]));
   }
   div.appendChild(l);
 }
@@ -1303,6 +1390,233 @@ async function exportPortrait() {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
+
+// ================= 机制（灵咒/技能/加护蚀印描述框） =================
+// 全局共享池（/api/mechanisms，不随项目切换）；选中机制与选中卡牌互斥，
+// 右栏表单/中央预览/脏标记守卫复用卡牌同套设施（c-form / c-preview / cPreviewSeq / c-dirty 栏位）
+const MECH_FRAMES = [["invocation", "灵咒"], ["skill", "技能"], ["seal", "加护蚀印"]];
+const MECH_MARKS = [["unique", "唯一"], ["instant", "瞬发"]];
+const MECH_BADGES = [["", "无"], ["bless", "加护"], ["eclipse", "蚀印"]];
+
+function buildMechList() {
+  const div = document.getElementById('c-mechs');
+  div.innerHTML = '';
+  for (const m of mechs) {
+    const d = document.createElement('div');
+    d.textContent = m.name;
+    d.className = 'item' + (m.stem === curMech ? ' active' : '');
+    d.onclick = () => selectMech(m.stem);
+    div.appendChild(d);
+  }
+}
+async function loadMechs(selectName = null) {
+  let r;
+  try { r = await fetch('/api/mechanisms'); }
+  catch (e) { listErr(['机制列表请求失败: ' + e]); return; }
+  if (!r.ok) { listErr(await parseErrorDetail(r)); return; }
+  mechs = await r.json();
+  if (curMech && !mechs.some(m => m.stem === curMech)) { exitMech(); clearCard(); }  // 机制已被外部删除：退出编辑态
+  buildMechList();
+  if (selectName && mechs.some(m => m.stem === selectName)) await selectMech(selectName, true);
+}
+function exitMech() {  // 离开机制编辑态（脏守卫由调用方先行，见 confirmDiscard）
+  curMech = null; mechData = null; mechForm = null; mDirty = false;
+  buildMechList();
+}
+async function selectMech(name, force = false) {
+  if (!force && (name === curMech || !confirmDiscard())) return;
+  clearCard();      // 互斥：清卡牌选中与预览/头像
+  buildCardList();
+  curMech = name;
+  buildMechList();
+  listErr([]);
+  cStatusEl.textContent = '';
+  const seq = ++selectSeq;
+  let r;
+  try { r = await fetch(`/api/mechanisms/${enc(name)}`); }
+  catch (e) { if (seq === selectSeq) { exitMech(); clearCard(); listErr(['机制读取请求失败: ' + e]); } return; }
+  if (seq !== selectSeq) return;  // 期间又选了别的，丢弃本次慢响应
+  if (!r.ok) { exitMech(); clearCard(); listErr(await parseErrorDetail(r)); return; }
+  mechData = await r.json();
+  mechForm = deepCopy(mechData);
+  mDirty = false;
+  buildMechForm();
+  mechPreview(false);
+}
+
+// ---- 机制表单：技能名 / 框类型 / 唯一·瞬发标记 / 角标（仅 seal 框）/ 描述 ----
+function setMechField(k, v) { mechForm[k] = v; afterMechEdit(); }
+function afterMechEdit(rebuild = false) {
+  mDirty = true;
+  if (rebuild) buildMechForm();  // 框类型切换影响角标下拉显隐，整表重建
+  else {
+    const d = document.getElementById('c-dirty');
+    if (d) d.textContent = '● 未保存';
+    showFormErrors(validateMechJS(mechForm));
+  }
+  scheduleMechPreview();
+}
+function buildMechForm() {
+  const div = document.getElementById('c-form');
+  div.innerHTML = '';
+  if (!mechForm) { div.textContent = '未选中卡牌'; return; }
+  textRow(div, '技能名', mechForm.name ?? '', v => setMechField('name', v));
+  selRowC(div, '框类型', MECH_FRAMES.map(([v]) => v), mechForm.frame ?? 'invocation',
+    v => { mechForm.frame = v; if (v !== 'seal') mechForm.badge = null; afterMechEdit(true); },
+    v => MECH_FRAMES.find(([val]) => val === v)[1]);
+  const curMarks = Array.isArray(mechForm.marks) ? mechForm.marks : [];
+  for (const [v, zh] of MECH_MARKS) {
+    checkRowC(div, zh, curMarks.includes(v), on => {
+      const cur = Array.isArray(mechForm.marks) ? mechForm.marks : [];
+      mechForm.marks = on ? [...cur, v] : cur.filter(m => m !== v);
+      afterMechEdit();
+    });
+  }
+  if ((mechForm.frame ?? 'invocation') === 'seal') {  // 加护/蚀印角标仅 seal 框可用
+    selRowC(div, '角标', MECH_BADGES.map(([v]) => v), mechForm.badge ?? '',
+      v => { mechForm.badge = v || null; afterMechEdit(); },
+      v => MECH_BADGES.find(([val]) => val === v)[1]);
+  }
+  const l = document.createElement('label');
+  l.textContent = '描述 ';
+  const ta = document.createElement('textarea');
+  ta.value = mechForm.text ?? '';
+  ta.onchange = () => {
+    ta.value = ta.value.replace(/\n+/g, '\n').replace(/^\n|\n$/g, '');  // 连续换行合并为一个
+    setMechField('text', ta.value);
+  };
+  l.appendChild(ta); div.appendChild(l);
+  const row = document.createElement('div');
+  row.style.marginTop = '10px';
+  const btn = document.createElement('button');
+  btn.textContent = '保存';
+  btn.onclick = saveMech;
+  const expBtn = document.createElement('button');
+  expBtn.textContent = '导出描述框';
+  expBtn.style.marginLeft = '6px';
+  expBtn.onclick = exportMech;
+  row.appendChild(btn); row.appendChild(expBtn);
+  const dirty = document.createElement('span');
+  dirty.id = 'c-dirty';
+  dirty.textContent = mDirty ? '● 未保存' : '';
+  row.appendChild(dirty);
+  div.appendChild(row);
+  const errs = document.createElement('div');
+  errs.id = 'c-form-errors';
+  div.appendChild(errs);
+  showFormErrors(validateMechJS(mechForm));
+}
+
+// 即时校验：口径对齐 store/schema.py validate_mechanism
+function validateMechJS(d) {
+  const errors = [];
+  if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
+  if (!MECH_FRAMES.some(([v]) => v === d.frame)) errors.push(`字段 frame：非法框类型「${d.frame}」`);
+  if (!Array.isArray(d.marks) || d.marks.some(m => !MECH_MARKS.some(([v]) => v === m))) {
+    errors.push('字段 marks：必须是「唯一/瞬发」标记数组');
+  }
+  if (d.badge !== null && d.badge !== undefined && !MECH_BADGES.some(([v]) => v && v === d.badge)) {
+    errors.push(`字段 badge：非法角标「${d.badge}」`);
+  }
+  if (d.badge && d.frame !== 'seal') errors.push('字段 badge：仅加护蚀印框可携带角标');
+  if (typeof d.text !== 'string') errors.push('字段 text：必须是字符串');
+  return errors;
+}
+
+// ---- 机制预览：与卡牌共用 c-preview 图、请求序号与 objectURL 管理 ----
+function scheduleMechPreview() {
+  clearTimeout(cPreviewTimer);
+  cPreviewTimer = setTimeout(() => mechPreview(true), 300);
+}
+async function mechPreview(withForm) {
+  if (!curMech) return;
+  const data = withForm ? mechForm : mechData;
+  if (!data) return;
+  if (withForm && validateMechJS(data).length) return;  // 校验未过不刷预览（错误已在表单侧显示）
+  const seq = ++cPreviewSeq;
+  let r;
+  try {
+    r = await fetch(`/api/mechanisms/${enc(curMech)}/preview`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mechanism: data})});
+  } catch (e) {
+    if (seq === cPreviewSeq) cErrorEl.textContent = '预览请求失败: ' + e;
+    return;
+  }
+  await cHandlePreviewResponse(r, seq);
+}
+
+// ---- 机制保存：技能名即机制名，改名随保存联动（服务端重命名文件，同卡牌口径） ----
+async function saveMech() {
+  const errs = validateMechJS(mechForm);
+  if (errs.length) { showFormErrors(errs); return; }
+  const oldName = curMech;
+  let r;
+  try {
+    r = await fetch(`/api/mechanisms/${enc(oldName)}`, {method: 'PUT',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(mechForm)});
+  } catch (e) { showFormErrors(['保存请求失败: ' + e]); return; }
+  if (!r.ok) { showFormErrors(await parseErrorDetail(r)); return; }
+  mechData = deepCopy(mechForm);
+  mDirty = false;
+  cStatusEl.textContent = '已保存';
+  await loadMechs(mechForm.name !== oldName ? mechForm.name : oldName);  // 重选刷新列表/表单/预览
+}
+
+// ---- 导出描述框：按当前表单内容（含未保存修改）渲染 PNG 直接下载，文件名=技能名.png ----
+async function exportMech() {
+  if (!mechForm || !curMech) return;
+  const errEl = document.getElementById('c-form-errors');
+  const base = String(mechForm.name || curMech).replace(/[<>:"/\\|?*]/g, '').trim() || 'mechanism';
+  let r;
+  try {
+    r = await fetch(`/api/mechanisms/${enc(curMech)}/preview`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mechanism: mechForm})});
+  } catch (e) { errEl.textContent = '导出请求失败: ' + e; return; }
+  if (!r.ok) { errEl.textContent = '导出失败：' + (await parseErrorDetail(r)).join('\n'); return; }
+  const url = URL.createObjectURL(await r.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = base + '.png';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+// ---- 机制操作（新建/重命名/删除） ----
+document.getElementById('c-new-mech').onclick = async () => {
+  const r = await ask({title: '新机制名'});
+  if (!r || !r.text) return;
+  if (!confirmDiscard()) return;
+  const resp = await fetch('/api/mechanisms', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: r.text, frame: 'invocation', text: '', marks: [], badge: null})});
+  if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
+  listErr([]);
+  await loadMechs(r.text);
+};
+document.getElementById('c-ren-mech').onclick = async () => {
+  if (!curMech) { listErr(['请先选择机制']); return; }
+  const r = await ask({title: `重命名机制「${curMech}」为`, value: curMech});
+  if (!r || !r.text || r.text === curMech) return;
+  if (mDirty && !confirm('当前机制有未保存修改，重命名后将丢弃，继续？')) return;
+  const resp = await fetch(`/api/mechanisms/${enc(curMech)}`, {method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({...mechData, name: r.text})});  // 后端以 body 完整数据+name 变化判定改名
+  if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
+  mDirty = false;
+  listErr([]);
+  await loadMechs(r.text);
+};
+document.getElementById('c-del-mech').onclick = async () => {
+  if (!curMech) { listErr(['请先选择机制']); return; }
+  if (!confirm(`删除机制「${curMech}」？`)) return;
+  const resp = await fetch(`/api/mechanisms/${enc(curMech)}`, {method: 'DELETE'});
+  if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
+  exitMech(); clearCard();
+  listErr([]);
+  await loadMechs();
+};
 
 // ================= 布局设置 tab =================
 // 自原 static/layout.html 迁入：DOM id 加 l- 前缀、入口改懒初始化 layoutBoot、
@@ -2055,6 +2369,7 @@ fetch('/api/version').then(r => r.json()).then(v => {
 }).catch(() => {});
 applyExtOptions();  // 扩展选项恢复（含布局 navtab 显隐）
 loadProjects();
+loadMechs();  // 机制全局列表（不随项目切换）
 // 自动更新检查：有新版出横幅；exe 一键更新（下载后程序退出替换重启），开发模式仅给下载链接
 // 页面加载即查一次，此后每 1min 复查（下载/更新进行中暂停复查，避免覆盖进度提示）
 let updateApplying = false;
@@ -2097,9 +2412,9 @@ checkUpdate();
 setInterval(checkUpdate, 60000);
 if (location.hash === '#layout' && extOptions.layout) showTab('layout');  // /layout 重定向落点（布局 tab 隐藏时不跳转）
 
-// 未保存修改（布局 dirty / 单卡布局 singleDirty / 卡牌 cDirty）时关闭或刷新标签页弹浏览器确认框
+// 未保存修改（布局 dirty / 单卡布局 singleDirty / 卡牌 cDirty / 机制 mDirty）时关闭或刷新标签页弹浏览器确认框
 window.addEventListener('beforeunload', ev => {
-  if (dirty || singleDirty || cDirty) { ev.preventDefault(); ev.returnValue = ''; }
+  if (dirty || singleDirty || cDirty || mDirty) { ev.preventDefault(); ev.returnValue = ''; }
 });
 </script>
 </body>

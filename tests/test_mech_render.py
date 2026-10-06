@@ -46,10 +46,22 @@ def test_frame_height_by_line_count(lib, frame):
     assert heights[8] - heights[5] == 3 * LINE_PITCH
 
 
-def test_frame_below_3_uses_3_line(lib):
+def test_frame_below_3_shrinks_to_2(lib):
+    """不足 3 行从 5 行素材裁除到 2 行（空描述 = 关键字名+空行仅 2 行）；1/0 行按 2 行。"""
     for frame in ("invocation", "skill"):
-        assert build_frame(lib, frame, 0).height == build_frame(lib, frame, 3).height
-        assert build_frame(lib, frame, 2).height == build_frame(lib, frame, 3).height
+        h3 = build_frame(lib, frame, 3).height
+        h2 = build_frame(lib, frame, 2).height
+        assert h2 == h3 - LINE_PITCH
+        assert build_frame(lib, frame, 1).height == h2
+        assert build_frame(lib, frame, 0).height == h2
+        # 与 3 行素材中部裁除一行等价：顶帽/底帽逐像素一致
+        src3 = lib.mech(f"frame_{frame}_3")
+        band_y = _BAND_Y[frame]
+        built = build_frame(lib, frame, 2)
+        assert list(built.crop((0, 0, built.width, band_y)).getdata()) == \
+            list(src3.crop((0, 0, src3.width, band_y)).getdata())
+        assert list(built.crop((0, band_y, built.width, built.height)).getdata()) == \
+            list(src3.crop((0, band_y + LINE_PITCH, src3.width, src3.height)).getdata())
 
 
 def test_seal_frame_extension(lib):

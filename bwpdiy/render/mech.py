@@ -6,10 +6,11 @@
   关键字名 name_size 默认 26 略大于正文（不做加粗描边）；行距 = 正文字号。
   原生行距 LINE_PITCH=24 = 灵咒框相邻行数素材高度差（三/四/五行字 102/126/150，
   差恒定 24；关键字框 104/131/155 取 5-4 行差 24）。
-- 内容行数（关键字名 + 空行 + 描述行）× 行距决定框高：原生行距且 ≤5 行直接命中
-  对应行数素材（<3 行用 3 行框）；其余从 5 行素材（seal 从底框）中部切横带纵向
-  拼接/裁除（顶帽+中段+底帽；行距非 24 时横带等比缩放到行距高）。seal 框仅单一
-  底框（71px，容 2 行内容）。平铺带位置逐行扫描素材确定：带内与接缝逐行色差
+- 内容行数（关键字名 + 空行 + 描述行）× 行距决定框高：原生行距且 3–5 行直接命中
+  对应行数素材；不足 3 行（空描述 = 关键字名+空行仅 2 行，下限 2 行）从 3 行素材
+  中部裁除；其余从 5 行素材（seal 从底框）中部切横带纵向拼接/裁除（顶帽+中段+底帽；
+  行距非 24 时横带等比缩放到行距高）。seal 框仅单一底框（71px，容 2 行内容）。
+  平铺带位置逐行扫描素材确定：带内与接缝逐行色差
   invocation ≤1 / skill 0 / seal ≤9（素材自带噪点纹理，色差不可见）。
 - 关键字名在框内左上角左对齐、金色；每种框体有独立文本区域（frames.<框>：
   text_x 左缘 / text_dy 竖直偏移 / width 换行宽——框高随内容行数动态变化，
@@ -74,6 +75,7 @@ DEFAULT_LAYOUT = {
 
 # 中段平铺带：从素材 y=BAND_Y 起切 LINE_PITCH 高横带（接缝色差实测最小处）
 _BAND_Y = {"invocation": 40, "skill": 42, "seal": 30}
+_MIN_ROWS = 2        # 灵咒/关键字框最小行数（空描述 = 关键字名+空行即 2 行）
 _SEAL_BASE_ROWS = 2  # seal 底框容量 = 2 行内容（关键字名+空行即占满，任何描述都触发平铺扩展）
 _MIN_TAIL = 20       # 缩框时底帽最少保留高度
 
@@ -129,20 +131,26 @@ def _mech_layout(layout: dict | None) -> dict:
 
 def build_frame(lib: AssetLibrary, frame: str, n_rows: int,
                 pitch: int = LINE_PITCH) -> Image.Image:
-    """按内容行数（关键字名+空行+描述行）× 行距拼框：原生行距且 ≤5 行直接命中
-    对应行数素材（n_rows<3 按 3 行框）；其余从 5 行素材（seal 从底框）中部
-    平铺扩展/裁除到目标高 = 顶底帽边距 + n_rows×pitch。"""
+    """按内容行数（关键字名+空行+描述行）× 行距拼框：原生行距且 3–5 行直接命中
+    对应行数素材；原生行距 <3 行（空描述仅 2 行，下限 _MIN_ROWS）从 3 行素材
+    裁除（与该档资产边距一致）；其余从 5 行素材（seal 从底框）中部平铺扩展/
+    裁除到目标高 = 顶底帽边距 + n_rows×pitch。"""
     if frame not in MECH_FRAMES:
         raise ValueError(f"未知机制框类型: {frame}")
     if frame == "seal":
         img = lib.mech("frame_seal")
         n_rows = max(n_rows, _SEAL_BASE_ROWS)  # 底框即最小框，不再缩小行数
         cap_rows = _SEAL_BASE_ROWS
-    elif pitch == LINE_PITCH and n_rows <= 5:
-        return lib.mech(f"frame_{frame}_{min(max(n_rows, 3), 5)}").copy()
+    elif pitch == LINE_PITCH and 3 <= n_rows <= 5:
+        return lib.mech(f"frame_{frame}_{n_rows}").copy()
+    elif pitch == LINE_PITCH and n_rows < 3:
+        # n_rows < 3（空描述 = 关键字名+空行仅 2 行）：从 3 行素材裁除，
+        # 与该档资产边距一致（各档整图边距略有差异，5 行底裁会多出几 px）
+        img, cap_rows = lib.mech(f"frame_{frame}_3"), 3
+        n_rows = max(n_rows, _MIN_ROWS)
     else:
         img, cap_rows = lib.mech(f"frame_{frame}_5"), 5
-        n_rows = max(n_rows, 3)
+        n_rows = max(n_rows, _MIN_ROWS)  # 无 1/2 行素材：从 5 行素材裁除得到
     margin = img.height - cap_rows * LINE_PITCH
     target = margin + n_rows * pitch
     return _resize_mid(img, _BAND_Y[frame], target - img.height, pitch)

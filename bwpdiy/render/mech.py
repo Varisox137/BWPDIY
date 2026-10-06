@@ -11,8 +11,10 @@
   拼接/裁除（顶帽+中段+底帽；行距非 24 时横带等比缩放到行距高）。seal 框仅单一
   底框（71px，容 2 行内容）。平铺带位置逐行扫描素材确定：带内与接缝逐行色差
   invocation ≤1 / skill 0 / seal ≤9（素材自带噪点纹理，色差不可见）。
-- 技能名在框内左上角左对齐、金色（name_x 左边距 + name_dy 竖直微调，布局可配）；
-  与描述之间空一行；描述逐行水平居中，「技能名+空行+描述」整块在框内竖直居中。
+- 技能名在框内左上角左对齐、金色；文本（技能名+描述）左缘 = 基本 text_x +
+  分框 frame_offset dx（三类框共用基本值、各自叠加独立 dx/dy）；技能名另有
+  name_offset 微调；与描述之间空一行；描述逐行**左对齐**（同行左缘一致），
+  文本块在框内竖直居中后叠加 text_y + 分框 dy。
 - 描述复用卡面文本管线：[[关键字]] 金色高亮、#xx 内嵌小图标（text.py parse_items /
   _draw_styled_line）；正文颜色按框体（浅框深字/黑框浅字，TEXT_FILL）；
   黑框（skill）派系图标用 _black 变体。
@@ -47,17 +49,21 @@ TEXT_FILL = {
     "seal": (87, 88, 95, 255),
 }
 
-MARGIN_X = 18        # 文本区双边距（技能名左对齐起点）默认值
+MARGIN_X = 18        # 文本左缘 / 换行右边距默认值
 BADGE_POS = (6, 6)   # 加护/蚀印角标贴框左上角默认值
 BADGE_NAME_GAP = 6   # 角标存在时技能名与角标右缘的间距
 
-# 机制布局默认配置（assets/layout.json「机制」段覆盖；GUI 布局设置「机制」页编辑）
+# 机制布局默认配置（assets/layout.json「机制」段覆盖；GUI 布局设置「机制」页编辑）。
+# 字号/文本边距/角标三类框共用；文本基本偏移 text_x/text_y 三类共用，
+# frame_offset 为各框独立叠加的 dx/dy（仅在基本偏移之上平移文本，不动角标）。
 DEFAULT_LAYOUT = {
     "name_size": 26,          # 技能名字号（略大于正文，不加粗）
-    "name_x": MARGIN_X,       # 技能名左对齐起点（无角标时）
-    "name_dy": 0,             # 技能名竖直微调（相对行中心）
     "text_size": FONT_SIZE,   # 正文字号 = 行距
-    "margin_x": MARGIN_X,     # 正文换行双边距
+    "text_x": MARGIN_X,       # 文本（技能名+描述）左缘（三类共用基本值）
+    "text_y": 0,              # 文本块竖直偏移（相对框内竖直居中，三类共用基本值）
+    "name_offset": [0, 0],    # 技能名相对文本左缘/行中心的额外偏移
+    "frame_offset": {f: [0, 0] for f in MECH_FRAMES},  # 各框独立叠加 dx/dy
+    "margin_x": MARGIN_X,     # 正文换行右边距（左缘由 text_x 决定）
     "icon_scale": 1.0,        # 内嵌小图标相对文字大小
     "badge_size": 30,         # 加护/蚀印角标尺寸（素材原生 30）
     "badge_pos": list(BADGE_POS),
@@ -69,24 +75,44 @@ _SEAL_BASE_ROWS = 2  # seal 底框容量 = 2 行内容（技能名+空行即占�
 _MIN_TAIL = 20       # 缩框时底帽最少保留高度
 
 
+def _is_num(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _pair(value) -> list | None:
+    """[x, y] 数值对校验，合法返回 int 列表，否则 None。"""
+    if (isinstance(value, (list, tuple)) and len(value) == 2
+            and all(_is_num(v) for v in value)):
+        return [int(value[0]), int(value[1])]
+    return None
+
+
 def _mech_layout(layout: dict | None) -> dict:
     """合并默认机制布局：仅认 DEFAULT_LAYOUT 白名单键，畸形值回退默认。"""
     cfg = dict(DEFAULT_LAYOUT)
+    cfg["name_offset"] = list(DEFAULT_LAYOUT["name_offset"])
     cfg["badge_pos"] = list(DEFAULT_LAYOUT["badge_pos"])
+    cfg["frame_offset"] = {f: [0, 0] for f in MECH_FRAMES}
     if not isinstance(layout, dict):
         return cfg
     for key in cfg:
         value = layout.get(key)
         if value is None or isinstance(value, bool):
             continue
-        if key == "badge_pos":
-            if (isinstance(value, (list, tuple)) and len(value) == 2
-                    and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value)):
-                cfg[key] = [int(value[0]), int(value[1])]
+        if key in ("name_offset", "badge_pos"):
+            pair = _pair(value)
+            if pair is not None:
+                cfg[key] = pair
+        elif key == "frame_offset":
+            if isinstance(value, dict):
+                for f in MECH_FRAMES:
+                    pair = _pair(value.get(f))
+                    if pair is not None:
+                        cfg[key][f] = pair
         elif key == "icon_scale":
-            if isinstance(value, (int, float)) and value > 0:
+            if _is_num(value) and value > 0:
                 cfg[key] = float(value)
-        elif isinstance(value, (int, float)):
+        elif _is_num(value):
             cfg[key] = int(value)
     cfg["name_size"] = max(8, cfg["name_size"])
     cfg["text_size"] = max(8, cfg["text_size"])
@@ -199,8 +225,10 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None) -> Imag
     name_font = lib.font("desc", cfg["name_size"])
     icon_variant = "black" if frame == "skill" else None
     frame_w = lib.mech("frame_seal").width  # 三种框同宽（281）
+    fox, foy = cfg["frame_offset"][frame]   # 本框独立叠加偏移
+    text_x = cfg["text_x"] + fox            # 文本（技能名+描述）左缘
     items = parse_items(_normalize_newlines(text))
-    lines = _wrap_items(items, font, lib, frame_w - 2 * cfg["margin_x"],
+    lines = _wrap_items(items, font, lib, max(20, frame_w - text_x - cfg["margin_x"]),
                         icon_variant, cfg["icon_scale"])
     if len(lines) > MAX_LINES:
         raise ValueError(f"机制描述行数 {len(lines)} 超软上限 {MAX_LINES} 行")
@@ -208,9 +236,8 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None) -> Imag
     total_rows = len(lines) + 2  # 技能名 + 空行 + 描述行
     img = build_frame(lib, frame, total_rows, pitch)
 
-    # 「技能名 + 空行 + 描述」整块在框内竖直居中
-    y0 = (img.height - total_rows * pitch) / 2
-    cx = img.width / 2
+    # 文本块在框内竖直居中后叠加基本 text_y + 本框 dy
+    y0 = (img.height - total_rows * pitch) / 2 + cfg["text_y"] + foy
 
     out = img.copy()
     draw = ImageDraw.Draw(out)
@@ -220,14 +247,17 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None) -> Imag
         if icon.width != cfg["badge_size"]:
             icon = icon.resize((cfg["badge_size"], cfg["badge_size"]), Image.LANCZOS)
         out.paste(icon, tuple(cfg["badge_pos"]), icon)
-    name_x = (cfg["badge_pos"][0] + cfg["badge_size"] + BADGE_NAME_GAP
-              if badge else cfg["name_x"])
-    # 技能名：框内左上角左对齐、金色、字号略大于正文（name_dy 竖直微调）
-    draw.text((name_x, y0 + pitch / 2 + cfg["name_dy"]), name, font=name_font,
+    name_x = (text_x if not badge else
+              fox + cfg["badge_pos"][0] + cfg["badge_size"] + BADGE_NAME_GAP)
+    name_x += cfg["name_offset"][0]
+    # 技能名：框内左上角左对齐、金色、字号略大于正文（name_offset 额外微调）
+    draw.text((name_x, y0 + pitch / 2 + cfg["name_offset"][1]), name, font=name_font,
               anchor="lm", fill=NAME_FILL)
-    # 描述：与技能名之间空一行，逐行水平居中（[[关键字]] 金色高亮、#xx 图标；
-    # 正文色按框体 TEXT_FILL）
+    # 描述：与技能名之间空一行，逐行左对齐（同行左缘 = 文本左缘；[[关键字]] 金色
+    # 高亮、#xx 图标；正文色按框体 TEXT_FILL）
+    icon_w = _icon_widths(items, font, lib, icon_variant, cfg["icon_scale"])
     for i, line in enumerate(lines):
+        cx = text_x + _line_width(line, font, icon_w) / 2  # 左缘锚定换算为中心锚点
         _draw_styled_line(out, line, cx, y0 + pitch * (2.5 + i), font,
                           TEXT_FILL[frame], KEYWORD_FILL, lib, icon_variant,
                           cfg["icon_scale"])

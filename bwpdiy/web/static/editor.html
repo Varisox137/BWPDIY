@@ -201,7 +201,7 @@
     <h4>协战双式神框</h4>
     <div>协战卡可勾选「双式神框」，在牌框左上外侧渲染双菱形头像框；头像自动取所属式神卡的卡图（式神缺卡图则该槽位留空菱形），派系小标随式神派系。</div>
     <h4>扩展选项</h4>
-    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「全局布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步），第七类「机制」页三画布同屏调整机制描述框的名称位置与字号等；并在卡牌库右栏开放「调整单卡元素布局」，对当前卡单独覆盖布局（只把与全局不同的项写进该卡，还原/保存互不影响全局）；<b>标记扩展</b>——稀有度下拉开放 N 与「无」（衍生牌）；等级下拉开放 0（无等级）与勾玉六色（黄/青/紫/红/蓝/棕）；式神开放派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
+    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「全局布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步），第七类「机制」页三画布同屏调整机制描述框的文本偏移（基本+分框独立）与字号等；并在卡牌库右栏开放「调整单卡元素布局」，对当前卡单独覆盖布局（只把与全局不同的项写进该卡，还原/保存互不影响全局）；<b>标记扩展</b>——稀有度下拉开放 N 与「无」（衍生牌）；等级下拉开放 0（无等级）与勾玉六色（黄/青/紫/红/蓝/棕）；式神开放派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
   </div>
 </div>
 
@@ -1748,14 +1748,21 @@ let singleDirty = false;
 // ---- 机制布局模式：布局 tab 第七类「机制」，三画布同屏预览三类框体（仅全局模式可进）----
 let mechLayoutMode = false;
 // 与 render/mech.py DEFAULT_LAYOUT 同口径（缺键/缺段时补齐，保存时全段随 layouts 写回）
-const MECH_LAYOUT_DEFAULTS = {name_size: 26, name_x: 18, name_dy: 0, text_size: 24,
+const MECH_LAYOUT_DEFAULTS = {name_size: 26, text_size: 24, text_x: 18, text_y: 0,
+  name_offset: [0, 0], frame_offset: {invocation: [0, 0], skill: [0, 0], seal: [0, 0]},
   margin_x: 18, icon_scale: 1.0, badge_size: 30, badge_pos: [6, 6]};
+const MECH_FRAME_LABELS = {invocation: '灵咒框', skill: '技能框', seal: '加护蚀印框'};
 // 机制预览示例内容（仅调布局用，不写盘、不计入未保存）
-const mechSample = {name: '示例机制', text: '获得[[迅捷]]与 #ll 1 点力量。\n第二行描述。', badge: ''};
+const mechSample = {name: '示例机制', text: '获得[[迅捷]]与 #ll 1 点力量。\n第二行描述。', badge: false};
 function mechLayout() {
   const m = layouts['机制'] = layouts['机制'] || {};
+  // 旧键迁移（v1.5.0 开发期曾用 name_x/name_dy，未发布无兼容负担，直接改名带入）
+  if ('name_x' in m) { if (m.text_x === undefined) m.text_x = m.name_x; delete m.name_x; }
+  if ('name_dy' in m) { if (m.name_offset === undefined) m.name_offset = [0, m.name_dy]; delete m.name_dy; }
   for (const [k, v] of Object.entries(MECH_LAYOUT_DEFAULTS))
-    if (m[k] === undefined) m[k] = Array.isArray(v) ? [...v] : v;
+    if (m[k] === undefined) m[k] = deepCopy(v);
+  for (const f of Object.keys(MECH_FRAME_LABELS))
+    if (!Array.isArray(m.frame_offset[f])) m.frame_offset[f] = [0, 0];
   return m;
 }
 const canvas = document.getElementById('l-preview');
@@ -1957,14 +1964,21 @@ function buildMechProps() {
   const ml = mechLayout();
   div.appendChild(title('机制框布局（三类框共用）'));
   numRow(div, '名称字号', ml.name_size, v => ml.name_size = v);
-  numRow(div, '名称位置 x', ml.name_x, v => ml.name_x = v);
-  numRow(div, '名称竖直偏移', ml.name_dy, v => ml.name_dy = v);
   numRow(div, '正文字号', ml.text_size, v => ml.text_size = v);
   numRow(div, '文本边距', ml.margin_x, v => ml.margin_x = v);
   floatRow(div, '小图标相对文字大小', ml.icon_scale, v => ml.icon_scale = v);
+  numRow(div, '文本偏移 x', ml.text_x, v => ml.text_x = v);
+  numRow(div, '文本偏移 y', ml.text_y, v => ml.text_y = v);
+  numRow(div, '名称偏移 x', ml.name_offset[0], v => ml.name_offset[0] = v);
+  numRow(div, '名称偏移 y', ml.name_offset[1], v => ml.name_offset[1] = v);
   numRow(div, '角标尺寸', ml.badge_size, v => ml.badge_size = v);
-  numRow(div, '角标位置 x', ml.badge_pos[0], v => ml.badge_pos[0] = v);
-  numRow(div, '角标位置 y', ml.badge_pos[1], v => ml.badge_pos[1] = v);
+  numRow(div, '角标偏移 x', ml.badge_pos[0], v => ml.badge_pos[0] = v);
+  numRow(div, '角标偏移 y', ml.badge_pos[1], v => ml.badge_pos[1] = v);
+  div.appendChild(title('分框偏移（叠加在文本偏移之上）'));
+  for (const [f, label] of Object.entries(MECH_FRAME_LABELS)) {
+    numRow(div, `${label}偏移 x`, ml.frame_offset[f][0], v => ml.frame_offset[f][0] = v);
+    numRow(div, `${label}偏移 y`, ml.frame_offset[f][1], v => ml.frame_offset[f][1] = v);
+  }
   div.appendChild(title('示例内容（不保存）'));
   textRow(div, '机制名', mechSample.name, v => { mechSample.name = v; schedulePreview(); });
   const l = document.createElement('label');
@@ -1976,18 +1990,14 @@ function buildMechProps() {
     mechSample.text = ta.value; schedulePreview();
   };
   l.appendChild(ta); div.appendChild(l);
-  // 角标（仅加护蚀印框生效；示例内容不入布局、不计未保存，故不用 selRow）
+  // 加护/蚀印图标（仅加护蚀印框生效；预览开关不入布局、不计未保存；
+  // 启用时机制名称文本自动向右避让——实际加护/蚀印在机制编辑中逐个选择）
   const bl = document.createElement('label');
-  bl.textContent = '角标 ';
-  const bs = document.createElement('select');
-  for (const [v, t] of [['', '无'], ['bless', '加护'], ['eclipse', '蚀印']]) {
-    const op = document.createElement('option');
-    op.value = v; op.textContent = t;
-    if (v === mechSample.badge) op.selected = true;
-    bs.appendChild(op);
-  }
-  bs.onchange = () => { mechSample.badge = bs.value; schedulePreview(); };
-  bl.appendChild(bs); div.appendChild(bl);
+  bl.textContent = '加护/蚀印图标 ';
+  const bc = document.createElement('input');
+  bc.type = 'checkbox'; bc.checked = mechSample.badge;
+  bc.onchange = () => { mechSample.badge = bc.checked; schedulePreview(); };
+  bl.appendChild(bc); div.appendChild(bl);
 }
 async function refreshMechPreview() {
   const seq = ++previewSeq;
@@ -1997,7 +2007,7 @@ async function refreshMechPreview() {
   let err = null;
   await Promise.all(jobs.map(async ([frame, id]) => {
     const mech = {name: mechSample.name || '示例机制', text: mechSample.text};
-    if (frame === 'seal' && mechSample.badge) mech.badge = mechSample.badge;
+    if (frame === 'seal' && mechSample.badge) mech.badge = 'bless';  // 预览统一用加护标
     let r;
     try {
       r = await fetch('/api/mech-preview', {method: 'POST',

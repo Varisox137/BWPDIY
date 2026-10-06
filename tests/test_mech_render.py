@@ -115,7 +115,7 @@ def test_unknown_icon_code_raises(assets_dir):
 
 def test_name_top_left(assets_dir):
     """技能名在框内左上角左对齐（x≈name_x 默认 18）、金色；与描述之间空一行。
-    不再加粗描边，墨迹左缘 = name_x + 字体左轴承（约 3px）。"""
+    不再加粗描边，墨迹左缘 = text_x + 字体左轴承（约 3px）。"""
     img = render_mechanism(_mech(), assets_dir)
     gold_xs = [x for x in range(img.width) for y in range(img.height // 3)
                if (lambda p: p[:3] == NAME_FILL[:3] and p[3] > 200)(img.getpixel((x, y)))]
@@ -125,11 +125,13 @@ def test_name_top_left(assets_dir):
 # ---------- 布局参数（layout 段，对应 assets/layout.json「机制」） ----------
 
 def test_layout_none_and_unknown_keys_equal_default(assets_dir):
-    """layout=None / 未知键 / 畸形值均回退默认，渲染逐像素一致。"""
+    """layout=None / 未知键 / 畸形值（含嵌套键）均回退默认，渲染逐像素一致。"""
     a = render_mechanism(_mech(), assets_dir)
     b = render_mechanism(_mech(), assets_dir, layout=None)
     c = render_mechanism(_mech(), assets_dir,
-                         layout={"unknown_key": 1, "text_size": None, "badge_pos": "x"})
+                         layout={"unknown_key": 1, "text_size": None, "badge_pos": "x",
+                                 "name_offset": [1], "frame_offset": "bad",
+                                 "name_x": 60})  # name_x/name_dy 为开发期旧键，已被忽略
     assert list(a.getdata()) == list(b.getdata()) == list(c.getdata())
 
 
@@ -142,15 +144,56 @@ def test_layout_text_size_changes_pitch(assets_dir):
     assert big.height > base.height > small.height
 
 
-def test_layout_name_position(assets_dir):
-    """名称位置 x 可调：金色墨迹左缘随 name_x 右移。"""
-    def gold_min_x(img):
-        xs = [x for x in range(img.width) for y in range(img.height // 3)
-              if (lambda p: p[:3] == NAME_FILL[:3] and p[3] > 200)(img.getpixel((x, y)))]
-        return min(xs)
-    assert gold_min_x(render_mechanism(_mech(), assets_dir)) <= 22
-    assert gold_min_x(render_mechanism(
-        _mech(), assets_dir, layout={"name_x": 60})) >= 60
+def _gold_min_x(img):
+    """技能名金色墨迹左缘（框上部 1/3 区域内）。"""
+    xs = [x for x in range(img.width) for y in range(img.height // 3)
+          if (lambda p: p[:3] == NAME_FILL[:3] and p[3] > 200)(img.getpixel((x, y)))]
+    return min(xs)
+
+
+def test_layout_text_x(assets_dir):
+    """文本偏移 x 可调：技能名金色墨迹左缘随 text_x 右移。"""
+    assert _gold_min_x(render_mechanism(_mech(), assets_dir)) <= 22
+    assert _gold_min_x(render_mechanism(
+        _mech(), assets_dir, layout={"text_x": 60})) >= 60
+
+
+def test_layout_frame_offset(assets_dir):
+    """分框独立偏移：仅本框叠加 dx/dy，其他框不变。"""
+    base = _gold_min_x(render_mechanism(_mech(), assets_dir))
+    moved = _gold_min_x(render_mechanism(
+        _mech(), assets_dir, layout={"frame_offset": {"skill": [10, 0]}}))
+    assert moved - base == 10
+    # 其他框不受 skill 偏移影响（invocation 与默认逐像素一致）
+    a = render_mechanism(_mech(frame="invocation"), assets_dir)
+    b = render_mechanism(_mech(frame="invocation"), assets_dir,
+                         layout={"frame_offset": {"skill": [10, 0]}})
+    assert list(a.getdata()) == list(b.getdata())
+
+
+def test_desc_left_aligned(assets_dir):
+    """描述逐行左对齐：不同长度的描述行墨迹左缘一致（ invocation 深字）。"""
+    from bwpdiy.render.mech import TEXT_FILL
+    img = render_mechanism(
+        _mech(frame="invocation", text="较长的描述文字。\n短。"), assets_dir)
+    fill = TEXT_FILL["invocation"]
+    rows: dict[int, int] = {}  # y -> 该行文字墨迹最小 x
+    for y in range(img.height):
+        for x in range(img.width):
+            p = img.getpixel((x, y))
+            if p[:3] == fill[:3] and p[3] > 200:
+                rows.setdefault(y, x)
+                break
+    ys = sorted(rows)
+    assert ys
+    # 按行间空隙分行（行距 24，同一段内行 y 连续）
+    line_starts, prev = [], None
+    for y in ys:
+        if prev is None or y - prev > 2:
+            line_starts.append(rows[y])
+        prev = y
+    assert len(line_starts) == 2
+    assert abs(line_starts[0] - line_starts[1]) <= 2  # 左缘对齐（抗锯齿 1-2px 容差）
 
 
 def test_layout_badge_size(assets_dir):

@@ -665,9 +665,27 @@
   },
   "机制": {
     "name_size": 26,
-    "name_x": 18,
-    "name_dy": 0,
     "text_size": 24,
+    "text_x": 18,
+    "text_y": 0,
+    "name_offset": [
+      0,
+      0
+    ],
+    "frame_offset": {
+      "invocation": [
+        0,
+        0
+      ],
+      "skill": [
+        0,
+        0
+      ],
+      "seal": [
+        0,
+        0
+      ]
+    },
     "margin_x": 18,
     "icon_scale": 1.0,
     "badge_size": 30,

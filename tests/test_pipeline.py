@@ -52,11 +52,22 @@ def test_render_missing_artwork_raises(assets_dir):
         render_card(card, assets_dir)
 
 
+def _anchor_x(assets_dir, card_type: str) -> int:
+    """管线同款归一化牌框左缘锚点（卡面空间 x 原点）。"""
+    from bwpdiy.render.assets import AssetLibrary
+    from bwpdiy.render.badges import TYPE_FRAME_CODE
+    from bwpdiy.render.pipeline import _normalize_frame
+    info = {}
+    _normalize_frame(AssetLibrary(assets_dir).frame(TYPE_FRAME_CODE[card_type], "norm"), info)
+    return info["anchor"][0]
+
+
 def test_render_with_layout_override(assets_dir, sample_art):
     from bwpdiy.render.layout import load_layouts, get_type_layout
     layouts = load_layouts(assets_dir)
     tl = get_type_layout(layouts, "法术")
-    tl["elements"]["rarity"]["pos"] = [256, 200]  # 上移稀有度双标（保持牌框内部，裁剪 bbox 不变）
+    # 布局坐标为卡面空间（x 原点 = 归一化牌框左缘），原 512 画布值 256 相应平移
+    tl["elements"]["rarity"]["pos"] = [256 - _anchor_x(assets_dir, "法术"), 200]
     card = {"type": "法术", "name": "sample_art", "rarity": "R",
             "_base_dir": str(sample_art.parent)}
     default = render_card(card, assets_dir)
@@ -130,14 +141,18 @@ def test_footer_neutral_card(assets_dir, sample_art):
 
 def test_export_tight_bbox_native_size(assets_dir, sample_art):
     """导出：按 tightest alpha bbox 裁剪后原尺寸直接返回——高 512 顶格、宽按内容，
-    四边无留白（不再缩放贴回 512×512 画布）；info 回填裁剪原点（512 布局空间）。"""
+    四边无留白（不再缩放贴回 512×512 画布）；info 回填裁剪原点（卡面空间，
+    可为负）与 anchor_x（卡面空间原点的画布位置）。"""
     card = make_card(sample_art.parent, "战斗", **{"level": 1, "rarity": "R", "power+": 1, "shield+": 1})
     info = {}
     out = render_card(card, assets_dir, crop=True, info=info)
     assert 511 <= out.height <= 512 and out.width < 512  # 高顶格（框缘抗锯齿可差 1px）
     assert _content_bbox(out) == (0, 0, out.width, out.height)
     ox, oy = info["crop_origin"]
-    assert ox > 0 and oy >= 0 and ox + out.width <= 512 and oy + out.height <= 512
+    ax = info["anchor_x"]
+    # 画布空间原点 = 卡面空间原点 + anchor_x，须落在画布内（ox 本身可为负——探出框左缘元素）
+    assert 0 <= ox + ax and oy >= 0
+    assert ox + ax + out.width <= 512 and oy + out.height <= 512
 
 
 def test_artwork_clipped_to_eroded_contour(assets_dir, sample_art, tmp_path):
@@ -259,7 +274,9 @@ def test_desc_ink_keeps_gap_from_stat_ink(assets_dir, sample_art):
     text_ink = diff.convert("L").point(lambda v: 255 if v > 10 else 0)
 
     # 角标墨迹 = 与管线同口径：stat_rendered 元素在透明层渲染，取 alpha≥128 碰撞轮廓
-    from bwpdiy.render.pipeline import OBSTACLE_ALPHA
+    # 布局元素为卡面空间坐标，先平移到 512 画布坐标再手动渲染
+    from bwpdiy.render.pipeline import OBSTACLE_ALPHA, _to_canvas_coords
+    tl = _to_canvas_coords(tl, _anchor_x(assets_dir, "战斗"))
     lib = AssetLibrary(assets_dir)
     layer = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
     i = 0
@@ -290,3 +307,29 @@ def test_artwork_rotate_changes_render(assets_dir, sample_art):
                                         {"path": "sample_art.png", "rotate": 37}]}),
                           assets_dir, crop=False)
     assert list(base.getdata()) != list(rotated.getdata())
+
+
+def test_to_canvas_coords_translation():
+    """卡面空间 → 512 画布：仅平移绝对 x（pos/fragile_pos/center），
+    偏移/尺寸类字段不动；返回深拷贝不改原数据。"""
+    from bwpdiy.render.pipeline import _to_canvas_coords
+    tl = {"elements": {
+              "name": {"kind": "text", "pos": [132, 337], "font_size": 24},
+              "shield": {"kind": "stat", "pos": [237, 485], "num_offset": [22, 0],
+                         "fragile_pos": [240, 485], "fragile_num_offset": [22, 0]}},
+          "text_regions": {
+              "desc": {"center": [132, 430], "center_offset": [0, -3],
+                       "width": 220, "height": 125}}}
+    out = _to_canvas_coords(tl, 124)
+    assert out["elements"]["name"]["pos"] == [256, 337]
+    assert out["elements"]["shield"]["pos"] == [361, 485]
+    assert out["elements"]["shield"]["fragile_pos"] == [364, 485]
+    assert out["text_regions"]["desc"]["center"] == [256, 430]
+    # 偏移/尺寸类字段不动
+    assert out["elements"]["shield"]["num_offset"] == [22, 0]
+    assert out["elements"]["shield"]["fragile_num_offset"] == [22, 0]
+    assert out["text_regions"]["desc"]["center_offset"] == [0, -3]
+    assert out["text_regions"]["desc"]["width"] == 220
+    # 原数据未被修改
+    assert tl["elements"]["name"]["pos"] == [132, 337]
+    assert tl["text_regions"]["desc"]["center"] == [132, 430]

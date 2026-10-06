@@ -13,6 +13,7 @@ stat 数值层（符号+数字，压在描述文本之上）→
 框品：card["frame_variant"]（缺省 norm），协战恒 norm。
 """
 
+import copy
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
@@ -37,12 +38,16 @@ FRAME_CONTOUR_ERODE = 2  # px
 OBSTACLE_ALPHA = 128
 
 
-def _normalize_frame(frame: Image.Image) -> Image.Image:
+def _normalize_frame(frame: Image.Image, info: dict | None = None) -> Image.Image:
     """牌框归一化到 512×512 画布：等比缩放至高 512（上下顶格），左右居中。
 
-    牌框素材为手工修整的紧致裁剪图，各框尺寸不一；布局坐标以 512 画布为准。
+    牌框素材为手工修整的紧致裁剪图，各框尺寸不一；布局坐标以归一化牌框左缘
+    为原点（卡面空间），传入 info dict 时回填 anchor=(左, 上) 居中偏移，
+    供卡面空间 → 512 画布坐标平移（anchor[1] 恒 0——框恒顶格）。
     """
     if frame.size == CARD_SIZE:
+        if info is not None:
+            info["anchor"] = (0, 0)
         return frame
     scale = CARD_SIZE[1] / frame.height
     if frame.width * scale > CARD_SIZE[0]:  # 宽溢出兜底：按宽适配（正常框不会触发）
@@ -51,8 +56,33 @@ def _normalize_frame(frame: Image.Image) -> Image.Image:
     nh = max(1, round(frame.height * scale))
     frame = frame.resize((nw, nh), Image.LANCZOS)
     canvas = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
-    canvas.paste(frame, ((CARD_SIZE[0] - nw) // 2, (CARD_SIZE[1] - nh) // 2), frame)
+    pos = ((CARD_SIZE[0] - nw) // 2, (CARD_SIZE[1] - nh) // 2)
+    if info is not None:
+        info["anchor"] = pos
+    canvas.paste(frame, pos, frame)
     return canvas
+
+
+def _to_canvas_coords(type_layout: dict, anchor_x: int) -> dict:
+    """布局坐标（卡面空间，x 原点 = 归一化牌框左缘）→ 512 合成画布坐标。
+
+    仅平移绝对 x：elements.*.pos / elements.*.fragile_pos 与
+    text_regions.*.center；偏移/尺寸类字段（num_offset/center_offset/width 等）
+    不动。返回深拷贝，不改调用方数据。
+    """
+    tl = copy.deepcopy(type_layout)
+    for elem in (tl.get("elements") or {}).values():
+        if isinstance(elem, dict):
+            for key in ("pos", "fragile_pos"):
+                p = elem.get(key)
+                if isinstance(p, list) and len(p) == 2 and isinstance(p[0], (int, float)):
+                    p[0] += anchor_x
+    for region in (tl.get("text_regions") or {}).values():
+        if isinstance(region, dict):
+            c = region.get("center")
+            if isinstance(c, list) and len(c) == 2 and isinstance(c[0], (int, float)):
+                c[0] += anchor_x
+    return tl
 
 
 def _art_clip_contour(frame: Image.Image) -> Image.Image:
@@ -94,8 +124,10 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
 
     crop=True（默认，导出/预览）：按整卡 tightest alpha bbox 裁剪后原尺寸
     直接返回（RGBA，高 512 顶格、宽按内容，无 512 画布留白）；传入 info dict
-    时回填 crop_origin=(bbox 左, 上)——512 布局空间坐标，供布局页覆盖层换算
-    （布局参数恒按 512 合成空间记录，裁剪框内容驱动、不可作为坐标基准）。
+    时回填 crop_origin（卡面空间坐标，与布局坐标同系）与 anchor_x（卡面空间
+    x 原点在本框品 512 画布中的位置），供布局页覆盖层换算。
+    布局坐标为卡面空间：x 原点 = 归一化牌框左缘（随框品宽度动态计算，
+    元素与牌框胶着、换框品不跑位；探出框左缘的元素 x 为负），y 原点 = 画布顶。
     crop=False：跳过导出裁剪，返回 512 全画布合成结果（管线内部分层断言用）。
     缺资源/缺字段抛明确异常（FileNotFoundError/KeyError/ValueError），调用方兜底。
     """
@@ -108,7 +140,9 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         variant = "norm"  # 协战框仅 norm 一种框品
     lib = get_library(assets_dir)
 
-    frame = _normalize_frame(lib.frame(code, variant))
+    finfo: dict = {}
+    frame = _normalize_frame(lib.frame(code, variant), finfo)
+    anchor_x = finfo["anchor"][0]  # 卡面空间 x 原点（本框品归一化牌框左缘）
     ref = _artwork_ref(card)
     art_path = Path(ref["path"])
     base_dir = Path(card.get("_base_dir", "."))
@@ -132,6 +166,8 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     canvas = Image.alpha_composite(art, frame)  # 牌框在上：卡图区透明，无需蒙版
 
     type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
+    # 布局坐标卡面空间 → 512 画布（锚点随框品：元素与牌框左缘胶着，换框品不跑位）
+    type_layout = _to_canvas_coords(type_layout, anchor_x)
     elements = type_layout["elements"]
     card = dict(card)
     # 脚注兜底：式神名-类型[/子类型]；协战为 式神1×式神2-协战（缺任一式神只标 协战）；
@@ -197,6 +233,8 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
-    if info is not None:
-        info["crop_origin"] = (bbox[0], bbox[1]) if bbox else (0, 0)
+    if info is not None:  # 裁剪原点报卡面空间（与布局坐标同系，探出框左缘元素可为负）
+        info["anchor_x"] = anchor_x
+        info["crop_origin"] = ((bbox[0] - anchor_x, bbox[1]) if bbox
+                               else (-anchor_x, 0))
     return canvas.crop(bbox) if bbox else canvas

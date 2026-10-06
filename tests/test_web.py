@@ -166,14 +166,14 @@ def test_preview_png(client):
     r = client.post("/api/preview", json={"type": "战斗", "layout": tl})
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     assert len(r.content) > 10000
-    # 紧致裁剪原尺寸（无 512 画布留白）+ 裁剪原点响应头（512 布局空间，
-    # 布局页覆盖层据此换算；布局参数本身恒按 512 合成空间记录不变）
+    # 紧致裁剪原尺寸（无 512 画布留白）+ 裁剪原点响应头（卡面空间，与布局坐标同系；
+    # 探出框左缘元素时 ox 可为负；布局页覆盖层据此换算）
     from io import BytesIO
     from PIL import Image
     img = Image.open(BytesIO(r.content))
     assert 511 <= img.height <= 512 and img.width < 512
     ox, oy = (int(v) for v in r.headers["x-crop-offset"].split(","))
-    assert ox > 0 and oy >= 0 and ox + img.width <= 512 and oy + img.height <= 512
+    assert oy >= 0 and oy + img.height <= 512 and ox + img.width <= 512
 
 
 @pytest.mark.parametrize("card_type", ["式神", "战斗", "法术", "形态", "幻境", "协战"])

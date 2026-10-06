@@ -13,6 +13,7 @@ import pytest
 from PIL import Image
 
 from bwpdiy.render.assets import AssetLibrary
+from bwpdiy.render.badges import TYPE_FRAME_CODE
 from bwpdiy.render.badges import render_element
 from bwpdiy.render.layout import get_type_layout, load_layouts
 from bwpdiy.render.text import draw_region
@@ -25,6 +26,15 @@ SIZE = (512, 512)
 ALPHA_MIN = 10
 
 ALL_TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"]
+
+# 布局坐标为卡面空间（x 原点 = 归一化牌框左缘）；本文件直接调 render_element
+# （画布坐标），加载后统一平移到 512 画布坐标，断言口径沿用画布
+from bwpdiy.render.pipeline import _normalize_frame, _to_canvas_coords
+
+for _t in ALL_TYPES:
+    _info = {}
+    _normalize_frame(LIB.frame(TYPE_FRAME_CODE[_t], "norm"), _info)
+    LAYOUTS[_t] = _to_canvas_coords(LAYOUTS[_t], _info["anchor"][0])
 
 
 def blank() -> Image.Image:

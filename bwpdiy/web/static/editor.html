@@ -2273,11 +2273,12 @@ canvas.addEventListener('mousedown', ev => {
 window.addEventListener('mousemove', ev => {
   if (!drag) return;
   const [mx, my] = mousePos(ev);
-  drag.set(clamp(mx), clamp(my));
+  // 卡面空间 x 可为负（探出框左缘的元素：stat 角标/双式神框等），y 恒 0..511
+  drag.set(clamp(mx, -256, 640), clamp(my, 0, 511));
   markDirty(); buildProps(); draw();
 });
 window.addEventListener('mouseup', () => { if (drag) { drag = null; refreshPreview(); } });
-function clamp(v) { return Math.max(0, Math.min(511, Math.round(v))); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(v))); }
 function mousePos(ev) {
   // 画布像素 → 512 布局空间坐标（加回裁剪原点）
   const r = canvas.getBoundingClientRect();

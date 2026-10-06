@@ -4,7 +4,7 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          128,
+          4,
           70
         ],
         "base_size": 68,
@@ -22,7 +22,7 @@
       "faction": {
         "kind": "faction",
         "pos": [
-          256,
+          132,
           300
         ],
         "size": 96,
@@ -32,7 +32,7 @@
         "kind": "stat",
         "field": "power",
         "pos": [
-          158,
+          34,
           479
         ],
         "icon_size": 72,
@@ -53,7 +53,7 @@
         "kind": "stat",
         "field": "health",
         "pos": [
-          358,
+          234,
           478
         ],
         "icon_size": 76,
@@ -72,7 +72,7 @@
       "name": {
         "kind": "text",
         "pos": [
-          256,
+          132,
           337
         ],
         "font_size": 24,
@@ -81,7 +81,7 @@
       "footer": {
         "kind": "text",
         "pos": [
-          256,
+          132,
           499
         ],
         "font_size": 15,
@@ -95,7 +95,7 @@
           0
         ],
         "center": [
-          256,
+          132,
           416
         ],
         "width": 250,
@@ -115,7 +115,7 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          128,
+          5,
           70
         ],
         "base_size": 68,
@@ -133,7 +133,7 @@
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
-          256,
+          133,
           340
         ],
         "gap": 90,
@@ -144,7 +144,7 @@
         "kind": "stat",
         "field": "power+",
         "pos": [
-          156,
+          33,
           479
         ],
         "icon_size": 72,
@@ -169,7 +169,7 @@
         "kind": "stat",
         "field": "shield+",
         "pos": [
-          360,
+          237,
           480
         ],
         "icon_size": 70,
@@ -190,7 +190,7 @@
         "sign_size_plus": 28,
         "sign_size_minus": 16,
         "fragile_pos": [
-          360,
+          237,
           478
         ],
         "fragile_icon_size": 70,
@@ -206,7 +206,7 @@
       "name": {
         "kind": "text",
         "pos": [
-          256,
+          133,
           336
         ],
         "font_size": 24,
@@ -215,7 +215,7 @@
       "footer": {
         "kind": "text",
         "pos": [
-          256,
+          133,
           499
         ],
         "font_size": 15,
@@ -229,7 +229,7 @@
           0
         ],
         "center": [
-          256,
+          133,
           418
         ],
         "width": 250,
@@ -249,7 +249,7 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          124,
+          6,
           70
         ],
         "base_size": 68,
@@ -267,7 +267,7 @@
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
-          256,
+          138,
           340
         ],
         "gap": 90,
@@ -278,7 +278,7 @@
         "kind": "stat",
         "field": "power+",
         "pos": [
-          152,
+          34,
           479
         ],
         "icon_size": 72,
@@ -303,7 +303,7 @@
         "kind": "stat",
         "field": "health+",
         "pos": [
-          365,
+          247,
           478
         ],
         "icon_size": 76,
@@ -326,7 +326,7 @@
       "name": {
         "kind": "text",
         "pos": [
-          256,
+          138,
           338
         ],
         "font_size": 24,
@@ -335,7 +335,7 @@
       "footer": {
         "kind": "text",
         "pos": [
-          256,
+          138,
           498
         ],
         "font_size": 15,
@@ -349,7 +349,7 @@
           0
         ],
         "center": [
-          256,
+          138,
           418
         ],
         "width": 250,
@@ -369,7 +369,7 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          128,
+          4,
           70
         ],
         "base_size": 68,
@@ -387,7 +387,7 @@
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
-          256,
+          132,
           340
         ],
         "gap": 90,
@@ -398,7 +398,7 @@
         "kind": "stat",
         "field": "power",
         "pos": [
-          158,
+          34,
           479
         ],
         "icon_size": 72,
@@ -419,7 +419,7 @@
         "kind": "stat",
         "field": "health",
         "pos": [
-          358,
+          234,
           478
         ],
         "icon_size": 76,
@@ -438,7 +438,7 @@
       "name": {
         "kind": "text",
         "pos": [
-          256,
+          132,
           337
         ],
         "font_size": 24,
@@ -447,7 +447,7 @@
       "footer": {
         "kind": "text",
         "pos": [
-          256,
+          132,
           499
         ],
         "font_size": 15,
@@ -461,7 +461,7 @@
           0
         ],
         "center": [
-          256,
+          132,
           416
         ],
         "width": 250,
@@ -481,7 +481,7 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          126,
+          18,
           70
         ],
         "base_size": 68,
@@ -499,7 +499,7 @@
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
-          256,
+          148,
           344
         ],
         "gap": 90,
@@ -510,7 +510,7 @@
         "kind": "stat",
         "field": "durability",
         "pos": [
-          359,
+          251,
           480
         ],
         "icon_size": 72,
@@ -529,7 +529,7 @@
       "name": {
         "kind": "text",
         "pos": [
-          256,
+          148,
           342
         ],
         "font_size": 24,
@@ -538,7 +538,7 @@
       "footer": {
         "kind": "text",
         "pos": [
-          256,
+          148,
           500
         ],
         "font_size": 15,
@@ -552,7 +552,7 @@
           0
         ],
         "center": [
-          256,
+          148,
           421
         ],
         "width": 250,
@@ -572,7 +572,7 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          128,
+          20,
           70
         ],
         "base_size": 68,
@@ -590,7 +590,7 @@
       "duo_frame": {
         "kind": "duo_frame",
         "pos": [
-          124,
+          16,
           129
         ],
         "slot2_dy": 72,
@@ -615,7 +615,7 @@
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
-          256,
+          148,
           346
         ],
         "gap": 90,
@@ -625,7 +625,7 @@
       "name": {
         "kind": "text",
         "pos": [
-          256,
+          148,
           344
         ],
         "font_size": 24,
@@ -634,7 +634,7 @@
       "footer": {
         "kind": "text",
         "pos": [
-          256,
+          148,
           498
         ],
         "font_size": 15,
@@ -648,7 +648,7 @@
           0
         ],
         "center": [
-          256,
+          148,
           424
         ],
         "width": 250,

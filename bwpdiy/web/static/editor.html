@@ -61,6 +61,11 @@
   #l-frame-variants { color: #d9b96a; font-size: 12px; margin-top: 4px; }
   #l-frame-variants .fv { margin: 0 3px; font-size: 12px; }
   #l-frame-variants .fv.active { background: #d9b96a; }
+  /* 机制布局：三类框体三画布同屏预览 */
+  #l-mech { flex-wrap: wrap; gap: 16px; justify-content: center; align-items: flex-start; margin-top: 12px; overflow-y: auto; }
+  #l-mech .mech-view h4 { color: #d9b96a; font-size: 12px; margin: 0 0 4px; text-align: center; }
+  #l-mech .mech-view img { display: block; }
+  #l-props textarea { width: 195px; height: 64px; font-size: 12px; }
 
   /* ---- 更新横幅 ---- */
   #update-banner { display: none; background: #fff3cd; color: #664d03; padding: 5px 10px; font-size: 13px; text-align: center; }
@@ -143,8 +148,8 @@
 <div id="tab-layout" class="tabpage">
   <div id="l-sidebar">
     <div id="l-types"></div>
-    <h4>卡牌内容</h4><div id="l-cardprops"></div>
-    <h4>元素</h4><div id="l-elems"></div>
+    <h4 id="l-h-cardprops">卡牌内容</h4><div id="l-cardprops"></div>
+    <h4 id="l-h-elems">元素</h4><div id="l-elems"></div>
   </div>
   <div id="l-main">
     <div>
@@ -160,6 +165,11 @@
       <button class="fv" data-fv="red">百炼</button>
     </div>
     <canvas id="l-preview" width="512" height="512"></canvas>
+    <div id="l-mech" style="display:none">
+      <div class="mech-view"><h4>灵咒框</h4><img id="l-mech-invocation" alt=""></div>
+      <div class="mech-view"><h4>技能框</h4><img id="l-mech-skill" alt=""></div>
+      <div class="mech-view"><h4>加护蚀印框</h4><img id="l-mech-seal" alt=""></div>
+    </div>
   </div>
   <div id="l-props"></div>
 </div>
@@ -191,7 +201,7 @@
     <h4>协战双式神框</h4>
     <div>协战卡可勾选「双式神框」，在牌框左上外侧渲染双菱形头像框；头像自动取所属式神卡的卡图（式神缺卡图则该槽位留空菱形），派系小标随式神派系。</div>
     <h4>扩展选项</h4>
-    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「全局布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步）；并在卡牌库右栏开放「调整单卡元素布局」，对当前卡单独覆盖布局（只把与全局不同的项写进该卡，还原/保存互不影响全局）；<b>标记扩展</b>——稀有度下拉开放 N 与「无」（衍生牌）；等级下拉开放 0（无等级）与勾玉六色（黄/青/紫/红/蓝/棕）；式神开放派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
+    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「全局布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步），第七类「机制」页三画布同屏调整机制描述框的名称位置与字号等；并在卡牌库右栏开放「调整单卡元素布局」，对当前卡单独覆盖布局（只把与全局不同的项写进该卡，还原/保存互不影响全局）；<b>标记扩展</b>——稀有度下拉开放 N 与「无」（衍生牌）；等级下拉开放 0（无等级）与勾玉六色（黄/青/紫/红/蓝/棕）；式神开放派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
   </div>
 </div>
 
@@ -1735,6 +1745,19 @@ let cardLayoutMode = null;   // null | 当前卡 stem
 let singleLayout = null;     // 合并后的单类型布局工作副本（typeLayout() 在模式内返回它）
 let singleSnapshot = null;   // 进入模式时的快照（「还原更改」基准）
 let singleDirty = false;
+// ---- 机制布局模式：布局 tab 第七类「机制」，三画布同屏预览三类框体（仅全局模式可进）----
+let mechLayoutMode = false;
+// 与 render/mech.py DEFAULT_LAYOUT 同口径（缺键/缺段时补齐，保存时全段随 layouts 写回）
+const MECH_LAYOUT_DEFAULTS = {name_size: 26, name_x: 18, name_dy: 0, text_size: 24,
+  margin_x: 18, icon_scale: 1.0, badge_size: 30, badge_pos: [6, 6]};
+// 机制预览示例内容（仅调布局用，不写盘、不计入未保存）
+const mechSample = {name: '示例机制', text: '获得[[迅捷]]与 #ll 1 点力量。\n第二行描述。', badge: ''};
+function mechLayout() {
+  const m = layouts['机制'] = layouts['机制'] || {};
+  for (const [k, v] of Object.entries(MECH_LAYOUT_DEFAULTS))
+    if (m[k] === undefined) m[k] = Array.isArray(v) ? [...v] : v;
+  return m;
+}
 const canvas = document.getElementById('l-preview');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('l-status');
@@ -1783,14 +1806,15 @@ function formatDiffs(diffs) {
   const shown = diffs.slice(0, 10).join('、');
   return diffs.length > 10 ? `${shown} 等 ${diffs.length} 处` : shown;
 }
-// 还原：all=false 仅还原当前类型，true 还原六类型；还原本身计入未保存修改（markDirty）
+// 还原：all=false 仅还原当前类型（机制模式为「机制」段），true 还原六类型+机制；
+// 还原本身计入未保存修改（markDirty）
 function restoreLayout(all) {
   if (!layoutSnapshot) { statusEl.textContent = '布局尚未加载'; return; }
-  const targets = all ? TYPES : [curType];
+  const targets = all ? [...TYPES, '机制'] : [mechLayoutMode ? '机制' : curType];
   const parts = [];
   for (const t of targets) {
     const d = layoutDiffs(layouts[t] || {}, layoutSnapshot[t] || {});
-    if (d.length) parts.push(`类型 ${t}：${formatDiffs(d)}`);
+    if (d.length) parts.push(`${t}：${formatDiffs(d)}`);
   }
   if (!parts.length) { statusEl.textContent = '无更改可还原'; return; }
   if (!confirm('将还原以下布局更改：\n' + parts.join('\n'))) return;
@@ -1798,7 +1822,7 @@ function restoreLayout(all) {
     if (t in layoutSnapshot) layouts[t] = deepCopy(layoutSnapshot[t]);
   }
   markDirty();
-  selectType(curType);  // 全套重建（列表/属性/卡牌内容）并刷新预览
+  if (mechLayoutMode) selectMech(); else selectType(curType);  // 全套重建并刷新预览
   statusEl.textContent = '已还原（未保存）';
 }
 // 当前类型卡牌内容：样卡字段 + 用户覆盖（覆盖优先；不改的不传，后端深拷贝合并）；
@@ -1864,12 +1888,21 @@ function buildTypes() {
     b.textContent = t; b.className = 'tab';
     b.onclick = () => {
       // 切换类型不丢弃修改（layouts 常驻内存），但提醒仍未保存
-      if (t !== curType && dirty &&
+      if ((t !== curType || mechLayoutMode) && dirty &&
           !confirm('布局有未保存修改（切换类型不会丢弃，但仍未保存），继续？')) return;
       selectType(t);
     };
     div.appendChild(b);
   }
+  // 第七类「机制」：机制描述框布局（三画布同屏预览三类框体，配置三类共用）
+  const bm = document.createElement('button');
+  bm.textContent = '机制'; bm.className = 'tab';
+  bm.onclick = () => {
+    if (!mechLayoutMode && dirty &&
+        !confirm('布局有未保存修改（切换类型不会丢弃，但仍未保存），继续？')) return;
+    selectMech();
+  };
+  div.appendChild(bm);
   // 还原按钮：无 .tab class，不参与 selectType 的 active 切换
   const row = document.createElement('div');
   row.className = 'btnrow';
@@ -1894,12 +1927,92 @@ function restoreSingleLayout() {
   statusEl.textContent = '已还原（未保存）';
 }
 function selectType(t) {
+  mechLayoutMode = false; showMechPanel(false);
   curType = t; sel = null; previewImg = null;  // 清旧图，避免与新类型覆盖层短暂共存
   document.querySelectorAll('#l-types .tab').forEach(b =>
     b.classList.toggle('active', b.textContent === t));
   document.querySelectorAll('#l-frame-variants .fv').forEach(b =>
     b.disabled = !FRAME_VARIANT_TYPES.has(t));
   buildLists(); buildCardProps(); buildProps(); refreshPreview();
+}
+
+// ---- 机制布局模式：切换显隐 / 属性面板 / 三画布预览 ----
+function showMechPanel(on) {
+  document.getElementById('l-mech').style.display = on ? 'flex' : 'none';
+  canvas.style.display = on ? 'none' : '';
+  document.getElementById('l-frame-variants').style.display = on ? 'none' : '';
+  for (const id of ['l-h-cardprops', 'l-cardprops', 'l-h-elems', 'l-elems'])
+    document.getElementById(id).style.display = on ? 'none' : '';
+}
+function selectMech() {
+  mechLayoutMode = true; sel = null; previewImg = null;
+  document.querySelectorAll('#l-types .tab').forEach(b =>
+    b.classList.toggle('active', b.textContent === '机制'));
+  showMechPanel(true);
+  buildMechProps(); refreshPreview();
+}
+function buildMechProps() {
+  const div = document.getElementById('l-props');
+  div.innerHTML = '';
+  const ml = mechLayout();
+  div.appendChild(title('机制框布局（三类框共用）'));
+  numRow(div, '名称字号', ml.name_size, v => ml.name_size = v);
+  numRow(div, '名称位置 x', ml.name_x, v => ml.name_x = v);
+  numRow(div, '名称竖直偏移', ml.name_dy, v => ml.name_dy = v);
+  numRow(div, '正文字号', ml.text_size, v => ml.text_size = v);
+  numRow(div, '文本边距', ml.margin_x, v => ml.margin_x = v);
+  floatRow(div, '小图标相对文字大小', ml.icon_scale, v => ml.icon_scale = v);
+  numRow(div, '角标尺寸', ml.badge_size, v => ml.badge_size = v);
+  numRow(div, '角标位置 x', ml.badge_pos[0], v => ml.badge_pos[0] = v);
+  numRow(div, '角标位置 y', ml.badge_pos[1], v => ml.badge_pos[1] = v);
+  div.appendChild(title('示例内容（不保存）'));
+  textRow(div, '机制名', mechSample.name, v => { mechSample.name = v; schedulePreview(); });
+  const l = document.createElement('label');
+  l.textContent = '描述 ';
+  const ta = document.createElement('textarea');
+  ta.value = mechSample.text;
+  ta.onchange = () => {
+    ta.value = ta.value.replace(/\n+/g, '\n').replace(/^\n|\n$/g, '');  // 连续换行合并为一个
+    mechSample.text = ta.value; schedulePreview();
+  };
+  l.appendChild(ta); div.appendChild(l);
+  // 角标（仅加护蚀印框生效；示例内容不入布局、不计未保存，故不用 selRow）
+  const bl = document.createElement('label');
+  bl.textContent = '角标 ';
+  const bs = document.createElement('select');
+  for (const [v, t] of [['', '无'], ['bless', '加护'], ['eclipse', '蚀印']]) {
+    const op = document.createElement('option');
+    op.value = v; op.textContent = t;
+    if (v === mechSample.badge) op.selected = true;
+    bs.appendChild(op);
+  }
+  bs.onchange = () => { mechSample.badge = bs.value; schedulePreview(); };
+  bl.appendChild(bs); div.appendChild(bl);
+}
+async function refreshMechPreview() {
+  const seq = ++previewSeq;
+  const layout = deepCopy(mechLayout());
+  const jobs = [['invocation', 'l-mech-invocation'], ['skill', 'l-mech-skill'],
+                ['seal', 'l-mech-seal']];
+  let err = null;
+  await Promise.all(jobs.map(async ([frame, id]) => {
+    const mech = {name: mechSample.name || '示例机制', text: mechSample.text};
+    if (frame === 'seal' && mechSample.badge) mech.badge = mechSample.badge;
+    let r;
+    try {
+      r = await fetch('/api/mech-preview', {method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({frame, mechanism: mech, layout})});
+    } catch (e) { err = '预览请求失败: ' + e; return; }
+    if (seq !== previewSeq) return;
+    if (!r.ok) { err = '预览失败: ' + (await r.json()).detail; return; }
+    const url = URL.createObjectURL(await r.blob());
+    const img = document.getElementById(id);
+    if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+    img.src = url; img.dataset.url = url;
+  }));
+  if (seq !== previewSeq) return;
+  statusEl.textContent = err || (dirty ? '● 未保存' : '');
 }
 
 // 卡牌内容输入（预览数据可编辑；改动走防抖实时预览，不涉及布局保存）
@@ -2006,6 +2119,7 @@ function refreshSel() {
 
 // 预览
 async function refreshPreview() {
+  if (mechLayoutMode) return refreshMechPreview();  // 机制模式：三画布分通道刷新
   const seq = ++previewSeq;
   let r;
   try {
@@ -2051,6 +2165,7 @@ async function refreshPreview() {
 
 // 画布绘制：预览图恒 512×512 直接 1:1 绘制 + 覆盖层
 function draw() {
+  if (mechLayoutMode) return;  // 机制模式无 512 画布与覆盖层
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (previewImg) ctx.drawImage(previewImg, 0, 0);
   const tl = typeLayout();

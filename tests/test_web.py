@@ -95,10 +95,44 @@ def test_put_layout_roundtrip(client, assets_dir, tmp_path):
 
 
 def test_put_layout_partial_types(client, assets_dir):
-    """允许只保存部分类型（缺省类型回退默认布局是特性）。"""
+    """允许只保存部分类型（缺省类型回退默认布局是特性）；「机制」段缺失时
+    load_layouts 从包内默认补齐，故 GET 恒附带。"""
     r = client.put("/api/layout", json={"战斗": client.get("/api/layout").json()["战斗"]})
     assert r.status_code == 200 and r.json()["ok"]
-    assert list(client.get("/api/layout").json()) == ["战斗"]
+    assert list(client.get("/api/layout").json()) == ["战斗", "机制"]
+
+
+def test_put_layout_mech_section(client, assets_dir):
+    """「机制」段为扁平参数映射（无 elements/text_regions），可保存并回读。"""
+    layouts = client.get("/api/layout").json()
+    assert "机制" in layouts  # 缺段时 load_layouts 已补齐包内默认
+    layouts["机制"]["text_size"] = 28
+    assert client.put("/api/layout", json=layouts).status_code == 200
+    assert client.get("/api/layout").json()["机制"]["text_size"] == 28
+    # 机制段形状非法（非对象）拒绝且不动文件
+    before = (assets_dir / "layout.json").read_bytes()
+    r = client.put("/api/layout", json={"机制": "不是对象"})
+    assert r.status_code == 422
+    assert (assets_dir / "layout.json").read_bytes() == before
+
+
+def test_mech_layout_preview(client):
+    """布局设置「机制」页预览端点：三框逐次渲染 PNG；badge 仅 seal 保留不报错；
+    layout 可显式覆盖，缺省用已保存「机制」段。"""
+    for frame in ("invocation", "skill", "seal"):
+        r = client.post("/api/mech-preview", json={
+            "frame": frame,
+            "mechanism": {"name": "示例", "text": "获得[[迅捷]]。", "badge": "bless"},
+            "layout": {"text_size": 24},
+        })
+        assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+        assert r.content[:8] == b"\x89PNG\r\n\x1a\n"
+    # 缺省 mechanism/layout 也能渲染（内置示例 + 已保存机制段）
+    r = client.post("/api/mech-preview", json={"frame": "skill"})
+    assert r.status_code == 200
+    assert client.post("/api/mech-preview", json={"frame": "unknown"}).status_code == 400
+    r = client.post("/api/mech-preview", json={"frame": "skill", "layout": "bad"})
+    assert r.status_code == 400
 
 
 def test_put_layout_backup(client, assets_dir):

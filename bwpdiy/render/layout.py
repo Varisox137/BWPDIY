@@ -70,11 +70,17 @@ def _normalize_size_fields(layouts: dict) -> None:
 
 
 def load_layouts(assets_dir: Path) -> dict:
-    """加载完整布局表（6 类型）。assets_dir/layout.json 优先，缺失回退包内默认。"""
+    """加载完整布局表（6 卡牌类型 + 「机制」段）。assets_dir/layout.json 优先，
+    缺失回退包内默认；用户布局缺「机制」段时从包内默认补齐（机制段结构扁平，
+    不参与尺寸归一）。"""
     path = Path(assets_dir) / "layout.json"
     if not path.is_file():
         path = _DEFAULT
     layouts = json.loads(path.read_text(encoding="utf-8"))
+    if "机制" not in layouts and path != _DEFAULT:
+        default = json.loads(_DEFAULT.read_text(encoding="utf-8"))
+        if "机制" in default:
+            layouts["机制"] = default["机制"]
     _normalize_size_fields(layouts)
     return layouts
 

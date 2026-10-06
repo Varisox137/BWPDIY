@@ -24,7 +24,7 @@ from bwpdiy.changelog import CHANGELOG
 from bwpdiy.render.assets import get_library
 from bwpdiy.render.duo import render_portrait
 from bwpdiy.render.layout import get_type_layout, load_layouts, merge_card_layout
-from bwpdiy.render.mech import render_mechanism
+from bwpdiy.render.mech import MECH_FRAMES, render_mechanism
 from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
 from bwpdiy.resources import default_library_dir
 from bwpdiy.store import (
@@ -132,11 +132,16 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     @app.put("/api/layout")
     async def put_layout(request: dict):
-        # 最小形状校验：非空 dict，每个类型值须与 load_layouts 产物同构；
-        # 不强制六类型齐全（部分保存、缺省回退默认是特性）
+        # 最小形状校验：非空 dict，每个卡牌类型值须与 load_layouts 产物同构；
+        # 不强制六类型齐全（部分保存、缺省回退默认是特性）；
+        # 「机制」段为扁平参数映射（name_size/text_size 等），形状由渲染层兜底
         if not request:
             raise HTTPException(422, "布局为空：拒绝覆盖现有配置")
         for card_type, type_layout in request.items():
+            if card_type == "机制":
+                if not isinstance(type_layout, dict):
+                    raise HTTPException(422, "布局形状非法: 「机制」段必须是对象")
+                continue
             if (not isinstance(type_layout, dict)
                     or "elements" not in type_layout
                     or "text_regions" not in type_layout):
@@ -390,6 +395,10 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     # ---------- 机制 REST（全局共享池 library/mechanisms/，不属任何项目） ----------
 
+    def _saved_mech_layout() -> dict | None:
+        """已保存布局的「机制」段（缺段时 load_layouts 已从包内默认补齐）。"""
+        return load_layouts(Path(assets_dir)).get("机制")
+
     @app.get("/api/mechanisms")
     def get_mechanisms():
         return JSONResponse(list_mechanisms(library_dir))
@@ -436,7 +445,35 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                 raise HTTPException(400, "mechanism 必须是对象")
             mech = copy.deepcopy(override)
         try:
-            img = render_mechanism(mech, assets_dir)
+            img = render_mechanism(mech, assets_dir, layout=_saved_mech_layout())
+        except Exception as e:
+            raise HTTPException(422, f"渲染失败: {e}") from e
+        buf = BytesIO()
+        img.save(buf, "PNG")
+        return Response(buf.getvalue(), media_type="image/png")
+
+    @app.post("/api/mech-preview")
+    async def mech_layout_preview(request: dict):
+        """布局设置「机制」页预览：body {frame, mechanism?, layout?}——frame 必填
+        （三画布逐框各发一次）；mechanism 缺省用内置示例；layout 缺省用已保存
+        「机制」段；badge 仅 seal 框保留（其余框剥离，免触发交叉校验）。"""
+        frame = (request or {}).get("frame")
+        if frame not in MECH_FRAMES:
+            raise HTTPException(400, f"未知机制框类型: {frame}")
+        mech = (request or {}).get("mechanism")
+        if not isinstance(mech, dict) or not mech:
+            mech = {"name": "示例机制",
+                    "text": "获得[[迅捷]]与 #ll 1 点力量。\n第二行描述。"}
+        mech = {**mech, "frame": frame}
+        if frame != "seal":
+            mech.pop("badge", None)
+        layout = (request or {}).get("layout")
+        if layout is None:
+            layout = _saved_mech_layout()
+        elif not isinstance(layout, dict):
+            raise HTTPException(400, "layout 必须是对象")
+        try:
+            img = render_mechanism(mech, assets_dir, layout=layout)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()

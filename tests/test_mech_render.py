@@ -1,5 +1,5 @@
-"""机制描述框渲染测试：帧拼接（行数单调/接缝色差）、关键字高亮与内嵌图标、
-技能名左上角左对齐加粗、badge 角标、行数软上限与 badge 交叉规则。"""
+"""机制描述框渲染测试：帧拼接（行数单调/接缝色差/自定义行距）、关键字高亮与内嵌图标、
+技能名左上角左对齐（字号略大于正文）、badge 角标、行数软上限、布局参数与 badge 交叉规则。"""
 
 from pathlib import Path
 
@@ -8,6 +8,7 @@ import pytest
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.mech import (
     LINE_PITCH,
+    MARGIN_X,
     MAX_LINES,
     NAME_FILL,
     _BAND_Y,
@@ -112,13 +113,63 @@ def test_unknown_icon_code_raises(assets_dir):
         render_mechanism(_mech(text="非法 #zz 图标。"), assets_dir)
 
 
-def test_name_top_left_bold(assets_dir):
-    """技能名在框内左上角左对齐（x≈MARGIN_X）、金色加粗；与描述之间空一行。"""
-    from bwpdiy.render.mech import MARGIN_X
+def test_name_top_left(assets_dir):
+    """技能名在框内左上角左对齐（x≈name_x 默认 18）、金色；与描述之间空一行。
+    不再加粗描边，墨迹左缘 = name_x + 字体左轴承（约 3px）。"""
     img = render_mechanism(_mech(), assets_dir)
     gold_xs = [x for x in range(img.width) for y in range(img.height // 3)
                if (lambda p: p[:3] == NAME_FILL[:3] and p[3] > 200)(img.getpixel((x, y)))]
-    assert gold_xs and min(gold_xs) <= MARGIN_X + 2  # 左对齐：金色墨迹贴近左边距
+    assert gold_xs and min(gold_xs) <= MARGIN_X + 4  # 左对齐：金色墨迹贴近左边距
+
+
+# ---------- 布局参数（layout 段，对应 assets/layout.json「机制」） ----------
+
+def test_layout_none_and_unknown_keys_equal_default(assets_dir):
+    """layout=None / 未知键 / 畸形值均回退默认，渲染逐像素一致。"""
+    a = render_mechanism(_mech(), assets_dir)
+    b = render_mechanism(_mech(), assets_dir, layout=None)
+    c = render_mechanism(_mech(), assets_dir,
+                         layout={"unknown_key": 1, "text_size": None, "badge_pos": "x"})
+    assert list(a.getdata()) == list(b.getdata()) == list(c.getdata())
+
+
+def test_layout_text_size_changes_pitch(assets_dir):
+    """正文字号 = 行距：字号增大框增高、减小框变矮（行数不变）。"""
+    text = "第一行描述文字。\n第二行描述文字。"
+    base = render_mechanism(_mech(text=text), assets_dir)
+    big = render_mechanism(_mech(text=text), assets_dir, layout={"text_size": 30})
+    small = render_mechanism(_mech(text=text), assets_dir, layout={"text_size": 18})
+    assert big.height > base.height > small.height
+
+
+def test_layout_name_position(assets_dir):
+    """名称位置 x 可调：金色墨迹左缘随 name_x 右移。"""
+    def gold_min_x(img):
+        xs = [x for x in range(img.width) for y in range(img.height // 3)
+              if (lambda p: p[:3] == NAME_FILL[:3] and p[3] > 200)(img.getpixel((x, y)))]
+        return min(xs)
+    assert gold_min_x(render_mechanism(_mech(), assets_dir)) <= 22
+    assert gold_min_x(render_mechanism(
+        _mech(), assets_dir, layout={"name_x": 60})) >= 60
+
+
+def test_layout_badge_size(assets_dir):
+    """角标尺寸可调：badge_size 改变 seal 框左上角角标渲染。"""
+    small = render_mechanism(_mech(frame="seal", badge="bless", text="加护。"), assets_dir)
+    big = render_mechanism(_mech(frame="seal", badge="bless", text="加护。"), assets_dir,
+                           layout={"badge_size": 44})
+    assert list(small.getdata()) != list(big.getdata())
+
+
+def test_build_frame_custom_pitch(lib):
+    """非原生行距：框高 = 顶底帽边距 + 行数×行距（以 5 行整图为基准增减）。"""
+    base = lib.mech("frame_skill_5").height  # 155（边距 35）
+    assert build_frame(lib, "skill", 5, pitch=30).height == base + 5 * 6
+    assert build_frame(lib, "skill", 5, pitch=18).height == base - 5 * 6
+    # 原生行距且 ≤5 行仍直接命中对应行数整图
+    assert build_frame(lib, "skill", 3, pitch=24).height == lib.mech("frame_skill_3").height
+    # seal 底框为最小框：行数不足容量不缩小
+    assert build_frame(lib, "seal", 1, pitch=18).height == 71 - (24 - 18) * 2
 
 
 def test_badge_rendered_on_seal(assets_dir):

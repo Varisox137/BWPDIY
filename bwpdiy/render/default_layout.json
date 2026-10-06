@@ -662,5 +662,18 @@
         "icon_scale": 0.9
       }
     }
+  },
+  "机制": {
+    "name_size": 26,
+    "name_x": 18,
+    "name_dy": 0,
+    "text_size": 24,
+    "margin_x": 18,
+    "icon_scale": 1.0,
+    "badge_size": 30,
+    "badge_pos": [
+      6,
+      6
+    ]
   }
 }

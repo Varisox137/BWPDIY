@@ -8,14 +8,14 @@
 - 空闲自动终止（防占用）：web 层活动统计中间件 + 看门狗线程，连续 2h 无 HTTP 操作则进程退出（`/api/update/check` 自动轮询不计入活动；`create_app(idle_timeout=, on_idle=)` 可注入，≤0 关闭）；GUI 包装 fetch，连接级失败弹「连接已断开」说明窗。
 - `legacy/` 只读封存参考（旧版半成品源码与资源，无版本控制），任何情况下不修改、不删除。
 - `library/` 是用户创作数据，gitignore，不提交。
-- `assets/` 美术资源来自 legacy `basics/` 与 PSD 导出（`scripts/import_psd_assets.py` 生成）：命名约定牌框 `frames/{form,combat,spell,field,reinforce}_{框品}.png`（协战仅 norm）、等级 `levels/{base,evolve_star,level_{1,2,3}_{yellow,cyan,purple,red,blue,brown}}.png`（v1.4.0 六色）、稀有度 `rarity/{R,SR,SSR}{,_blue,_red}.png`+`reinforce_*`+`N.png`、数值标 `stats/{power,health,combat_shield,combat_fragile_{1,2},field_intensity}.png`（力量/生命全类型共用，无类型前缀）、正负号 `signs/{plus,minus}.png`、协战双式神框 `duo/{frame_{1,2},back,highlight_1}.png`（v1.4.1，frame 为双框拆半；槽位2 高光由 highlight_1 旋转 180° 派生不单存；派系小标复用 `factions/`，不在 duo 目录单存；底板带半透明光晕需按 alpha≥128 可见 bbox 裁边居中，高光/框线只做 alpha>0 裁边保持层间配准）、机制描述框 `mech/{frame_invocation_{3,4,5},frame_skill_{3,4,5},frame_seal,badge_{bless,eclipse},mark_{unique,instant}}.png`（v1.5.0）；masks 已废弃；旧位图资产封存 `assets/legacy/`。改动须同步 `docs/terminology.md`。
+- `assets/` 美术资源来自 legacy `basics/` 与 PSD 导出（`scripts/import_psd_assets.py` 生成）：命名约定牌框 `frames/{form,combat,spell,field,reinforce}_{框品}.png`（协战仅 norm）、等级 `levels/{base,evolve_star,level_{1,2,3}_{yellow,cyan,purple,red,blue,brown}}.png`（v1.4.0 六色）、稀有度 `rarity/{R,SR,SSR}{,_blue,_red}.png`+`reinforce_*`+`N.png`、数值标 `stats/{power,health,combat_shield,combat_fragile_{1,2},field_intensity}.png`（力量/生命全类型共用，无类型前缀）、正负号 `signs/{plus,minus}.png`、协战双式神框 `duo/{frame_{1,2},back,highlight_1}.png`（v1.4.1，frame 为双框拆半；槽位2 高光由 highlight_1 旋转 180° 派生不单存；派系小标复用 `factions/`，不在 duo 目录单存；底板带半透明光晕需按 alpha≥128 可见 bbox 裁边居中，高光/框线只做 alpha>0 裁边保持层间配准）、机制描述框 `mech/{frame_invocation_{3,4,5},frame_skill_{3,4,5},frame_seal,badge_{bless,eclipse}}.png`（v1.5.0）；masks 已废弃；旧位图资产封存 `assets/legacy/`。改动须同步 `docs/terminology.md`。
 
 ## 数据纪律
 
 - 卡牌库结构（v1.2.2）：`library/<项目>/shikigami/*.yaml`（式神卡，一式神一文件、上限 49）+ `cards/*.yaml`（≤299）+ `images/`（上传卡图按 `<id 或卡名><ext>` 命名，改 id 不重命名已有卡图）；文件名与卡名脱钩（卡名=文件内 name），式神改名由 store 层联动更新同项目引用。
 - 卡牌 yaml 分引擎段（与 BWPro 口径对齐，按类型分字段；协战所属式神为 `shikigami1`/`shikigami2`）与渲染段（`artwork.images` 列表，全可缺省）。schema 字段只增不改。
 - 描述文本（description）支持 `[[关键字]]` 高亮标记（双英文方括号、括号不绘制、按框品异色；从左往右匹配、未匹配括号按字面文本显示（v1.3.0 起不再报错）；单 [ ] 为字面字符；解析见 `render/text.py` parse_keyword_segments）与 `#xx` 内嵌图标（v1.3.0，两位拼音首字母代码见 `render/text.py` ICON_CODES，未知代码报错；派系图标墨染框用 `_black` 变体；大小=字号×desc 区 `icon_scale`，与相邻文字间自动加四分之一宽空格（0.25em），宽度计入换行与居中）。
-- 机制（v1.5.0）：全局共享池 `library/mechanisms/*.yaml`（跨项目复用，不属任何项目；项目名保留字 `mechanisms`）；字段 name/frame（invocation/skill/seal）/text/marks（unique/instant）/badge（bless/eclipse，仅 seal）；渲染固定字号不缩放，行数决定框高、>5 行按行高横带拼接扩展（render/mech.py）。
+- 机制（v1.5.0）：全局共享池 `library/mechanisms/*.yaml`（跨项目复用，不属任何项目；项目名保留字 `mechanisms`）；字段 name/frame（invocation/skill/seal）/text/badge（bless/eclipse，仅 seal）；渲染固定字号不缩放，内容行数（技能名+空行+描述行）决定框高、>5 行按行高横带拼接扩展，技能名左上角左对齐金色加粗、正文色按框体（render/mech.py）。
 - 机制未实现不进数据；字段/枚举变更须同步设计文档与术语表。
 
 ## 工程纪律

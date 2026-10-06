@@ -72,9 +72,8 @@ class SchemaError(Exception):
 # ---------- 机制描述框（全局共享池 library/mechanisms/，渲染见 render/mech.py） ----------
 
 MECH_FRAMES = ("invocation", "skill", "seal")  # 灵咒框 / 技能描述黑框 / 加护蚀印框
-MECH_MARKS = ("unique", "instant")             # 金色文字角标（唯一/瞬发），贴技能名右侧
 MECH_BADGES = ("bless", "eclipse")             # 圆形角标（加护/蚀印），仅 seal 框可携带
-_MECH_FIELDS = ("name", "frame", "text", "marks", "badge")
+_MECH_FIELDS = ("name", "frame", "text", "badge")
 
 
 def validate_mechanism(data) -> list[str]:
@@ -95,12 +94,6 @@ def validate_mechanism(data) -> list[str]:
             errors.append(f"字段 {key}：机制白名单之外的字段")
     if "text" in data and not isinstance(data["text"], str):
         errors.append("字段 text：必须是字符串")
-    if "marks" in data:
-        marks = data["marks"]
-        if not isinstance(marks, list) or any(m not in MECH_MARKS for m in marks):
-            errors.append(f"字段 marks：必须是 {'/'.join(MECH_MARKS)} 子集的列表")
-        elif len(set(marks)) != len(marks):
-            errors.append("字段 marks：角标不能重复")
     if "badge" in data and data["badge"] is not None:
         if data["badge"] not in MECH_BADGES:
             errors.append(f"字段 badge：非法角标「{data['badge']}」，"

@@ -633,8 +633,7 @@ def test_mechanism_save_validates_schema(lib):
 @pytest.mark.parametrize("mech", [
     MECH,
     MECH_SEAL,
-    {"name": "灵咒", "frame": "invocation", "marks": ["unique", "instant"]},
-    {"name": "最简", "frame": "skill"},  # text/marks/badge 全可缺省
+    {"name": "最简", "frame": "skill"},  # text/badge 全可缺省
     {**MECH, "badge": None},             # badge 可显式留空
 ])
 def test_validate_mechanism_ok(mech):
@@ -648,9 +647,7 @@ def test_validate_mechanism_ok(mech):
     ({"name": "x"}, "frame"),                           # 缺框类型
     ({**MECH, "frame": "gold"}, "frame"),               # 非法框类型
     ({**MECH, "text": 1}, "text"),                      # 描述必须是字符串
-    ({**MECH, "marks": "unique"}, "marks"),             # marks 必须是列表
-    ({**MECH, "marks": ["unique", "burst"]}, "marks"),  # 非法角标
-    ({**MECH, "marks": ["unique", "unique"]}, "marks"), # 角标不能重复
+    ({**MECH, "marks": ["unique"]}, "marks"),           # marks 已移除：白名单之外
     ({**MECH_SEAL, "badge": "gold"}, "badge"),          # 非法圆形角标
     ({**MECH, "badge": "bless"}, "badge"),              # badge 仅 seal 框可携带
     ({**MECH, "未知字段": 1}, "未知字段"),
@@ -659,3 +656,15 @@ def test_validate_mechanism_rejects(mech, needle):
     errors = validate_mechanism(mech)
     assert errors, f"应判非法：{mech}"
     assert any(needle in e for e in errors), errors
+
+
+def test_mechanism_load_migrates_legacy_marks(lib):
+    """旧机制文件里的 marks 键（唯一/瞬发角标，已移除）读取时静默丢弃，保存不写回。"""
+    import yaml
+    mdir = lib / "mechanisms"
+    mdir.mkdir(parents=True)
+    (mdir / "旧机制.yaml").write_text(
+        yaml.safe_dump({**MECH, "name": "旧机制", "marks": ["unique"]},
+                       allow_unicode=True), encoding="utf-8")
+    data = load_mechanism(lib, "旧机制")
+    assert "marks" not in data

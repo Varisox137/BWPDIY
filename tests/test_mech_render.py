@@ -1,5 +1,5 @@
 """机制描述框渲染测试：帧拼接（行数单调/接缝色差）、关键字高亮与内嵌图标、
-marks/badge 角标、行数软上限与 badge 交叉规则。"""
+技能名左上角左对齐加粗、badge 角标、行数软上限与 badge 交叉规则。"""
 
 from pathlib import Path
 
@@ -52,7 +52,7 @@ def test_frame_below_3_uses_3_line(lib):
 
 
 def test_seal_frame_extension(lib):
-    """seal 底框容 2 行描述，超出按行高平铺扩展。"""
+    """seal 底框容 2 行内容（技能名+空行即占满），超出按行高平铺扩展。"""
     h2 = build_frame(lib, "seal", 2).height
     assert build_frame(lib, "seal", 1).height == h2
     assert build_frame(lib, "seal", 3).height == h2 + LINE_PITCH
@@ -112,11 +112,13 @@ def test_unknown_icon_code_raises(assets_dir):
         render_mechanism(_mech(text="非法 #zz 图标。"), assets_dir)
 
 
-def test_marks_rendered(assets_dir):
-    """唯一/瞬发角标贴技能名右侧：与无角标版相比顶部区域出现金色角标像素。"""
-    base = render_mechanism(_mech(), assets_dir)
-    marked = render_mechanism(_mech(marks=["unique", "instant"]), assets_dir)
-    assert list(base.getdata()) != list(marked.getdata())
+def test_name_top_left_bold(assets_dir):
+    """技能名在框内左上角左对齐（x≈MARGIN_X）、金色加粗；与描述之间空一行。"""
+    from bwpdiy.render.mech import MARGIN_X
+    img = render_mechanism(_mech(), assets_dir)
+    gold_xs = [x for x in range(img.width) for y in range(img.height // 3)
+               if (lambda p: p[:3] == NAME_FILL[:3] and p[3] > 200)(img.getpixel((x, y)))]
+    assert gold_xs and min(gold_xs) <= MARGIN_X + 2  # 左对齐：金色墨迹贴近左边距
 
 
 def test_badge_rendered_on_seal(assets_dir):

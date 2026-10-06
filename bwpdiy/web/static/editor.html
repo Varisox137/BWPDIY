@@ -185,7 +185,7 @@
     <h4>卡图定位</h4>
     <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）；也可直接在预览画布上鼠标操作：<b>左键拖拽</b>=移动、<b>滚轮</b>=缩放、<b>按住右键+滚轮</b>=旋转（3°/档；主预览与式神头像预览均支持，与数值框双向同步）。「撤回上次修改/撤回全部修改」按钮可回退未保存的编辑（鼠标操作与输入框都生效，连续拖拽/滚轮按一次修改计）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。式神卡的卡图四项右侧另有并排的「头像」设置（同四参数），用于协战双式神框中该式神的头像裁剪，预览框以 2 倍大小实时显示在卡图预览下方；「头像框」勾选控制头像预览/导出头像是否绘制斜方框与派系标（不勾选=仅菱形裁剪的裸头像），「导出头像」按当前预览直接下载 PNG。</div>
     <h4>机制描述框</h4>
-    <div>左栏「机制」为全局共享列表（不随项目切换，所有项目可复用），用于制作灵咒/技能/加护蚀印等机制说明图：选框类型、填技能名与描述即可，框高按描述行数自动扩展（超过 5 行时框体按行高拼接加长，不缩小字号）。描述同样支持 <code>[[关键字]]</code> 高亮与 <code>#xx</code> 内嵌小图标；可选「唯一/瞬发」文字角标，加护蚀印框另可选「加护/蚀印」圆形角标。「导出描述框」把当前机制（含未保存修改）下载为 PNG。</div>
+    <div>左栏「机制」为全局共享列表（不随项目切换，所有项目可复用），用于制作灵咒/技能/加护蚀印等机制说明图：选框类型、填技能名与描述即可，框高按内容行数自动扩展（技能名与描述之间空一行，超过 5 行时框体按行高拼接加长，不缩小字号）。描述同样支持 <code>[[关键字]]</code> 高亮与 <code>#xx</code> 内嵌小图标（唯一/瞬发等标记直接写进描述即可）；加护蚀印框可选「加护/蚀印」圆形角标。「导出描述框」把当前机制（含未保存修改）下载为 PNG。</div>
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
     <h4>协战双式神框</h4>
@@ -1477,7 +1477,6 @@ async function exportPortrait() {
 // 全局共享池（/api/mechanisms，不随项目切换）；选中机制与选中卡牌互斥，
 // 右栏表单/中央预览/脏标记守卫复用卡牌同套设施（c-form / c-preview / cPreviewSeq / c-dirty 栏位）
 const MECH_FRAMES = [["invocation", "灵咒"], ["skill", "技能"], ["seal", "加护蚀印"]];
-const MECH_MARKS = [["unique", "唯一"], ["instant", "瞬发"]];
 const MECH_BADGES = [["", "无"], ["bless", "加护"], ["eclipse", "蚀印"]];
 
 function buildMechList() {
@@ -1526,7 +1525,7 @@ async function selectMech(name, force = false) {
   mechPreview(false);
 }
 
-// ---- 机制表单：技能名 / 框类型 / 唯一·瞬发标记 / 角标（仅 seal 框）/ 描述 ----
+// ---- 机制表单：技能名 / 框类型 / 角标（仅 seal 框）/ 描述 ----
 function setMechField(k, v) { mechForm[k] = v; afterMechEdit(); }
 function afterMechEdit(rebuild = false) {
   mDirty = true;
@@ -1546,14 +1545,6 @@ function buildMechForm() {
   selRowC(div, '框类型', MECH_FRAMES.map(([v]) => v), mechForm.frame ?? 'invocation',
     v => { mechForm.frame = v; if (v !== 'seal') mechForm.badge = null; afterMechEdit(true); },
     v => MECH_FRAMES.find(([val]) => val === v)[1]);
-  const curMarks = Array.isArray(mechForm.marks) ? mechForm.marks : [];
-  for (const [v, zh] of MECH_MARKS) {
-    checkRowC(div, zh, curMarks.includes(v), on => {
-      const cur = Array.isArray(mechForm.marks) ? mechForm.marks : [];
-      mechForm.marks = on ? [...cur, v] : cur.filter(m => m !== v);
-      afterMechEdit();
-    });
-  }
   if ((mechForm.frame ?? 'invocation') === 'seal') {  // 加护/蚀印角标仅 seal 框可用
     selRowC(div, '角标', MECH_BADGES.map(([v]) => v), mechForm.badge ?? '',
       v => { mechForm.badge = v || null; afterMechEdit(); },
@@ -1594,9 +1585,6 @@ function validateMechJS(d) {
   const errors = [];
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   if (!MECH_FRAMES.some(([v]) => v === d.frame)) errors.push(`字段 frame：非法框类型「${d.frame}」`);
-  if (!Array.isArray(d.marks) || d.marks.some(m => !MECH_MARKS.some(([v]) => v === m))) {
-    errors.push('字段 marks：必须是「唯一/瞬发」标记数组');
-  }
   if (d.badge !== null && d.badge !== undefined && !MECH_BADGES.some(([v]) => v && v === d.badge)) {
     errors.push(`字段 badge：非法角标「${d.badge}」`);
   }
@@ -1672,7 +1660,7 @@ document.getElementById('c-new-mech').onclick = async () => {
   if (!confirmDiscard()) return;
   const resp = await fetch('/api/mechanisms', {method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: r.text, frame: 'invocation', text: '', marks: [], badge: null})});
+    body: JSON.stringify({name: r.text, frame: 'invocation', text: '', badge: null})});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   listErr([]);
   await loadMechs(r.text);

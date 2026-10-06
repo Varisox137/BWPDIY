@@ -333,6 +333,7 @@ def load_mechanism(library: Path, name: str) -> dict:
         return {}
     if not isinstance(data, dict):
         raise StoreError(f"机制文件内容必须是 yaml 映射：{name}", code="invalid_data")
+    data.pop("marks", None)  # marks（唯一/瞬发角标）已移除：旧文件静默迁移，保存时不再写回
     return data
 
 

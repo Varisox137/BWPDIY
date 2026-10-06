@@ -223,7 +223,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()
         img.save(buf, "PNG")
-        # 紧致裁剪图 + 裁剪原点响应头（512 布局空间）：布局页覆盖层/鼠标据此换算
+        # 紧致裁剪图 + 裁剪原点响应头（卡面空间，与布局坐标同系）：布局页覆盖层/鼠标据此换算
         ox, oy = info["crop_origin"]
         return Response(buf.getvalue(), media_type="image/png",
                         headers={"X-Crop-Offset": f"{ox},{oy}"})

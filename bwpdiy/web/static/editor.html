@@ -1790,8 +1790,8 @@ function mechLayout() {
 const canvas = document.getElementById('l-preview');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('l-status');
-let previewImg = null;     // 预览图（紧致裁剪原尺寸；布局坐标恒为 512 合成空间，按 previewOffset 换算）
-let previewOffset = [0, 0];  // 裁剪原点（X-Crop-Offset 响应头，512 布局空间），覆盖层/鼠标据此换算
+let previewImg = null;     // 预览图（紧致裁剪原尺寸；布局坐标为卡面空间，按 previewOffset 换算）
+let previewOffset = [0, 0];  // 裁剪原点（X-Crop-Offset 响应头，卡面空间），覆盖层/鼠标据此换算
 
 // 懒初始化：首次进入布局 tab 才拉取布局/样卡并渲染（卡牌库 tab 不白付预览开销）
 let layoutInited = false;
@@ -2200,7 +2200,7 @@ async function refreshPreview() {
     return;
   }
   statusEl.textContent = (cardLayoutMode ? singleDirty : dirty) ? '● 未保存' : '';
-  // 紧致裁剪图 + 裁剪原点（512 布局空间）：画布按图尺寸，覆盖层/鼠标按原点换算
+  // 紧致裁剪图 + 裁剪原点（卡面空间）：画布按图尺寸，覆盖层/鼠标按原点换算
   const off = (r.headers.get('X-Crop-Offset') || '').split(',').map(Number);
   const blob = await r.blob();
   const img = new Image();
@@ -2213,7 +2213,7 @@ async function refreshPreview() {
   img.src = URL.createObjectURL(blob);
 }
 
-// 画布绘制：预览图为紧致裁剪原尺寸（无 512 画布留白）；布局坐标恒为 512 合成空间，
+// 画布绘制：预览图为紧致裁剪原尺寸（无 512 画布留白）；布局坐标为卡面空间，
 // 覆盖层整体平移 -previewOffset 换算（裁剪框内容驱动，不可作为坐标基准）
 function draw() {
   if (mechLayoutMode) return;  // 机制模式无卡图画布与覆盖层
@@ -2280,7 +2280,7 @@ window.addEventListener('mousemove', ev => {
 window.addEventListener('mouseup', () => { if (drag) { drag = null; refreshPreview(); } });
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(v))); }
 function mousePos(ev) {
-  // 画布像素 → 512 布局空间坐标（加回裁剪原点）
+  // 画布像素 → 卡面空间布局坐标（加回裁剪原点）
   const r = canvas.getBoundingClientRect();
   return [ev.clientX - r.left + previewOffset[0], ev.clientY - r.top + previewOffset[1]];
 }

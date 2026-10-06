@@ -127,6 +127,9 @@ def test_mech_layout_preview(client):
         })
         assert r.status_code == 200 and r.headers["content-type"] == "image/png"
         assert r.content[:8] == b"\x89PNG\r\n\x1a\n"
+        # 实际文本块矩形随响应头返回（GUI 浅绿轮廓数据源）：4 个整数、宽高为正
+        rect = [int(v) for v in r.headers["x-text-rect"].split(",")]
+        assert len(rect) == 4 and rect[2] > 0 and rect[3] > 0
     # 缺省 mechanism/layout 也能渲染（内置示例 + 已保存机制段）
     r = client.post("/api/mech-preview", json={"frame": "skill"})
     assert r.status_code == 200

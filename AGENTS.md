@@ -15,7 +15,7 @@
 - 卡牌库结构（v1.2.2）：`library/<项目>/shikigami/*.yaml`（式神卡，一式神一文件、上限 49）+ `cards/*.yaml`（≤299）+ `images/`（上传卡图按 `<id 或卡名><ext>` 命名，改 id 不重命名已有卡图）；文件名与卡名脱钩（卡名=文件内 name），式神改名由 store 层联动更新同项目引用。
 - 卡牌 yaml 分引擎段（与 BWPro 口径对齐，按类型分字段；协战所属式神为 `shikigami1`/`shikigami2`）与渲染段（`artwork.images` 列表，全可缺省）。schema 字段只增不改。
 - 描述文本（description）支持 `[[关键字]]` 高亮标记（双英文方括号、括号不绘制、按框品异色；从左往右匹配、未匹配括号按字面文本显示（v1.3.0 起不再报错）；单 [ ] 为字面字符；解析见 `render/text.py` parse_keyword_segments）与 `#xx` 内嵌图标（v1.3.0，两位拼音首字母代码见 `render/text.py` ICON_CODES，未知代码报错；派系图标墨染框用 `_black` 变体；大小=字号×desc 区 `icon_scale`，与相邻文字间自动加四分之一宽空格（0.25em），宽度计入换行与居中）。
-- 机制（v1.5.0）：全局共享池 `library/mechanisms/*.yaml`（跨项目复用，不属任何项目；项目名保留字 `mechanisms`）；字段 name/frame（invocation 灵咒框/skill 关键字框/seal 加护蚀印框）/text/badge（bless/eclipse，仅 seal）；内容行数（关键字名+空行+描述行）× 行距（=正文字号）决定框高、非原生行数/行距按行高横带拼接/裁除，关键字名左上角左对齐金色（字号略大于正文、不加粗）、描述逐行左对齐、badge 存在时名称右移避让、正文色按框体（render/mech.py）；渲染参数入布局配置「机制」段（字号类三类共用，文本区域 frames.<框> 各框独立 text_x/text_dy/width/height），GUI 布局设置第七类「机制」页三画布同屏调参（浅绿框标示文本区域）。原版游戏无「技能」概念——机制相关术语一律用「关键字」，禁用「技能」（psd_export 归档素材文件名除外）。
+- 机制（v1.5.0）：全局共享池 `library/mechanisms/*.yaml`（跨项目复用，不属任何项目；项目名保留字 `mechanisms`）；字段 name/frame（invocation 灵咒框/skill 关键字框/seal 加护蚀印框）/text/badge（bless/eclipse，仅 seal）；内容行数（关键字名+空行+描述行）× 行距（=正文字号）决定框高、非原生行数/行距按行高横带拼接/裁除，关键字名左上角左对齐金色（字号略大于正文、不加粗）、描述逐行左对齐、badge 存在时名称右移避让、正文色按框体（render/mech.py）；渲染参数入布局配置「机制」段（字号类三类共用，文本区域 frames.<框> 各框独立 text_x/text_dy/width——无高度：框高随内容行动态变化，GUI 绿框按 render_mechanism info 出参的实际文本块画出），GUI 布局设置第七类「机制」页三画布同屏调参（浅绿框标示文本区域）。原版游戏无「技能」概念——机制相关术语一律用「关键字」，禁用「技能」（psd_export 归档素材文件名除外）。
 - 机制未实现不进数据；字段/枚举变更须同步设计文档与术语表。
 
 ## 工程纪律

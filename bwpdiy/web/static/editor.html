@@ -201,7 +201,7 @@
     <h4>协战双式神框</h4>
     <div>协战卡可勾选「双式神框」，在牌框左上外侧渲染双菱形头像框；头像自动取所属式神卡的卡图（式神缺卡图则该槽位留空菱形），派系小标随式神派系。</div>
     <h4>扩展选项</h4>
-    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「全局布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步），第七类「机制」页三画布（灵咒/关键字/加护蚀印）同屏调整机制描述框：字号类三类共用，文本区域（偏移/宽高，浅绿框标示）各框独立；并在卡牌库右栏开放「调整单卡元素布局」，对当前卡单独覆盖布局（只把与全局不同的项写进该卡，还原/保存互不影响全局）；<b>标记扩展</b>——稀有度下拉开放 N 与「无」（衍生牌）；等级下拉开放 0（无等级）与勾玉六色（黄/青/紫/红/蓝/棕）；式神开放派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
+    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「全局布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步），第七类「机制」页三画布（灵咒/关键字/加护蚀印）同屏调整机制描述框：字号类三类共用，文本区域（偏移/宽度）各框独立，浅绿框按实际文本块标示；并在卡牌库右栏开放「调整单卡元素布局」，对当前卡单独覆盖布局（只把与全局不同的项写进该卡，还原/保存互不影响全局）；<b>标记扩展</b>——稀有度下拉开放 N 与「无」（衍生牌）；等级下拉开放 0（无等级）与勾玉六色（黄/青/紫/红/蓝/棕）；式神开放派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
   </div>
 </div>
 
@@ -1750,9 +1750,9 @@ let mechLayoutMode = false;
 // 与 render/mech.py DEFAULT_LAYOUT 同口径（缺键/缺段时补齐，保存时全段随 layouts 写回）
 const MECH_LAYOUT_DEFAULTS = {name_size: 26, text_size: 24, icon_scale: 1.0,
   badge_size: 30, badge_pos: [6, 6], name_offset: [0, 0]};
-// 各框独立文本区域缺省（seal 底框矮，轮廓参考高小一档）
-const MECH_REGION_DEFAULT = f => ({text_x: 18, text_dy: 0, width: 245,
-  height: f === 'seal' ? 48 : 72});
+// 各框独立文本区域缺省（区域无固定高度：框高随内容行数动态变化，
+// 绿框按服务端返回的实际文本块矩形画出）
+const MECH_REGION_DEFAULT = f => ({text_x: 18, text_dy: 0, width: 245});
 const MECH_FRAME_LABELS = {invocation: '灵咒框', skill: '关键字框', seal: '加护蚀印框'};
 // 机制预览示例内容（仅调布局用，不写盘、不计入未保存）
 const mechSample = {name: '示例机制',
@@ -1770,6 +1770,7 @@ function mechLayout() {
     const rg = m.frames[f] =
       (m.frames[f] && typeof m.frames[f] === 'object' && !Array.isArray(m.frames[f]))
         ? m.frames[f] : {};
+    delete rg.height;  // 开发期旧键（区域固定高）已废弃：绿框按实际文本块画出
     for (const [k, v] of Object.entries(MECH_REGION_DEFAULT(f)))
       if (!Number.isFinite(rg[k])) rg[k] = v;
   }
@@ -1981,14 +1982,13 @@ function buildMechProps() {
   numRow(div, '角标尺寸', ml.badge_size, v => ml.badge_size = v);
   numRow(div, '角标偏移 x', ml.badge_pos[0], v => ml.badge_pos[0] = v);
   numRow(div, '角标偏移 y', ml.badge_pos[1], v => ml.badge_pos[1] = v);
-  // 文本区域完全分框独立（无共用基础偏移）
+  // 文本区域完全分框独立（无共用基础偏移；无区域高——绿框按实际文本块画出）
   for (const [f, label] of Object.entries(MECH_FRAME_LABELS)) {
     const rg = ml.frames[f];
     div.appendChild(title(`${label}文本区域`));
     numRow(div, '文本偏移 x', rg.text_x, v => rg.text_x = v);
     numRow(div, '文本偏移 y', rg.text_dy, v => rg.text_dy = v);
     numRow(div, '文本区域宽', rg.width, v => rg.width = v);
-    numRow(div, '文本区域高', rg.height, v => rg.height = v);
   }
   div.appendChild(title('示例内容（不保存）'));
   textRow(div, '机制名', mechSample.name, v => { mechSample.name = v; schedulePreview(); });
@@ -2025,6 +2025,8 @@ async function refreshMechPreview() {
     } catch (e) { err = '预览请求失败: ' + e; return; }
     if (seq !== previewSeq) return;
     if (!r.ok) { err = '预览失败: ' + (await r.json()).detail; return; }
+    // 实际文本块矩形（裁剪后坐标系）随响应头返回，据以画浅绿区域轮廓
+    const rect = (r.headers.get('X-Text-Rect') || '').split(',').map(Number);
     const url = URL.createObjectURL(await r.blob());
     const img = new Image();
     img.onload = () => {
@@ -2034,12 +2036,17 @@ async function refreshMechPreview() {
       cv.width = img.naturalWidth; cv.height = img.naturalHeight;
       const c2 = cv.getContext('2d');
       c2.drawImage(img, 0, 0);
-      // 文本区域轮廓（仿卡牌布局页浅绿框）：左缘 text_x，
-      // 竖直以框中心 + text_dy 为基准（框高随内容行数动态变化）
-      const rg = mechLayout().frames[frame];
+      // 文本区域轮廓（仿卡牌布局页浅绿框）：优先用服务端实际文本块矩形
+      let x, y, w, h;
+      if (rect.length === 4 && rect.every(Number.isFinite)) {
+        [x, y, w, h] = rect;
+      } else {  // 旧服务端无响应头时按布局估算（高=区域三行估算）
+        const rg = mechLayout().frames[frame];
+        x = rg.text_x; w = rg.width;
+        h = 72; y = cv.height / 2 + rg.text_dy - h / 2;
+      }
       c2.strokeStyle = '#4f4';
-      c2.strokeRect(rg.text_x, cv.height / 2 + rg.text_dy - rg.height / 2,
-                    rg.width, rg.height);
+      c2.strokeRect(x + 0.5, y + 0.5, w, h);
     };
     img.src = url;
   }));

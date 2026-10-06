@@ -680,20 +680,17 @@
       "invocation": {
         "text_x": 18,
         "text_dy": 0,
-        "width": 245,
-        "height": 72
+        "width": 245
       },
       "skill": {
         "text_x": 18,
         "text_dy": 0,
-        "width": 245,
-        "height": 72
+        "width": 245
       },
       "seal": {
         "text_x": 18,
         "text_dy": 0,
-        "width": 245,
-        "height": 48
+        "width": 245
       }
     }
   }

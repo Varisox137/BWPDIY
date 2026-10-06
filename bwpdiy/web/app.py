@@ -473,12 +473,17 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         elif not isinstance(layout, dict):
             raise HTTPException(400, "layout 必须是对象")
         try:
-            img = render_mechanism(mech, assets_dir, layout=layout)
+            info: dict = {}
+            img = render_mechanism(mech, assets_dir, layout=layout, info=info)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()
         img.save(buf, "PNG")
-        return Response(buf.getvalue(), media_type="image/png")
+        # 实际文本块矩形（裁剪后坐标系）随响应头返回，GUI 据此画浅绿区域轮廓
+        rect = ",".join(str(round(info[k])) for k in
+                        ("text_x", "text_top", "text_width", "text_height"))
+        return Response(buf.getvalue(), media_type="image/png",
+                        headers={"X-Text-Rect": rect})
 
     return app
 

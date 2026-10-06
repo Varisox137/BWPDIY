@@ -12,10 +12,11 @@
   底框（71px，容 2 行内容）。平铺带位置逐行扫描素材确定：带内与接缝逐行色差
   invocation ≤1 / skill 0 / seal ≤9（素材自带噪点纹理，色差不可见）。
 - 关键字名在框内左上角左对齐、金色；每种框体有独立文本区域（frames.<框>：
-  text_x 左缘 / text_dy 竖直偏移 / width 换行宽 / height 轮廓高——框高随内容
-  行数动态变化，区域竖直方向以框中心 + text_dy 为基准，height 仅供 GUI 画
-  轮廓参考线）；关键字名另有 name_offset 微调；与描述之间空一行；描述逐行
-  **左对齐**（同行左缘 = 区域左缘），文本块竖直居中于框中心 + text_dy。
+  text_x 左缘 / text_dy 竖直偏移 / width 换行宽——框高随内容行数动态变化，
+  区域竖直方向以框中心 + text_dy 为基准，不设固定高度；GUI 浅绿框按实际
+  文本块（行数×行距）画出）；关键字名另有 name_offset 微调；与描述之间
+  空一行；描述逐行**左对齐**（同行左缘 = 区域左缘），文本块竖直居中于
+  框中心 + text_dy。
 - 描述复用卡面文本管线：[[关键字]] 金色高亮、#xx 内嵌小图标（text.py parse_items /
   _draw_styled_line）；正文颜色按框体（浅框深字/黑框浅字，TEXT_FILL）；
   黑框（skill）派系图标用 _black 变体。
@@ -43,7 +44,7 @@ MAX_LINES = 12
 
 NAME_FILL = (166, 133, 64, 255)      # 关键字名金（技能名.png 主色）
 KEYWORD_FILL = (166, 133, 64, 255)   # [[关键字]] 高亮同关键字名金
-# 描述正文：浅框深字（技能描述.png 主色）/ 黑框浅字（技能描述.png 主色）——按框体不同
+# 描述正文：浅框深字（技能描述_2.png 主色）/ 黑框浅字（技能描述.png 主色）——按框体不同
 TEXT_FILL = {
     "invocation": (87, 88, 95, 255),
     "skill": (187, 188, 191, 255),
@@ -56,7 +57,7 @@ BADGE_NAME_GAP = 6   # 角标存在时关键字名与角标右缘的间距
 
 # 机制布局默认配置（assets/layout.json「机制」段覆盖；GUI 布局设置「机制」页编辑）。
 # 字号/角标三类框共用；文本区域完全分框独立（frames.<框>），无共用基础偏移。
-_DEFAULT_REGION = {"text_x": MARGIN_X, "text_dy": 0, "width": 245, "height": 72}
+_DEFAULT_REGION = {"text_x": MARGIN_X, "text_dy": 0, "width": 245}
 DEFAULT_LAYOUT = {
     "name_size": 26,          # 关键字名字号（略大于正文，不加粗）
     "text_size": FONT_SIZE,   # 正文字号 = 行距
@@ -65,7 +66,8 @@ DEFAULT_LAYOUT = {
     "badge_pos": list(BADGE_POS),
     "name_offset": [0, 0],    # 关键字名相对文本左缘/行中心的额外偏移
     # 各框独立文本区域：text_x 左缘（关键字名与描述共用）/ text_dy 竖直偏移
-    # （相对框中心）/ width 换行宽 / height 轮廓参考高（GUI 绿框，不影响渲染）
+    # （相对框中心）/ width 换行宽；区域不设高度——框高随内容行数动态变化，
+    # GUI 浅绿轮廓按实际文本块（行数×行距）画出
     "frames": {f: dict(_DEFAULT_REGION) for f in MECH_FRAMES},
 }
 
@@ -123,7 +125,6 @@ def _mech_layout(layout: dict | None) -> dict:
     cfg["badge_size"] = max(4, cfg["badge_size"])
     for f in MECH_FRAMES:
         cfg["frames"][f]["width"] = max(20, cfg["frames"][f]["width"])
-        cfg["frames"][f]["height"] = max(8, cfg["frames"][f]["height"])
     return cfg
 
 
@@ -204,12 +205,15 @@ def _wrap_items(items: list[tuple[str, str, bool]], font, lib: AssetLibrary,
     return lines
 
 
-def render_mechanism(mech: dict, assets_dir, layout: dict | None = None) -> Image.Image:
+def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
+                     info: dict | None = None) -> Image.Image:
     """渲染机制描述框，返回按最紧 alpha box 裁剪的 PNG 图。
 
     mech 字段：name 关键字名、frame（invocation/skill/seal）、text 多行描述、
     badge（bless/eclipse，仅 seal 框合法，贴框左上角）。
     layout：机制布局配置（assets/layout.json「机制」段），缺省/缺键回退 DEFAULT_LAYOUT。
+    info：传入 dict 时回填实际文本块矩形（裁剪后坐标系）
+    {text_x, text_top, text_width, text_height}，供 GUI 画文本区域轮廓。
     """
     lib = get_library(Path(assets_dir))
     cfg = _mech_layout(layout)
@@ -267,5 +271,13 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None) -> Imag
                           TEXT_FILL[frame], KEYWORD_FILL, lib, icon_variant,
                           cfg["icon_scale"])
 
+    if info is not None:  # 实际文本块矩形（关键字名+空行+描述行）：左缘/顶/换行宽/行数×行距
+        info.update(text_x=text_x, text_top=y0, text_width=region["width"],
+                    text_height=total_rows * pitch)
     bbox = out.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
-    return out.crop(bbox) if bbox else out
+    if not bbox:
+        return out
+    if info is not None:  # 换算到裁剪后坐标系
+        info["text_x"] -= bbox[0]
+        info["text_top"] -= bbox[1]
+    return out.crop(bbox)

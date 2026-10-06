@@ -181,6 +181,23 @@ def test_layout_region_width_wraps(assets_dir):
     assert narrow.height > wide.height
 
 
+def test_render_info_text_block(assets_dir):
+    """info 回填实际文本块矩形（裁剪后坐标系）：左缘=text_x、高=行数×行距、
+    竖直居中于框中心+text_dy；裁剪零偏移时与框坐标一致。"""
+    info: dict = {}
+    img = render_mechanism(_mech(text="两行中的第一行。\n第二行。"), assets_dir,
+                           info=info)
+    # 2 描述行 + 关键字名 + 空行 = 4 行 × 24
+    assert info["text_width"] == 245 and info["text_height"] == 4 * 24
+    assert info["text_x"] == 18
+    assert info["text_top"] == pytest.approx((img.height - 4 * 24) / 2)
+    # 分框 text_dy 生效
+    info2: dict = {}
+    render_mechanism(_mech(text="两行中的第一行。\n第二行。"), assets_dir,
+                     layout={"frames": {"skill": {"text_dy": 7}}}, info=info2)
+    assert info2["text_top"] == pytest.approx(info["text_top"] + 7)
+
+
 def test_desc_left_aligned(assets_dir):
     """描述逐行左对齐：不同长度的描述行墨迹左缘一致（ invocation 深字）。"""
     from bwpdiy.render.mech import TEXT_FILL

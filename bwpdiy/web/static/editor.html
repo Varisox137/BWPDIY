@@ -1747,20 +1747,23 @@ let singleSnapshot = null;   // 进入模式时的快照（「还原更改」基
 let singleDirty = false;
 // ---- 机制布局模式：布局 tab 第七类「机制」，三画布同屏预览三类框体（仅全局模式可进）----
 let mechLayoutMode = false;
-// 与 render/mech.py DEFAULT_LAYOUT 同口径（缺键/缺段时补齐，保存时全段随 layouts 写回）
-const MECH_LAYOUT_DEFAULTS = {name_size: 26, text_size: 24, icon_scale: 1.0,
-  badge_size: 30, badge_pos: [6, 6], name_offset: [0, 0]};
+// 与 render/mech.py DEFAULT_LAYOUT 同口径（缺键/缺段时补齐，保存时全段随 layouts 写回）：
+// 三类框共用仅字号/小图标；角标配置随 seal 区域（badge 仅 seal 合法）；名称无独立偏移
+const MECH_LAYOUT_DEFAULTS = {name_size: 26, text_size: 24, icon_scale: 1.0};
 // 各框独立文本区域缺省（区域无固定高度：框高随内容行数动态变化，
-// 绿框按服务端返回的实际文本块矩形画出）
-const MECH_REGION_DEFAULT = f => ({text_x: 18, text_dy: 0, width: 245});
+// 绿框按服务端返回的实际文本块矩形画出）；seal 区域附加角标尺寸/坐标
+const MECH_REGION_DEFAULT = f => f === 'seal'
+  ? {text_x: 18, text_dy: 0, width: 245, badge_size: 30, badge_pos: [6, 6]}
+  : {text_x: 18, text_dy: 0, width: 245};
 const MECH_FRAME_LABELS = {invocation: '灵咒框', skill: '关键字框', seal: '加护蚀印框'};
 // 机制预览示例内容（仅调布局用，不写盘、不计入未保存）
 const mechSample = {name: '示例机制',
   text: '[[唯一]]。\n己方回合开始时，获得1#ll和[[贯通]]。\n攻击后移除。', badge: false};
 function mechLayout() {
   const m = layouts['机制'] = layouts['机制'] || {};
-  // 开发期旧键（共用基础偏移/叠加偏移/双边距）已废弃，直接删除不回迁
-  for (const k of ['name_x', 'name_dy', 'text_x', 'text_y', 'margin_x', 'frame_offset'])
+  // 开发期旧键（共用基础偏移/叠加偏移/双边距/顶层角标与名称偏移）已废弃，直接删除不回迁
+  for (const k of ['name_x', 'name_dy', 'text_x', 'text_y', 'margin_x', 'frame_offset',
+                   'badge_size', 'badge_pos', 'name_offset'])
     delete m[k];
   for (const [k, v] of Object.entries(MECH_LAYOUT_DEFAULTS))
     if (m[k] === undefined) m[k] = deepCopy(v);
@@ -1771,8 +1774,12 @@ function mechLayout() {
       (m.frames[f] && typeof m.frames[f] === 'object' && !Array.isArray(m.frames[f]))
         ? m.frames[f] : {};
     delete rg.height;  // 开发期旧键（区域固定高）已废弃：绿框按实际文本块画出
-    for (const [k, v] of Object.entries(MECH_REGION_DEFAULT(f)))
-      if (!Number.isFinite(rg[k])) rg[k] = v;
+    for (const [k, v] of Object.entries(MECH_REGION_DEFAULT(f))) {
+      if (Array.isArray(v)) {  // 坐标对（badge_pos）
+        if (!Array.isArray(rg[k]) || rg[k].length !== 2 ||
+            !rg[k].every(Number.isFinite)) rg[k] = [...v];
+      } else if (!Number.isFinite(rg[k])) rg[k] = v;
+    }
   }
   return m;
 }
@@ -1977,18 +1984,19 @@ function buildMechProps() {
   numRow(div, '名称字号', ml.name_size, v => ml.name_size = v);
   numRow(div, '正文字号', ml.text_size, v => ml.text_size = v);
   floatRow(div, '小图标相对文字大小', ml.icon_scale, v => ml.icon_scale = v);
-  numRow(div, '名称偏移 x', ml.name_offset[0], v => ml.name_offset[0] = v);
-  numRow(div, '名称偏移 y', ml.name_offset[1], v => ml.name_offset[1] = v);
-  numRow(div, '角标尺寸', ml.badge_size, v => ml.badge_size = v);
-  numRow(div, '角标偏移 x', ml.badge_pos[0], v => ml.badge_pos[0] = v);
-  numRow(div, '角标偏移 y', ml.badge_pos[1], v => ml.badge_pos[1] = v);
-  // 文本区域完全分框独立（无共用基础偏移；无区域高——绿框按实际文本块画出）
+  // 文本区域完全分框独立（无共用基础偏移；无区域高——绿框按实际文本块画出）；
+  // 角标尺寸/坐标仅随 seal 区域（badge 仅 seal 合法）
   for (const [f, label] of Object.entries(MECH_FRAME_LABELS)) {
     const rg = ml.frames[f];
     div.appendChild(title(`${label}文本区域`));
     numRow(div, '文本偏移 x', rg.text_x, v => rg.text_x = v);
     numRow(div, '文本偏移 y', rg.text_dy, v => rg.text_dy = v);
     numRow(div, '文本区域宽', rg.width, v => rg.width = v);
+    if (f === 'seal') {
+      numRow(div, '角标尺寸', rg.badge_size, v => rg.badge_size = v);
+      numRow(div, '角标偏移 x', rg.badge_pos[0], v => rg.badge_pos[0] = v);
+      numRow(div, '角标偏移 y', rg.badge_pos[1], v => rg.badge_pos[1] = v);
+    }
   }
   div.appendChild(title('示例内容（不保存）'));
   textRow(div, '机制名', mechSample.name, v => { mechSample.name = v; schedulePreview(); });

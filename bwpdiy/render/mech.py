@@ -14,9 +14,9 @@
 - 关键字名在框内左上角左对齐、金色；每种框体有独立文本区域（frames.<框>：
   text_x 左缘 / text_dy 竖直偏移 / width 换行宽——框高随内容行数动态变化，
   区域竖直方向以框中心 + text_dy 为基准，不设固定高度；GUI 浅绿框按实际
-  文本块（行数×行距）画出）；关键字名另有 name_offset 微调；与描述之间
-  空一行；描述逐行**左对齐**（同行左缘 = 区域左缘），文本块竖直居中于
-  框中心 + text_dy。
+  文本块（行数×行距）画出）；关键字名与描述左缘一致（同为 text_x，字号
+  不同也不单独偏移），与描述之间空一行；描述逐行**左对齐**（同行左缘 =
+  区域左缘），文本块竖直居中于框中心 + text_dy。
 - 描述复用卡面文本管线：[[关键字]] 金色高亮、#xx 内嵌小图标（text.py parse_items /
   _draw_styled_line）；正文颜色按框体（浅框深字/黑框浅字，TEXT_FILL）；
   黑框（skill）派系图标用 _black 变体。
@@ -56,19 +56,20 @@ BADGE_POS = (6, 6)   # 加护/蚀印角标贴框左上角默认值
 BADGE_NAME_GAP = 6   # 角标存在时关键字名与角标右缘的间距
 
 # 机制布局默认配置（assets/layout.json「机制」段覆盖；GUI 布局设置「机制」页编辑）。
-# 字号/角标三类框共用；文本区域完全分框独立（frames.<框>），无共用基础偏移。
+# 字号/小图标三类框共用；文本区域完全分框独立（frames.<框>），无共用基础偏移；
+# 加护/蚀印角标仅 seal 框合法，其尺寸/坐标配置在 frames.seal 区域下。
 _DEFAULT_REGION = {"text_x": MARGIN_X, "text_dy": 0, "width": 245}
+_SEAL_REGION = {**_DEFAULT_REGION, "badge_size": 30, "badge_pos": list(BADGE_POS)}
 DEFAULT_LAYOUT = {
     "name_size": 26,          # 关键字名字号（略大于正文，不加粗）
     "text_size": FONT_SIZE,   # 正文字号 = 行距
     "icon_scale": 1.0,        # 内嵌小图标相对文字大小
-    "badge_size": 30,         # 加护/蚀印角标尺寸（素材原生 30）
-    "badge_pos": list(BADGE_POS),
-    "name_offset": [0, 0],    # 关键字名相对文本左缘/行中心的额外偏移
-    # 各框独立文本区域：text_x 左缘（关键字名与描述共用）/ text_dy 竖直偏移
-    # （相对框中心）/ width 换行宽；区域不设高度——框高随内容行数动态变化，
-    # GUI 浅绿轮廓按实际文本块（行数×行距）画出
-    "frames": {f: dict(_DEFAULT_REGION) for f in MECH_FRAMES},
+    # 各框独立文本区域：text_x 左缘（关键字名与描述共用，关键字名不单独偏移）/
+    # text_dy 竖直偏移（相对框中心）/ width 换行宽；区域不设高度——框高随内容
+    # 行数动态变化，GUI 浅绿轮廓按实际文本块（行数×行距）画出。
+    # seal 区域附加 badge_size（角标尺寸，素材原生 30）/ badge_pos（角标坐标）。
+    "frames": {f: dict(_SEAL_REGION if f == "seal" else _DEFAULT_REGION)
+               for f in MECH_FRAMES},
 }
 
 # 中段平铺带：从素材 y=BAND_Y 起切 LINE_PITCH 高横带（接缝色差实测最小处）
@@ -92,28 +93,26 @@ def _pair(value) -> list | None:
 def _mech_layout(layout: dict | None) -> dict:
     """合并默认机制布局：仅认 DEFAULT_LAYOUT 白名单键，畸形值回退默认。"""
     cfg = dict(DEFAULT_LAYOUT)
-    cfg["name_offset"] = list(DEFAULT_LAYOUT["name_offset"])
-    cfg["badge_pos"] = list(DEFAULT_LAYOUT["badge_pos"])
-    cfg["frames"] = {f: dict(_DEFAULT_REGION) for f in MECH_FRAMES}
+    cfg["frames"] = {f: dict(DEFAULT_LAYOUT["frames"][f]) for f in MECH_FRAMES}
     if not isinstance(layout, dict):
         return cfg
     for key in cfg:
         value = layout.get(key)
         if value is None or isinstance(value, bool):
             continue
-        if key in ("name_offset", "badge_pos"):
-            pair = _pair(value)
-            if pair is not None:
-                cfg[key] = pair
-        elif key == "frames":
+        if key == "frames":
             if isinstance(value, dict):
                 for f in MECH_FRAMES:
                     region = value.get(f)
                     if not isinstance(region, dict):
                         continue
-                    for rk in _DEFAULT_REGION:
+                    for rk in cfg[key][f]:
                         rv = region.get(rk)
-                        if _is_num(rv):
+                        if rk == "badge_pos":
+                            pair = _pair(rv)
+                            if pair is not None:
+                                cfg[key][f][rk] = pair
+                        elif _is_num(rv):
                             cfg[key][f][rk] = int(rv)
         elif key == "icon_scale":
             if _is_num(value) and value > 0:
@@ -122,9 +121,9 @@ def _mech_layout(layout: dict | None) -> dict:
             cfg[key] = int(value)
     cfg["name_size"] = max(8, cfg["name_size"])
     cfg["text_size"] = max(8, cfg["text_size"])
-    cfg["badge_size"] = max(4, cfg["badge_size"])
     for f in MECH_FRAMES:
         cfg["frames"][f]["width"] = max(20, cfg["frames"][f]["width"])
+    cfg["frames"]["seal"]["badge_size"] = max(4, cfg["frames"]["seal"]["badge_size"])
     return cfg
 
 
@@ -250,17 +249,19 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
 
     out = img.copy()
     draw = ImageDraw.Draw(out)
-    # 加护/蚀印角标贴框左上角；存在时关键字名右移避让（角标右缘 + BADGE_NAME_GAP）
+    # 加护/蚀印角标贴框左上角（尺寸/坐标取 seal 区域配置）；存在时关键字名
+    # 右移避让（角标右缘 + BADGE_NAME_GAP）
     if badge:
         icon = lib.mech(f"badge_{badge}")
-        if icon.width != cfg["badge_size"]:
-            icon = icon.resize((cfg["badge_size"], cfg["badge_size"]), Image.LANCZOS)
-        out.paste(icon, tuple(cfg["badge_pos"]), icon)
+        if icon.width != region["badge_size"]:
+            size = region["badge_size"]
+            icon = icon.resize((size, size), Image.LANCZOS)
+        out.paste(icon, tuple(region["badge_pos"]), icon)
     name_x = (text_x if not badge else
-              cfg["badge_pos"][0] + cfg["badge_size"] + BADGE_NAME_GAP)
-    name_x += cfg["name_offset"][0]
-    # 关键字名：框内左上角左对齐、金色、字号略大于正文（name_offset 额外微调）
-    draw.text((name_x, y0 + pitch / 2 + cfg["name_offset"][1]), name, font=name_font,
+              region["badge_pos"][0] + region["badge_size"] + BADGE_NAME_GAP)
+    # 关键字名：框内左上角左对齐（左缘与描述一致 = text_x，不单独偏移）、
+    # 金色、字号略大于正文
+    draw.text((name_x, y0 + pitch / 2), name, font=name_font,
               anchor="lm", fill=NAME_FILL)
     # 描述：与关键字名之间空一行，逐行左对齐（同行左缘 = 区域左缘；[[关键字]] 金色
     # 高亮、#xx 图标；正文色按框体 TEXT_FILL）

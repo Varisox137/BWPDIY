@@ -667,15 +667,6 @@
     "name_size": 26,
     "text_size": 24,
     "icon_scale": 1.0,
-    "badge_size": 30,
-    "badge_pos": [
-      6,
-      6
-    ],
-    "name_offset": [
-      0,
-      0
-    ],
     "frames": {
       "invocation": {
         "text_x": 18,
@@ -690,7 +681,12 @@
       "seal": {
         "text_x": 18,
         "text_dy": 0,
-        "width": 245
+        "width": 245,
+        "badge_size": 30,
+        "badge_pos": [
+          6,
+          6
+        ]
       }
     }
   }

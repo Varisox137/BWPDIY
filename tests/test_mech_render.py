@@ -224,10 +224,10 @@ def test_desc_left_aligned(assets_dir):
 
 
 def test_layout_badge_size(assets_dir):
-    """角标尺寸可调：badge_size 改变 seal 框左上角角标渲染。"""
+    """角标尺寸可调：seal 区域 badge_size 改变 seal 框左上角角标渲染。"""
     small = render_mechanism(_mech(frame="seal", badge="bless", text="加护。"), assets_dir)
     big = render_mechanism(_mech(frame="seal", badge="bless", text="加护。"), assets_dir,
-                           layout={"badge_size": 44})
+                           layout={"frames": {"seal": {"badge_size": 44}}})
     assert list(small.getdata()) != list(big.getdata())
 
 

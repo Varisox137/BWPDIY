@@ -558,7 +558,7 @@ function clearCard() {
 }
 
 // ---- 项目/卡牌操作（新建/重命名/删除） ----
-// 通用内联输入条：标题 + 可选下拉（selDefault 默认选中） + 文本框，确定/取消
+// 通用内联输入条：标题 + 文本框 + 可选下拉（selDefault 默认选中），确定/取消
 function ask({title, value = '', options = null, selDefault = null}) {
   return new Promise(resolve => {
     const box = document.getElementById('c-ask');
@@ -567,6 +567,9 @@ function ask({title, value = '', options = null, selDefault = null}) {
     const t = document.createElement('div');
     t.textContent = title;
     box.appendChild(t);
+    const input = document.createElement('input');
+    input.type = 'text'; input.value = value;
+    box.appendChild(input);
     let sel = null;
     if (options) {
       sel = document.createElement('select');
@@ -578,9 +581,6 @@ function ask({title, value = '', options = null, selDefault = null}) {
       if (selDefault) sel.value = selDefault;
       box.appendChild(sel);
     }
-    const input = document.createElement('input');
-    input.type = 'text'; input.value = value;
-    box.appendChild(input);
     const row = document.createElement('div');
     const ok = document.createElement('button'); ok.textContent = '确定';
     const cancel = document.createElement('button'); cancel.textContent = '取消';
@@ -1667,7 +1667,7 @@ async function exportMech() {
 // ---- 机制操作（新建/重命名/删除） ----
 const MECH_FRAME_BY_LABEL = Object.fromEntries(MECH_FRAMES.map(([v, l]) => [l, v]));
 document.getElementById('c-new-mech').onclick = async () => {
-  const r = await ask({title: '新机制名',
+  const r = await ask({title: '新机制（名称 + 框体）',
     options: MECH_FRAMES.map(([, l]) => l), selDefault: '关键字'});  // 框类型默认关键字框
   if (!r || !r.text) return;
   if (!confirmDiscard()) return;

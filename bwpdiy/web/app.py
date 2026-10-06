@@ -281,7 +281,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                 # 单卡布局覆盖：卡面 layout 段按键合并覆盖该类型全局布局（导出同路）
                 base = get_type_layout(load_layouts(Path(assets_dir)), card_data["type"])
                 req_layout = merge_card_layout(base, card_data["layout"])
-            img = render_card(card_data, assets_dir, layout=req_layout, crop=False)
+            img = render_card(card_data, assets_dir, layout=req_layout)  # crop=True：紧致原尺寸（预览=导出形状）
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()

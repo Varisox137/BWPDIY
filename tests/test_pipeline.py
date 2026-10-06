@@ -31,21 +31,19 @@ def test_render_all_types(assets_dir, sample_art, kw):
     card = make_card(sample_art.parent, kw.pop("type"), **kw)
     img = render_card(card, assets_dir)
     assert img.mode == "RGBA"
-    assert img.size == (512, 512)  # 导出恒 512×512
-    bbox = _content_bbox(img)
-    assert bbox[1] == 0 and bbox[3] == 512  # 上下顶格
-    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    assert 0.5 < w / h < 0.7  # 竖版卡比例（左右留白）
+    # 紧致导出：高≈512 顶格（框缘抗锯齿可差 1px）、宽按内容（无 512 画布留白），bbox 即全图
+    assert 511 <= img.height <= 512 and img.width < 512
+    assert _content_bbox(img) == (0, 0, img.width, img.height)
+    assert 0.5 < img.width / img.height < 0.7  # 竖版卡比例
 
 
 def test_render_minimal_card(assets_dir, sample_art):
     # artwork 缺省 path → <name>.png
     card = {"type": "法术", "name": "sample_art", "_base_dir": str(sample_art.parent)}
     img = render_card(card, assets_dir)
-    assert img.size == (512, 512)
-    bbox = _content_bbox(img)
-    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    assert 0.5 < w / h < 0.7
+    assert 511 <= img.height <= 512 and img.width < 512
+    assert _content_bbox(img) == (0, 0, img.width, img.height)
+    assert 0.5 < img.width / img.height < 0.7
 
 
 def test_render_missing_artwork_raises(assets_dir):
@@ -130,14 +128,13 @@ def test_footer_neutral_card(assets_dir, sample_art):
             == list(render_card(dict(body, footer="sample_art-式神"), assets_dir, crop=False).getdata()))
 
 
-def test_export_fit_512_top_bottom_flush(assets_dir, sample_art):
-    """导出适配：恒 512×512，内容上下顶格、水平居中（左右留白对称）。"""
+def test_export_tight_bbox_native_size(assets_dir, sample_art):
+    """导出：按 tightest alpha bbox 裁剪后原尺寸直接返回——高 512 顶格、宽按内容，
+    四边无留白（不再缩放贴回 512×512 画布）。"""
     card = make_card(sample_art.parent, "战斗", **{"level": 1, "rarity": "R", "power+": 1, "shield+": 1})
     out = render_card(card, assets_dir, crop=True)
-    assert out.size == (512, 512)
-    bbox = _content_bbox(out)
-    assert bbox[1] == 0 and bbox[3] == 512  # 上下顶格
-    assert abs(bbox[0] - (512 - bbox[2])) <= 1  # 水平居中
+    assert 511 <= out.height <= 512 and out.width < 512  # 高顶格（框缘抗锯齿可差 1px）
+    assert _content_bbox(out) == (0, 0, out.width, out.height)
 
 
 def test_artwork_clipped_to_eroded_contour(assets_dir, sample_art, tmp_path):

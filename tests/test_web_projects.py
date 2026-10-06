@@ -51,6 +51,13 @@ def _png_size(resp) -> tuple:
     return Image.open(BytesIO(resp.content)).size
 
 
+def _assert_tight_card(resp):
+    """紧致导出：高≈512 顶格（框缘抗锯齿可差 1px）、宽按内容（≤512，无 512 画布留白）。"""
+    w, h = _png_size(resp)
+    assert 511 <= h <= 512 and 0 < w <= 512
+    return True
+
+
 def _img_files(library_dir, project) -> list:
     d = library_dir / project / "images"
     return sorted(p.name for p in d.iterdir()) if d.is_dir() else []
@@ -256,10 +263,10 @@ def test_card_illegal_name_422(client, project, bad):
 # ---------- 项目卡预览 ----------
 
 def test_preview_default_shikigami_fallback_art(client, project):
-    """无 artwork 的式神卡：占位图回退，渲染出完整 512×512 PNG。"""
+    """无 artwork 的式神卡：占位图回退，渲染出紧致原尺寸 PNG（高 512、无画布留白）。"""
     r = client.post(f"/api/projects/{project}/cards/shikigami/preview", json={})
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
-    assert _png_size(r) == (512, 512)
+    _assert_tight_card(r)
 
 
 def test_preview_no_body(client, project):
@@ -303,7 +310,7 @@ def test_preview_missing_image_fallback(client, project):
     card["artwork"] = {"images": [{"path": "不存在的图.png", "scale": 1.2}]}
     assert client.put(f"/api/projects/{project}/cards/测试斩", json=card).status_code == 200
     r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
-    assert r.status_code == 200 and _png_size(r) == (512, 512)
+    assert r.status_code == 200 and _assert_tight_card(r)
 
 
 def test_preview_uses_project_images_dir(client, project, library_dir):
@@ -313,7 +320,7 @@ def test_preview_uses_project_images_dir(client, project, library_dir):
     card["artwork"] = {"images": [{"path": "卡图.png"}]}
     assert client.put(f"/api/projects/{project}/cards/测试斩", json=card).status_code == 200
     r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
-    assert r.status_code == 200 and _png_size(r) == (512, 512)
+    assert r.status_code == 200 and _assert_tight_card(r)
 
 
 def test_preview_card_not_found_404(client, project):
@@ -328,7 +335,7 @@ def test_preview_card_override(client, project, library_dir):
     override["artwork"] = {"images": [{"path": "图.png", "scale": 2.0}]}
     base = client.post(f"/api/projects/{project}/cards/shikigami/preview", json={})
     r = client.post(f"/api/projects/{project}/cards/shikigami/preview", json={"card": override})
-    assert r.status_code == 200 and _png_size(r) == (512, 512)
+    assert r.status_code == 200 and _assert_tight_card(r)
     assert r.content != base.content  # 覆盖生效（盘上 shikigami 是式神卡，覆盖为战斗卡）
 
 
@@ -394,7 +401,7 @@ def test_preview_bad_artwork_shape_fallback(client, project, library_dir, artwor
     (library_dir / project / "cards" / "坏图卡.yaml").write_text(
         yaml.safe_dump(card, allow_unicode=True), encoding="utf-8")
     r = client.post(f"/api/projects/{project}/cards/坏图卡/preview", json={})
-    assert r.status_code == 200 and _png_size(r) == (512, 512)
+    assert r.status_code == 200 and _assert_tight_card(r)
 
 
 def test_preview_multi_images_uses_first(client, project, library_dir):
@@ -404,7 +411,7 @@ def test_preview_multi_images_uses_first(client, project, library_dir):
     card["artwork"] = {"images": [{"path": "卡图.png"}, {"path": "异画缺图.png"}]}
     assert client.put(f"/api/projects/{project}/cards/测试斩", json=card).status_code == 200
     r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
-    assert r.status_code == 200 and _png_size(r) == (512, 512)
+    assert r.status_code == 200 and _assert_tight_card(r)
 
 
 def test_encoded_slash_in_path_rejected(client, project):
@@ -426,7 +433,7 @@ def test_artwork_upload_roundtrip(client, project, library_dir):
     card = client.get(f"/api/projects/{project}/cards/测试斩").json()
     assert card["artwork"]["images"][0]["path"] == "测试斩.png"
     r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
-    assert r.status_code == 200 and _png_size(r) == (512, 512)
+    assert r.status_code == 200 and _assert_tight_card(r)
 
 
 def test_artwork_upload_named_by_id(client, project, library_dir):
@@ -512,7 +519,7 @@ def test_preview_duo_frame_injects_shikigami_art(client, project, library_dir):
     shutil.copy2(SAMPLE_ART, images / "式神乙.png")     # 槽位2：显式 artwork path
     assert client.put(f"/api/projects/{project}/cards/共鸣", json=_duo_card()).status_code == 200
     on = client.post(f"/api/projects/{project}/cards/共鸣/preview", json={})
-    assert on.status_code == 200 and _png_size(on) == (512, 512)
+    assert on.status_code == 200 and _assert_tight_card(on)
     # 关闭 duo_frame：渲染不同（override 整体替换口径）
     off = client.post(f"/api/projects/{project}/cards/共鸣/preview",
                       json={"card": _duo_card(duo_frame=False)})
@@ -520,7 +527,7 @@ def test_preview_duo_frame_injects_shikigami_art(client, project, library_dir):
     # 缺式神引用：槽位 None 回退空菱形，仍 200
     missing = client.post(f"/api/projects/{project}/cards/共鸣/preview",
                           json={"card": _duo_card(shikigami1="无此人", shikigami2="也无此人")})
-    assert missing.status_code == 200 and _png_size(missing) == (512, 512)
+    assert missing.status_code == 200 and _assert_tight_card(missing)
     assert missing.content != on.content  # 空槽位 ≠ 注入头像
 
 
@@ -531,7 +538,7 @@ def test_preview_duo_frame_missing_image_slot_empty(client, project, library_dir
                      "health": 5})
     assert client.put(f"/api/projects/{project}/cards/共鸣", json=_duo_card()).status_code == 200
     r = client.post(f"/api/projects/{project}/cards/共鸣/preview", json={})
-    assert r.status_code == 200 and _png_size(r) == (512, 512)
+    assert r.status_code == 200 and _assert_tight_card(r)
 
 
 def test_duo_frame_not_in_saved_card(client, project):

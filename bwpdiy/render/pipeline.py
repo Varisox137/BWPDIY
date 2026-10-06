@@ -7,8 +7,8 @@
 框内静态部分（卡名/稀有度双标/脚注点文本）→ 框上叠加（等级标/派系标/stat 角标图标）→
 描述文本（避让掩膜取 stat 图标+数值全量墨迹的碰撞轮廓）→
 stat 数值层（符号+数字，压在描述文本之上）→
-最终导出按整卡 tightest alpha bbox 裁剪后等比缩放至高 512（上下顶格、
-左右居中留白）贴回 512×512；crop=False 布局预览模式返回 512 全画布。
+最终导出按整卡 tightest alpha bbox 裁剪后**原尺寸直接返回**（高 512 顶格、
+宽按内容，无 512 画布留白）；crop=False 布局预览模式返回 512 全画布。
 布局元素由 assets/layout.json 驱动，探出框缘的元素不受影响。
 框品：card["frame_variant"]（缺省 norm），协战恒 norm。
 """
@@ -90,9 +90,11 @@ def _artwork_ref(card: dict) -> dict:
 
 def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
                 crop: bool = True) -> Image.Image:
-    """渲染单张完整卡面：512×512 RGBA，卡面内容上下顶格、左右居中留白（竖版）。
+    """渲染单张完整卡面。
 
-    crop=False 时跳过导出适配，返回 512 全画布合成结果（布局预览等需要
+    crop=True（默认，导出/预览）：按整卡 tightest alpha bbox 裁剪后原尺寸
+    直接返回（RGBA，高 512 顶格、宽按内容，无 512 画布留白）；
+    crop=False：跳过导出裁剪，返回 512 全画布合成结果（布局预览等需要
     坐标对齐的场景用）。
     缺资源/缺字段抛明确异常（FileNotFoundError/KeyError/ValueError），调用方兜底。
     """
@@ -190,19 +192,8 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     for elem_name, elem in stat_elems:
         canvas = render_element(canvas, lib, elem_name, elem, card, ctx,
                                 stat_part="number")
-    # 导出：tightest alpha bbox 裁剪 → 等比缩放至高 512（上下顶格、左右居中留白）贴回 512×512
+    # 导出：按整卡 tightest alpha bbox 裁剪后原尺寸直接返回（无 512 画布留白）
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
-    if not bbox:
-        return canvas
-    body = canvas.crop(bbox)
-    scale = CARD_SIZE[1] / body.height
-    if body.width * scale > CARD_SIZE[0]:  # 宽溢出则退为按宽适配（上下留白）
-        scale = CARD_SIZE[0] / body.width
-    nw = max(1, round(body.width * scale))
-    nh = max(1, round(body.height * scale))
-    body = body.resize((nw, nh), Image.LANCZOS)
-    out = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
-    out.paste(body, ((CARD_SIZE[0] - nw) // 2, (CARD_SIZE[1] - nh) // 2))
-    return out
+    return canvas.crop(bbox) if bbox else canvas

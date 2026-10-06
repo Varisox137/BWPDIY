@@ -1822,7 +1822,7 @@ function restoreLayout(all) {
     if (t in layoutSnapshot) layouts[t] = deepCopy(layoutSnapshot[t]);
   }
   markDirty();
-  if (mechLayoutMode) selectMech(); else selectType(curType);  // 全套重建并刷新预览
+  if (mechLayoutMode) selectMechLayout(); else selectType(curType);  // 全套重建并刷新预览
   statusEl.textContent = '已还原（未保存）';
 }
 // 当前类型卡牌内容：样卡字段 + 用户覆盖（覆盖优先；不改的不传，后端深拷贝合并）；
@@ -1900,7 +1900,7 @@ function buildTypes() {
   bm.onclick = () => {
     if (!mechLayoutMode && dirty &&
         !confirm('布局有未保存修改（切换类型不会丢弃，但仍未保存），继续？')) return;
-    selectMech();
+    selectMechLayout();
   };
   div.appendChild(bm);
   // 还原按钮：无 .tab class，不参与 selectType 的 active 切换
@@ -1944,7 +1944,7 @@ function showMechPanel(on) {
   for (const id of ['l-h-cardprops', 'l-cardprops', 'l-h-elems', 'l-elems'])
     document.getElementById(id).style.display = on ? 'none' : '';
 }
-function selectMech() {
+function selectMechLayout() {
   mechLayoutMode = true; sel = null; previewImg = null;
   document.querySelectorAll('#l-types .tab').forEach(b =>
     b.classList.toggle('active', b.textContent === '机制'));

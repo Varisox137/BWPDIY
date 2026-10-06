@@ -130,11 +130,14 @@ def test_footer_neutral_card(assets_dir, sample_art):
 
 def test_export_tight_bbox_native_size(assets_dir, sample_art):
     """导出：按 tightest alpha bbox 裁剪后原尺寸直接返回——高 512 顶格、宽按内容，
-    四边无留白（不再缩放贴回 512×512 画布）。"""
+    四边无留白（不再缩放贴回 512×512 画布）；info 回填裁剪原点（512 布局空间）。"""
     card = make_card(sample_art.parent, "战斗", **{"level": 1, "rarity": "R", "power+": 1, "shield+": 1})
-    out = render_card(card, assets_dir, crop=True)
+    info = {}
+    out = render_card(card, assets_dir, crop=True, info=info)
     assert 511 <= out.height <= 512 and out.width < 512  # 高顶格（框缘抗锯齿可差 1px）
     assert _content_bbox(out) == (0, 0, out.width, out.height)
+    ox, oy = info["crop_origin"]
+    assert ox > 0 and oy >= 0 and ox + out.width <= 512 and oy + out.height <= 512
 
 
 def test_artwork_clipped_to_eroded_contour(assets_dir, sample_art, tmp_path):

@@ -217,12 +217,16 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             if (card.get("type") == "协战" and card.get("duo_frame")
                     and "_duo" not in card):
                 card["_duo"] = [{"faction": "苍叶"}, {"faction": "青岚"}]
-            img = render_card(card, assets_dir, layout=request["layout"], crop=False)
+            info: dict = {}
+            img = render_card(card, assets_dir, layout=request["layout"], info=info)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()
         img.save(buf, "PNG")
-        return Response(buf.getvalue(), media_type="image/png")
+        # 紧致裁剪图 + 裁剪原点响应头（512 布局空间）：布局页覆盖层/鼠标据此换算
+        ox, oy = info["crop_origin"]
+        return Response(buf.getvalue(), media_type="image/png",
+                        headers={"X-Crop-Offset": f"{ox},{oy}"})
 
     # ---------- 项目/卡牌 REST ----------
 
@@ -286,12 +290,16 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                 # 单卡布局覆盖：卡面 layout 段按键合并覆盖该类型全局布局（导出同路）
                 base = get_type_layout(load_layouts(Path(assets_dir)), card_data["type"])
                 req_layout = merge_card_layout(base, card_data["layout"])
-            img = render_card(card_data, assets_dir, layout=req_layout)  # crop=True：紧致原尺寸（预览=导出形状）
+            info: dict = {}
+            # crop=True 紧致原尺寸（预览=导出形状）+ 裁剪原点（布局页覆盖层换算）
+            img = render_card(card_data, assets_dir, layout=req_layout, info=info)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()
         img.save(buf, "PNG")
-        return Response(buf.getvalue(), media_type="image/png")
+        ox, oy = info["crop_origin"]
+        return Response(buf.getvalue(), media_type="image/png",
+                        headers={"X-Crop-Offset": f"{ox},{oy}"})
 
     @app.post("/api/projects/{project}/cards/{card}/portrait_preview")
     async def portrait_preview(project: str, card: str, request: dict = Body(None)):

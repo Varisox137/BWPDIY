@@ -166,10 +166,14 @@ def test_preview_png(client):
     r = client.post("/api/preview", json={"type": "战斗", "layout": tl})
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     assert len(r.content) > 10000
-    # 预览不裁剪：返回完整 512×512（布局配置页覆盖层坐标 1:1 对齐的前提）
+    # 紧致裁剪原尺寸（无 512 画布留白）+ 裁剪原点响应头（512 布局空间，
+    # 布局页覆盖层据此换算；布局参数本身恒按 512 合成空间记录不变）
     from io import BytesIO
     from PIL import Image
-    assert Image.open(BytesIO(r.content)).size == (512, 512)
+    img = Image.open(BytesIO(r.content))
+    assert 511 <= img.height <= 512 and img.width < 512
+    ox, oy = (int(v) for v in r.headers["x-crop-offset"].split(","))
+    assert ox > 0 and oy >= 0 and ox + img.width <= 512 and oy + img.height <= 512
 
 
 @pytest.mark.parametrize("card_type", ["式神", "战斗", "法术", "形态", "幻境", "协战"])
@@ -180,7 +184,9 @@ def test_preview_all_types(client, card_type):
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     from io import BytesIO
     from PIL import Image
-    assert Image.open(BytesIO(r.content)).size == (512, 512)
+    img = Image.open(BytesIO(r.content))
+    assert 511 <= img.height <= 512 and img.width < 512
+    assert r.headers["x-crop-offset"].count(",") == 1
 
 
 def test_preview_bad_type(client):

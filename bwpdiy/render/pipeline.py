@@ -8,7 +8,7 @@
 描述文本（避让掩膜取 stat 图标+数值全量墨迹的碰撞轮廓）→
 stat 数值层（符号+数字，压在描述文本之上）→
 最终导出按整卡 tightest alpha bbox 裁剪后**原尺寸直接返回**（高 512 顶格、
-宽按内容，无 512 画布留白）；crop=False 布局预览模式返回 512 全画布。
+宽按内容，无 512 画布留白）；crop=False 返回 512 全画布（管线内部分层断言用）。
 布局元素由 assets/layout.json 驱动，探出框缘的元素不受影响。
 框品：card["frame_variant"]（缺省 norm），协战恒 norm。
 """
@@ -89,13 +89,14 @@ def _artwork_ref(card: dict) -> dict:
 
 
 def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
-                crop: bool = True) -> Image.Image:
+                crop: bool = True, info: dict | None = None) -> Image.Image:
     """渲染单张完整卡面。
 
     crop=True（默认，导出/预览）：按整卡 tightest alpha bbox 裁剪后原尺寸
-    直接返回（RGBA，高 512 顶格、宽按内容，无 512 画布留白）；
-    crop=False：跳过导出裁剪，返回 512 全画布合成结果（布局预览等需要
-    坐标对齐的场景用）。
+    直接返回（RGBA，高 512 顶格、宽按内容，无 512 画布留白）；传入 info dict
+    时回填 crop_origin=(bbox 左, 上)——512 布局空间坐标，供布局页覆盖层换算
+    （布局参数恒按 512 合成空间记录，裁剪框内容驱动、不可作为坐标基准）。
+    crop=False：跳过导出裁剪，返回 512 全画布合成结果（管线内部分层断言用）。
     缺资源/缺字段抛明确异常（FileNotFoundError/KeyError/ValueError），调用方兜底。
     """
     card_type = card["type"]
@@ -196,4 +197,6 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
+    if info is not None:
+        info["crop_origin"] = (bbox[0], bbox[1]) if bbox else (0, 0)
     return canvas.crop(bbox) if bbox else canvas

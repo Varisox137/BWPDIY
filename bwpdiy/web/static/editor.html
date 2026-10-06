@@ -1790,7 +1790,8 @@ function mechLayout() {
 const canvas = document.getElementById('l-preview');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('l-status');
-let previewImg = null;     // 预览图（/api/preview 传 crop=False，恒为完整 512×512，与布局坐标 1:1）
+let previewImg = null;     // 预览图（紧致裁剪原尺寸；布局坐标恒为 512 合成空间，按 previewOffset 换算）
+let previewOffset = [0, 0];  // 裁剪原点（X-Crop-Offset 响应头，512 布局空间），覆盖层/鼠标据此换算
 
 // 懒初始化：首次进入布局 tab 才拉取布局/样卡并渲染（卡牌库 tab 不白付预览开销）
 let layoutInited = false;
@@ -2199,20 +2200,27 @@ async function refreshPreview() {
     return;
   }
   statusEl.textContent = (cardLayoutMode ? singleDirty : dirty) ? '● 未保存' : '';
+  // 紧致裁剪图 + 裁剪原点（512 布局空间）：画布按图尺寸，覆盖层/鼠标按原点换算
+  const off = (r.headers.get('X-Crop-Offset') || '').split(',').map(Number);
   const blob = await r.blob();
   const img = new Image();
   img.onload = () => {
     if (seq !== previewSeq) { URL.revokeObjectURL(img.src); return; }
+    previewOffset = (off.length === 2 && off.every(Number.isFinite)) ? off : [0, 0];
+    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     previewImg = img; draw(); URL.revokeObjectURL(img.src);
   };
   img.src = URL.createObjectURL(blob);
 }
 
-// 画布绘制：预览图恒 512×512 直接 1:1 绘制 + 覆盖层
+// 画布绘制：预览图为紧致裁剪原尺寸（无 512 画布留白）；布局坐标恒为 512 合成空间，
+// 覆盖层整体平移 -previewOffset 换算（裁剪框内容驱动，不可作为坐标基准）
 function draw() {
-  if (mechLayoutMode) return;  // 机制模式无 512 画布与覆盖层
+  if (mechLayoutMode) return;  // 机制模式无卡图画布与覆盖层
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (previewImg) ctx.drawImage(previewImg, 0, 0);
+  ctx.save();
+  ctx.translate(-previewOffset[0], -previewOffset[1]);
   const tl = typeLayout();
   for (const [name, e] of Object.entries(tl.elements)) {
     // 元素位置点：绿色小圆点（比文本区中心方块略小），选中变黄
@@ -2247,6 +2255,7 @@ function draw() {
     const off = r.center_offset || [0, 0];
     handle([r.center[0] + off[0], r.center[1] + off[1]], '#f80', 4);
   }
+  ctx.restore();
 }
 function handle([x, y], color, s = 6, square = false) {
   ctx.fillStyle = color;
@@ -2270,8 +2279,9 @@ window.addEventListener('mousemove', ev => {
 window.addEventListener('mouseup', () => { if (drag) { drag = null; refreshPreview(); } });
 function clamp(v) { return Math.max(0, Math.min(511, Math.round(v))); }
 function mousePos(ev) {
+  // 画布像素 → 512 布局空间坐标（加回裁剪原点）
   const r = canvas.getBoundingClientRect();
-  return [ev.clientX - r.left, ev.clientY - r.top];
+  return [ev.clientX - r.left + previewOffset[0], ev.clientY - r.top + previewOffset[1]];
 }
 function pick(mx, my) {
   const tl = typeLayout();

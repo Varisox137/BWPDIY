@@ -71,7 +71,7 @@ class SchemaError(Exception):
 
 # ---------- 机制描述框（全局共享池 library/mechanisms/，渲染见 render/mech.py） ----------
 
-MECH_FRAMES = ("invocation", "skill", "seal")  # 灵咒框 / 技能描述黑框 / 加护蚀印框
+MECH_FRAMES = ("invocation", "skill", "seal")  # 灵咒框 / 关键字框 / 加护蚀印框
 MECH_BADGES = ("bless", "eclipse")             # 圆形角标（加护/蚀印），仅 seal 框可携带
 _MECH_FIELDS = ("name", "frame", "text", "badge")
 

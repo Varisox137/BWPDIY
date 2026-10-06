@@ -642,7 +642,7 @@ def test_validate_mechanism_ok(mech):
 
 @pytest.mark.parametrize("mech, needle", [
     (["不是映射"], "映射"),
-    ({"frame": "skill"}, "name"),                       # 缺技能名
+    ({"frame": "skill"}, "name"),                       # 缺关键字名
     ({**MECH, "name": "  "}, "name"),
     ({"name": "x"}, "frame"),                           # 缺框类型
     ({**MECH, "frame": "gold"}, "frame"),               # 非法框类型

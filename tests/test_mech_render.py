@@ -1,5 +1,5 @@
 """机制描述框渲染测试：帧拼接（行数单调/接缝色差/自定义行距）、关键字高亮与内嵌图标、
-技能名左上角左对齐（字号略大于正文）、badge 角标、行数软上限、布局参数与 badge 交叉规则。"""
+关键字名左上角左对齐（字号略大于正文）、badge 角标、行数软上限、布局参数与 badge 交叉规则。"""
 
 from pathlib import Path
 
@@ -53,7 +53,7 @@ def test_frame_below_3_uses_3_line(lib):
 
 
 def test_seal_frame_extension(lib):
-    """seal 底框容 2 行内容（技能名+空行即占满），超出按行高平铺扩展。"""
+    """seal 底框容 2 行内容（关键字名+空行即占满），超出按行高平铺扩展。"""
     h2 = build_frame(lib, "seal", 2).height
     assert build_frame(lib, "seal", 1).height == h2
     assert build_frame(lib, "seal", 3).height == h2 + LINE_PITCH
@@ -114,7 +114,7 @@ def test_unknown_icon_code_raises(assets_dir):
 
 
 def test_name_top_left(assets_dir):
-    """技能名在框内左上角左对齐（x≈name_x 默认 18）、金色；与描述之间空一行。
+    """关键字名在框内左上角左对齐（x≈name_x 默认 18）、金色；与描述之间空一行。
     不再加粗描边，墨迹左缘 = text_x + 字体左轴承（约 3px）。"""
     img = render_mechanism(_mech(), assets_dir)
     gold_xs = [x for x in range(img.width) for y in range(img.height // 3)
@@ -130,8 +130,9 @@ def test_layout_none_and_unknown_keys_equal_default(assets_dir):
     b = render_mechanism(_mech(), assets_dir, layout=None)
     c = render_mechanism(_mech(), assets_dir,
                          layout={"unknown_key": 1, "text_size": None, "badge_pos": "x",
-                                 "name_offset": [1], "frame_offset": "bad",
-                                 "name_x": 60})  # name_x/name_dy 为开发期旧键，已被忽略
+                                 "name_offset": [1], "frames": "bad",
+                                 "text_x": 60})  # text_x/text_y/margin_x/frame_offset
+    # 等顶层旧键为开发期废弃键，已被忽略（frames 内的同名键才是当前 schema）
     assert list(a.getdata()) == list(b.getdata()) == list(c.getdata())
 
 
@@ -145,30 +146,39 @@ def test_layout_text_size_changes_pitch(assets_dir):
 
 
 def _gold_min_x(img):
-    """技能名金色墨迹左缘（框上部 1/3 区域内）。"""
+    """关键字名金色墨迹左缘（框上部 1/3 区域内）。"""
     xs = [x for x in range(img.width) for y in range(img.height // 3)
           if (lambda p: p[:3] == NAME_FILL[:3] and p[3] > 200)(img.getpixel((x, y)))]
     return min(xs)
 
 
 def test_layout_text_x(assets_dir):
-    """文本偏移 x 可调：技能名金色墨迹左缘随 text_x 右移。"""
+    """文本偏移 x（分框独立）：关键字名金色墨迹左缘随本框 text_x 右移。"""
     assert _gold_min_x(render_mechanism(_mech(), assets_dir)) <= 22
     assert _gold_min_x(render_mechanism(
-        _mech(), assets_dir, layout={"text_x": 60})) >= 60
+        _mech(), assets_dir, layout={"frames": {"skill": {"text_x": 60}}})) >= 60
 
 
-def test_layout_frame_offset(assets_dir):
-    """分框独立偏移：仅本框叠加 dx/dy，其他框不变。"""
+def test_layout_frames_region(assets_dir):
+    """文本区域完全分框独立：本框 text_x 生效，其他框逐像素不变。"""
     base = _gold_min_x(render_mechanism(_mech(), assets_dir))
     moved = _gold_min_x(render_mechanism(
-        _mech(), assets_dir, layout={"frame_offset": {"skill": [10, 0]}}))
+        _mech(), assets_dir, layout={"frames": {"skill": {"text_x": 28}}}))
     assert moved - base == 10
-    # 其他框不受 skill 偏移影响（invocation 与默认逐像素一致）
+    # 其他框不受 skill 区域影响（invocation 与默认逐像素一致）
     a = render_mechanism(_mech(frame="invocation"), assets_dir)
     b = render_mechanism(_mech(frame="invocation"), assets_dir,
-                         layout={"frame_offset": {"skill": [10, 0]}})
+                         layout={"frames": {"skill": {"text_x": 28}}})
     assert list(a.getdata()) == list(b.getdata())
+
+
+def test_layout_region_width_wraps(assets_dir):
+    """区域宽 width 决定换行：收窄产生更多行、框更高。"""
+    text = "一段长度适中的机制描述文字，用于验证换行宽度。"
+    wide = render_mechanism(_mech(text=text), assets_dir)
+    narrow = render_mechanism(_mech(text=text), assets_dir,
+                              layout={"frames": {"skill": {"width": 100}}})
+    assert narrow.height > wide.height
 
 
 def test_desc_left_aligned(assets_dir):
@@ -245,7 +255,7 @@ def test_unknown_frame_raises(assets_dir):
 
 
 def test_missing_name_raises(assets_dir):
-    with pytest.raises(ValueError, match="技能名"):
+    with pytest.raises(ValueError, match="关键字名"):
         render_mechanism(_mech(name=""), assets_dir)
 
 
@@ -254,7 +264,7 @@ def test_render_sizes_and_crop(assets_dir):
     img1 = render_mechanism(_mech(text="短。"), assets_dir)
     img2 = render_mechanism(
         _mech(text="一段足够长的描述文本，必然会超出框内可用宽度而自动换行，"
-                   "从而把技能描述黑框撑高一行。"), assets_dir)
+                   "从而把关键字框撑高一行。"), assets_dir)
     assert img2.height > img1.height
     # 裁剪后无整行透明留白（底缘有非透明像素）
     alpha = img2.getchannel("A")

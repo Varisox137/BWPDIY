@@ -666,32 +666,35 @@
   "机制": {
     "name_size": 26,
     "text_size": 24,
-    "text_x": 18,
-    "text_y": 0,
-    "name_offset": [
-      0,
-      0
-    ],
-    "frame_offset": {
-      "invocation": [
-        0,
-        0
-      ],
-      "skill": [
-        0,
-        0
-      ],
-      "seal": [
-        0,
-        0
-      ]
-    },
-    "margin_x": 18,
     "icon_scale": 1.0,
     "badge_size": 30,
     "badge_pos": [
       6,
       6
-    ]
+    ],
+    "name_offset": [
+      0,
+      0
+    ],
+    "frames": {
+      "invocation": {
+        "text_x": 18,
+        "text_dy": 0,
+        "width": 245,
+        "height": 72
+      },
+      "skill": {
+        "text_x": 18,
+        "text_dy": 0,
+        "width": 245,
+        "height": 72
+      },
+      "seal": {
+        "text_x": 18,
+        "text_dy": 0,
+        "width": 245,
+        "height": 48
+      }
+    }
   }
 }

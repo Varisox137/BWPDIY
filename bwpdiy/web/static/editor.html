@@ -195,7 +195,7 @@
     <h4>卡图定位</h4>
     <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）；也可直接在预览画布上鼠标操作：<b>左键拖拽</b>=移动、<b>滚轮</b>=缩放、<b>按住右键+滚轮</b>=旋转（3°/档；主预览与式神头像预览均支持，与数值框双向同步）。「撤回上次修改/撤回全部修改」按钮可回退未保存的编辑（鼠标操作与输入框都生效，连续拖拽/滚轮按一次修改计）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。式神卡的卡图四项右侧另有并排的「头像」设置（同四参数），用于协战双式神框中该式神的头像裁剪，预览框以 2 倍大小实时显示在卡图预览下方；「头像框」勾选控制头像预览/导出头像是否绘制斜方框与派系标（不勾选=仅菱形裁剪的裸头像），「导出头像」按当前预览直接下载 PNG。</div>
     <h4>机制描述框</h4>
-    <div>左栏「机制」为全局共享列表（不随项目切换，所有项目可复用），用于制作灵咒/关键字/加护蚀印等机制说明图：选框类型、填名称与描述即可，框高按内容行数自动扩展（名称与描述之间空一行，超过 5 行时框体按行高拼接加长，不缩小字号）。描述逐行左对齐，同样支持 <code>[[关键字]]</code> 高亮与 <code>#xx</code> 内嵌小图标（唯一/瞬发等标记直接写进描述即可）；加护蚀印框可选「加护/蚀印」圆形角标（名称自动右移避让）。「导出描述框」把当前机制（含未保存修改）下载为 PNG。</div>
+    <div>左栏「机制」为全局共享列表（不随项目切换，所有项目可复用），用于制作灵咒/关键字/加护蚀印等机制说明图：新建时选框类型（默认关键字）、填名称与描述即可，框高按内容行数自动伸缩（最少 2 行：名称+空行；名称与描述之间空一行，超过 5 行时框体按行高拼接加长，不缩小字号）。描述逐行左对齐，同样支持 <code>[[关键字]]</code> 高亮与 <code>#xx</code> 内嵌小图标（唯一/瞬发等标记直接写进描述即可）；加护蚀印框可选「加护/蚀印」圆形角标（名称自动右移避让）。「导出描述框」把当前机制（含未保存修改）下载为 PNG。</div>
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
     <h4>协战双式神框</h4>
@@ -1551,7 +1551,7 @@ function afterMechEdit(rebuild = false) {
 function buildMechForm() {
   const div = document.getElementById('c-form');
   div.innerHTML = '';
-  if (!mechForm) { div.textContent = '未选中卡牌'; return; }
+  if (!mechForm) { div.textContent = '未选中机制'; return; }
   textRow(div, '关键字名', mechForm.name ?? '', v => setMechField('name', v));
   selRowC(div, '框类型', MECH_FRAMES.map(([v]) => v), mechForm.frame ?? 'invocation',
     v => { mechForm.frame = v; if (v !== 'seal') mechForm.badge = null; afterMechEdit(true); },
@@ -2048,17 +2048,11 @@ async function refreshMechPreview() {
       cv.width = img.naturalWidth; cv.height = img.naturalHeight;
       const c2 = cv.getContext('2d');
       c2.drawImage(img, 0, 0);
-      // 文本区域轮廓（仿卡牌布局页浅绿框）：优先用服务端实际文本块矩形
-      let x, y, w, h;
+      // 文本区域轮廓（仿卡牌布局页浅绿框）：按服务端响应头的实际文本块矩形画出
       if (rect.length === 4 && rect.every(Number.isFinite)) {
-        [x, y, w, h] = rect;
-      } else {  // 旧服务端无响应头时按布局估算（高=区域三行估算）
-        const rg = mechLayout().frames[frame];
-        x = rg.text_x; w = rg.width;
-        h = 72; y = cv.height / 2 + rg.text_dy - h / 2;
+        c2.strokeStyle = '#4f4';
+        c2.strokeRect(rect[0] + 0.5, rect[1] + 0.5, rect[2], rect[3]);
       }
-      c2.strokeStyle = '#4f4';
-      c2.strokeRect(x + 0.5, y + 0.5, w, h);
     };
     img.src = url;
   }));

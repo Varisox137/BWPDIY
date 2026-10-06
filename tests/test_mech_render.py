@@ -298,3 +298,18 @@ def test_render_sizes_and_crop(assets_dir):
     # 裁剪后无整行透明留白（底缘有非透明像素）
     alpha = img2.getchannel("A")
     assert any(alpha.getpixel((x, img2.height - 1)) > 10 for x in range(img2.width))
+
+
+def test_unknown_badge_raises(assets_dir):
+    """badge 白名单校验：非法角标值拒绝（防注入拼资源路径），渲染层自带兜底。"""
+    with pytest.raises(ValueError, match="badge"):
+        render_mechanism(_mech(frame="seal", badge="../frame_skill_3"), assets_dir)
+
+
+def test_layout_extreme_values_clamped(assets_dir):
+    """畸形极大 layout 值被钳制：字号/icon_scale/badge_size 上限兜底，不撑出超大图。"""
+    img = render_mechanism(_mech(frame="seal", badge="bless"), assets_dir,
+                           layout={"text_size": 100000, "name_size": 10**6,
+                                   "icon_scale": 1e9,
+                                   "frames": {"seal": {"badge_size": 10**6}}})
+    assert img.height <= 35 + 14 * 200 + 10  # 上限行数×上限行距 + 边帽

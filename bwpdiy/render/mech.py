@@ -38,6 +38,7 @@ from bwpdiy.render.text import (
 )
 
 MECH_FRAMES = ("invocation", "skill", "seal")
+MECH_BADGES = ("bless", "eclipse")  # 与 store/schema.py 同口径（render 层不 import store，此处自备）
 
 FONT_SIZE = 24
 LINE_PITCH = 24
@@ -121,11 +122,14 @@ def _mech_layout(layout: dict | None) -> dict:
                 cfg[key] = float(value)
         elif _is_num(value):
             cfg[key] = int(value)
-    cfg["name_size"] = max(8, cfg["name_size"])
-    cfg["text_size"] = max(8, cfg["text_size"])
+    # 上下限兜底：字号上限防恶意/畸形 layout 撑出超大图（行距=字号，框高=行数×行距），
+    # icon_scale/badge_size 上限防超大 resize；width 只影响换行不影响画布尺寸，不设上限
+    cfg["name_size"] = min(200, max(8, cfg["name_size"]))
+    cfg["text_size"] = min(200, max(8, cfg["text_size"]))
+    cfg["icon_scale"] = min(4.0, cfg["icon_scale"])
     for f in MECH_FRAMES:
         cfg["frames"][f]["width"] = max(20, cfg["frames"][f]["width"])
-    cfg["frames"]["seal"]["badge_size"] = max(4, cfg["frames"]["seal"]["badge_size"])
+    cfg["frames"]["seal"]["badge_size"] = min(256, max(4, cfg["frames"]["seal"]["badge_size"]))
     return cfg
 
 
@@ -228,6 +232,8 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     if frame not in MECH_FRAMES:
         raise ValueError(f"未知机制框类型: {frame}")
     badge = mech.get("badge")
+    if badge and badge not in MECH_BADGES:
+        raise ValueError(f"未知角标（badge）: {badge}")  # 白名单校验，防注入拼资源路径
     if badge and frame != "seal":
         raise ValueError("加护/蚀印角标（badge）仅加护蚀印框（seal）可用")
     name = mech.get("name") or ""

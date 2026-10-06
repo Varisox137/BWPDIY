@@ -22,6 +22,7 @@
   #c-mid { flex: 1; display: flex; flex-direction: column; align-items: center; background: #3a3a3a; padding-top: 8px; }
   #c-right { width: 300px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
   #c-preview { margin-top: 10px; background: #222; width: 512px; height: 512px; }
+  #c-preview.free { width: auto; height: auto; max-width: 512px; max-height: 512px; }  /* 机制框：原宽、按行数定高，不拉伸到 512 */
   #c-portrait { display: block; margin: 16px auto 0; background: #222; }
   .item { padding: 3px 6px; cursor: pointer; }
   .item.active { background: #d9b96a; }
@@ -1503,6 +1504,7 @@ async function loadMechs(selectName = null) {
 }
 function exitMech() {  // 离开机制编辑态（脏守卫由调用方先行，见 confirmDiscard）
   curMech = null; mechData = null; mechForm = null; mDirty = false;
+  cPreviewImg.classList.remove('free');  // 恢复卡牌 512 画布显示
   buildMechList();
 }
 async function selectMech(name, force = false) {
@@ -1510,6 +1512,7 @@ async function selectMech(name, force = false) {
   clearCard();      // 互斥：清卡牌选中与预览/头像
   buildCardList();
   curMech = name;
+  cPreviewImg.classList.add('free');  // 机制框按原始尺寸显示（原宽、行数定高），不拉伸到 512
   buildMechList();
   listErr([]);
   cStatusEl.textContent = '';

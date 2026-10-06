@@ -662,5 +662,32 @@
         "icon_scale": 0.9
       }
     }
+  },
+  "机制": {
+    "name_size": 26,
+    "text_size": 24,
+    "icon_scale": 1,
+    "frames": {
+      "invocation": {
+        "text_x": 10,
+        "text_dy": 0,
+        "width": 260
+      },
+      "skill": {
+        "text_x": 10,
+        "text_dy": 0,
+        "width": 260
+      },
+      "seal": {
+        "text_x": 10,
+        "text_dy": 0,
+        "width": 260,
+        "badge_size": 30,
+        "badge_pos": [
+          6,
+          6
+        ]
+      }
+    }
   }
 }

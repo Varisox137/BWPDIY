@@ -1980,23 +1980,31 @@ function buildMechProps() {
   const div = document.getElementById('l-props');
   div.innerHTML = '';
   const ml = mechLayout();
-  div.appendChild(title('机制框布局（三类框共用）'));
+  div.appendChild(title('通用设置'));
   numRow(div, '名称字号', ml.name_size, v => ml.name_size = v);
   numRow(div, '正文字号', ml.text_size, v => ml.text_size = v);
   floatRow(div, '小图标相对文字大小', ml.icon_scale, v => ml.icon_scale = v);
   // 文本区域完全分框独立（无共用基础偏移；无区域高——绿框按实际文本块画出）；
-  // 角标尺寸/坐标仅随 seal 区域（badge 仅 seal 合法）
+  // seal 栏按 勾选框 → 角标 → 文本区域 排列（角标配置仅 seal 合法）
   for (const [f, label] of Object.entries(MECH_FRAME_LABELS)) {
     const rg = ml.frames[f];
-    div.appendChild(title(`${label}文本区域`));
-    numRow(div, '文本偏移 x', rg.text_x, v => rg.text_x = v);
-    numRow(div, '文本偏移 y', rg.text_dy, v => rg.text_dy = v);
-    numRow(div, '文本区域宽', rg.width, v => rg.width = v);
+    div.appendChild(title(label));
     if (f === 'seal') {
+      // 加护/蚀印图标预览开关（不入布局、不计未保存；
+      // 启用时机制名称文本自动向右避让——实际加护/蚀印在机制编辑中逐个选择）
+      const bl = document.createElement('label');
+      bl.textContent = '加护/蚀印图标 ';
+      const bc = document.createElement('input');
+      bc.type = 'checkbox'; bc.checked = mechSample.badge;
+      bc.onchange = () => { mechSample.badge = bc.checked; schedulePreview(); };
+      bl.appendChild(bc); div.appendChild(bl);
       numRow(div, '角标尺寸', rg.badge_size, v => rg.badge_size = v);
       numRow(div, '角标偏移 x', rg.badge_pos[0], v => rg.badge_pos[0] = v);
       numRow(div, '角标偏移 y', rg.badge_pos[1], v => rg.badge_pos[1] = v);
     }
+    numRow(div, '文本偏移 x', rg.text_x, v => rg.text_x = v);
+    numRow(div, '文本偏移 y', rg.text_dy, v => rg.text_dy = v);
+    numRow(div, '文本区域宽', rg.width, v => rg.width = v);
   }
   div.appendChild(title('示例内容（不保存）'));
   textRow(div, '机制名', mechSample.name, v => { mechSample.name = v; schedulePreview(); });
@@ -2009,14 +2017,6 @@ function buildMechProps() {
     mechSample.text = ta.value; schedulePreview();
   };
   l.appendChild(ta); div.appendChild(l);
-  // 加护/蚀印图标（仅加护蚀印框生效；预览开关不入布局、不计未保存；
-  // 启用时机制名称文本自动向右避让——实际加护/蚀印在机制编辑中逐个选择）
-  const bl = document.createElement('label');
-  bl.textContent = '加护/蚀印图标 ';
-  const bc = document.createElement('input');
-  bc.type = 'checkbox'; bc.checked = mechSample.badge;
-  bc.onchange = () => { mechSample.badge = bc.checked; schedulePreview(); };
-  bl.appendChild(bc); div.appendChild(bl);
 }
 async function refreshMechPreview() {
   const seq = ++previewSeq;

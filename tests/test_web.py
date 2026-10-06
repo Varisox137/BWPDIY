@@ -61,6 +61,17 @@ def test_host_guard(client):
         assert client.get("/api/version", headers={"host": ok}).status_code == 200
 
 
+def test_version_carries_changelog(client):
+    """/api/version 附带当前版本更新说明（「最近更新」弹窗数据源）与本次启动 boot_id。"""
+    from bwpdiy import __version__
+    from bwpdiy.changelog import CHANGELOG
+    data = client.get("/api/version").json()
+    assert data["version"] == __version__
+    assert isinstance(data["boot_id"], int)
+    assert data["notes"] == CHANGELOG.get(__version__, [])
+    assert CHANGELOG.get(__version__), "当前版本必须在 changelog.py 登记更新说明"
+
+
 def test_preview_rejects_artwork_path_escape(client):
     """预览接口的卡图路径不得越出基准目录（绝对路径/.. 一律 422）。"""
     body = {"type": "式神", "layout": client.get("/api/layout").json()["式神"]}

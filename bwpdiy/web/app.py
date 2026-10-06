@@ -20,6 +20,7 @@ from PIL import Image
 
 from bwpdiy import __version__
 from bwpdiy import updater
+from bwpdiy.changelog import CHANGELOG
 from bwpdiy.render.assets import get_library
 from bwpdiy.render.duo import render_portrait
 from bwpdiy.render.layout import get_type_layout, load_layouts, merge_card_layout
@@ -153,9 +154,12 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             raise HTTPException(422, f"布局写盘失败: {e}") from e
         return {"ok": True}
 
+    boot_id = int(time.time())  # 本次服务启动标识：前端据此只在启动后自动开一次「最近更新」
+
     @app.get("/api/version")
     def get_version():
-        return {"version": __version__}
+        return {"version": __version__, "boot_id": boot_id,
+                "notes": CHANGELOG.get(__version__, [])}
 
     # ---------- 自动更新（仅 frozen exe 可一键替换；检查对全模式开放） ----------
 

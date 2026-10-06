@@ -558,8 +558,8 @@ function clearCard() {
 }
 
 // ---- 项目/卡牌操作（新建/重命名/删除） ----
-// 通用内联输入条：标题 + 可选下拉 + 文本框，确定/取消
-function ask({title, value = '', options = null}) {
+// 通用内联输入条：标题 + 可选下拉（selDefault 默认选中） + 文本框，确定/取消
+function ask({title, value = '', options = null, selDefault = null}) {
   return new Promise(resolve => {
     const box = document.getElementById('c-ask');
     box.innerHTML = '';
@@ -575,6 +575,7 @@ function ask({title, value = '', options = null}) {
         op.value = op.textContent = o;
         sel.appendChild(op);
       }
+      if (selDefault) sel.value = selDefault;
       box.appendChild(sel);
     }
     const input = document.createElement('input');
@@ -1664,13 +1665,16 @@ async function exportMech() {
 }
 
 // ---- 机制操作（新建/重命名/删除） ----
+const MECH_FRAME_BY_LABEL = Object.fromEntries(MECH_FRAMES.map(([v, l]) => [l, v]));
 document.getElementById('c-new-mech').onclick = async () => {
-  const r = await ask({title: '新机制名'});
+  const r = await ask({title: '新机制名',
+    options: MECH_FRAMES.map(([, l]) => l), selDefault: '关键字'});  // 框类型默认关键字框
   if (!r || !r.text) return;
   if (!confirmDiscard()) return;
   const resp = await fetch('/api/mechanisms', {method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: r.text, frame: 'invocation', text: '', badge: null})});
+    body: JSON.stringify({name: r.text,
+      frame: MECH_FRAME_BY_LABEL[r.sel] || 'skill', text: '', badge: null})});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   listErr([]);
   await loadMechs(r.text);

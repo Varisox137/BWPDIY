@@ -2613,7 +2613,7 @@ function openChangelog(version, notes) {
   ul.innerHTML = '';
   for (const n of (notes && notes.length ? notes : ['本版本无更新说明。'])) {
     const li = document.createElement('li');
-    li.textContent = n;
+    li.innerHTML = n;  // 内容为本项目 changelog.py 第一方静态文本（非用户输入），支持 <b> 等行内标签
     ul.appendChild(li);
   }
   changelogModal.style.display = 'block';

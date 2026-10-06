@@ -24,4 +24,4 @@
 - 依赖用 uv（`uv add` / `uv sync`），不用 pip 直装。
 - 中文 conventional commit；每次 commit 后 `git push`（失败不阻塞，汇报即可）；rebase/reset/分支操作先问。
 - 大改动先 plan mode；批量新功能委托子代理，收尾全量测试由主上下文亲跑。
-- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`，同时生成 `<exe>.sha256` 校验文件）+ `gh release create`（exe 与 .sha256 两个资产都要上传，客户端下载后强制校验）；本地 `releases/` 保留规则：**exe 每个二级版本（前两位）只留最新版**（三级小更新发布时删去该二级版本下的过往 GitHub release 与本地旧 exe），**sha256 上传后本地一律不留**。
+- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`，同时生成 `<exe>.sha256` 校验文件）+ `gh release create`（exe 与 .sha256 两个资产都要上传，客户端下载后强制校验）；本地 `releases/` 保留规则：**exe 每个二级版本（前两位）只留最新版**（三级小更新发布时删去该二级版本下的过往 GitHub release 与本地旧 exe），**sha256 上传后本地一律不留**。出厂全局布局配置（`assets/layout.json`）有变更的版本，`bwpdiy/changelog.py` 该版本首条必须加粗提示「本次更新更改了全局布局配置，用户可能需要重新手动调整本地配置」（条目按 innerHTML 渲染，支持 <b> 标签）。

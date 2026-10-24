@@ -186,6 +186,51 @@ def test_update_apply_download_failure_422(client, monkeypatch):
     assert r.status_code == 422 and "更新失败" in r.json()["detail"]
 
 
+
+# ---------- 下载进度与总时长预算 ----------
+
+class _StreamResp:
+    def __init__(self, chunks):
+        self._chunks = list(chunks)
+
+    def read(self, *args):
+        return self._chunks.pop(0) if self._chunks else b""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_download_progress_callback(tmp_path, monkeypatch):
+    """每段字节经 on_progress 回报；6MB 过最小尺寸 sanity，首段带 MZ 头。"""
+    chunks = [b"MZ" + b"0" * ((1 << 20) - 2)] + [b"0" * (1 << 20)] * 5
+    monkeypatch.setattr(updater.urllib.request, "urlopen",
+                        lambda req, timeout=None: _StreamResp(chunks))
+    dest = tmp_path / "x.exe"
+    seen = []
+    updater._download("https://x/y.exe", dest, on_progress=seen.append)
+    assert sum(seen) == dest.stat().st_size == 6 << 20
+    assert seen == [len(c) for c in chunks]
+
+
+def test_download_overall_deadline(tmp_path, monkeypatch):
+    """低速涓流不会触发单段超时：总时长预算兜底，抛 TimeoutError 并删半截文件。"""
+    monkeypatch.setattr(updater, "DOWNLOAD_MAX_SECONDS", -1)  # 首段必超预算
+    monkeypatch.setattr(updater.urllib.request, "urlopen",
+                        lambda req, timeout=None: _StreamResp([b"0" * 100]))
+    dest = tmp_path / "x.exe"
+    with pytest.raises(TimeoutError, match="手动更新"):
+        updater._download("https://x/y.exe", dest)
+    assert not dest.exists()
+
+
+def test_update_progress_endpoint(client):
+    r = client.get("/api/update/progress")
+    assert r.status_code == 200
+    assert set(r.json()) == {"active", "downloaded", "total"}
+
 # ---------- updater bat 与启动探测 ----------
 
 def test_updater_bat_inplace_move(tmp_path):

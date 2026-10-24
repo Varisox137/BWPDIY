@@ -7,6 +7,7 @@
 
 import argparse
 import json
+import logging
 import sys
 import urllib.error
 import urllib.request
@@ -60,9 +61,13 @@ def main() -> int:
 
     from bwpdiy import __version__
     from bwpdiy.resources import default_assets_dir, default_library_dir
+    from bwpdiy.runlog import setup_run_logging
     from bwpdiy.web.app import create_app
 
     print(f"BWPDIY v{__version__}")
+    log_path = setup_run_logging()
+    print(f"运行日志：{log_path}（反馈问题请附上该文件）")
+    logging.getLogger("bwpdiy").info("启动参数：%s", sys.argv)
 
     if args.host in ("127.0.0.1", "localhost", "::1"):
         running = _probe_running(args.host, args.port)
@@ -97,7 +102,8 @@ def main() -> int:
         # 非回环监听：局域网内任何人可读写/删除项目（无鉴权），且 Host 校验已关闭
         print(f"警告：监听 {args.host} 非回环地址，同网络主机可完全访问本工具",
               file=sys.stderr)
-    uvicorn.run(app, host=args.host, port=args.port)
+    # log_config=None：uvicorn 日志走 root（runlog 文件+控制台），不另建 handler
+    uvicorn.run(app, host=args.host, port=args.port, log_config=None)
     return 0
 
 

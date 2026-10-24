@@ -31,3 +31,6 @@ Thumbs.db
 .idea/
 .smoke/
 .smoke_tmp/
+
+# 单次运行日志（runlog，运行产物不入库）
+logs/

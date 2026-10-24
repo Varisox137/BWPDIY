@@ -5,7 +5,8 @@
 ## 架构红线
 
 - 单包分层：`bwpdiy/render`（纯 PIL 渲染库）← `bwpdiy/store`（卡牌库+校验）← `bwpdiy/web`（FastAPI 编辑器）。**render 不得 import store/web**（BWPro 只 import `bwpdiy.render`，不能拖入 FastAPI）。`bwpdiy/updater.py`（exe 自动更新：GitHub latest release 检查 + 一键下载替换重启；GUI 加载即查一次、此后每 1min 复查）仅 web 层引用。
-- 空闲自动终止（防占用）：web 层活动统计中间件 + 看门狗线程，连续 2h 无 HTTP 操作则进程退出（`/api/update/check` 自动轮询不计入活动；`create_app(idle_timeout=, on_idle=)` 可注入，≤0 关闭）；GUI 包装 fetch，连接级失败弹「连接已断开」说明窗。
+- 空闲自动终止（防占用）：web 层活动统计中间件 + 看门狗线程，连续 2h 无 HTTP 操作则进程退出（`/api/update/check` 与 `/api/update/progress` 自动轮询不计入活动；`create_app(idle_timeout=, on_idle=)` 可注入，≤0 关闭）；GUI 包装 fetch，连接级失败弹「连接已断开」说明窗。
+- 运行日志（v1.5.2，`bwpdiy/runlog.py`）：每次启动写 `<运行目录>/logs/bwpdiy-<日期时间>.log`（exe 取 exe 目录、开发取 cwd，不可写回退临时目录 `bwpdiy-logs/`；保留最近 10 次），root=文件+控制台双 handler，uvicorn `log_config=None` 接入 root（access 降级 WARNING）；启动参数/更新全过程/未捕获异常落盘，启动时打印日志路径提示用户反馈附日志。自动更新下载带进度回报（模块级 `_PROGRESS` + `/api/update/progress`，GUI 1s 轮询显示 MB/百分比）与总时长预算 `DOWNLOAD_MAX_SECONDS=600`（低速涓流整体兜底），失败删半截文件、前端给「前往下载」手动入口。
 - `legacy/` 只读封存参考（旧版半成品源码与资源，无版本控制），任何情况下不修改、不删除。
 - `library/` 是用户创作数据，gitignore，不提交。
 - `assets/` 美术资源来自 legacy `basics/` 与 PSD 导出（`scripts/import_psd_assets.py` 生成）：命名约定牌框 `frames/{form,combat,spell,field,reinforce}_{框品}.png`（协战仅 norm）、等级 `levels/{base,evolve_star,level_{1,2,3}_{yellow,cyan,purple,red,blue,brown}}.png`（v1.4.0 六色）、稀有度 `rarity/{R,SR,SSR}{,_blue,_red}.png`+`reinforce_*`+`N.png`、数值标 `stats/{power,health,combat_shield,combat_fragile_{1,2},field_intensity}.png`（力量/生命全类型共用，无类型前缀）、正负号 `signs/{plus,minus}.png`、协战双式神框 `duo/{frame_{1,2},back,highlight_1}.png`（v1.4.1，frame 为双框拆半；槽位2 高光由 highlight_1 旋转 180° 派生不单存；派系小标复用 `factions/`，不在 duo 目录单存；底板带半透明光晕需按 alpha≥128 可见 bbox 裁边居中，高光/框线只做 alpha>0 裁边保持层间配准）、机制描述框 `mech/{frame_invocation_{3,4,5},frame_skill_{3,4,5},frame_seal,badge_{bless,eclipse}}.png`（v1.5.0）；masks 已废弃；旧位图资产封存 `assets/legacy/`。改动须同步 `docs/terminology.md`。

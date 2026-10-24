@@ -28,7 +28,9 @@ def fakes(monkeypatch):
     monkeypatch.setattr(webbrowser, "open", lambda url: calls["browser"].append(url))
     import uvicorn
     monkeypatch.setattr(uvicorn, "run",
-                        lambda app, host, port: calls.update(uvicorn=(host, port)))
+                        lambda app, host, port, **kw: calls.update(uvicorn=(host, port)))
+    from bwpdiy import runlog
+    monkeypatch.setattr(runlog, "setup_run_logging", lambda: "test.log")  # 测试不落真实日志文件
     import bwpdiy.__main__ as m
     monkeypatch.setattr(m, "_probe_running", lambda host, port: None)  # 不打真实网络
     return calls

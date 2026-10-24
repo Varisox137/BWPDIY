@@ -9,6 +9,9 @@
 - 启动时 __main__ 探测目标端口已有实例：同版本直接打开浏览器复用；
   异版本提示先保存再关闭旧程序。
 - 仅 frozen（PyInstaller 打包）模式可执行替换；开发模式只提示、不允许 apply。
+- 下载带进度回报（模块级 _PROGRESS，GUI 轮询 /api/update/progress 显示 MB/百分比）、
+  总时长预算 DOWNLOAD_MAX_SECONDS（低速涓流不触发单段超时，整体兜底），失败删半截文件；
+  检查/下载/校验/替换全过程写运行日志（runlog），供用户提交单次运行记录排查。
 
 安全口径：固定仓库常量；资产名必须匹配 BWPDIY-vX.Y.Z.exe；下载仅 HTTPS；
 下载产物做 MZ 头与最小尺寸 sanity 检查。release 除 exe 外须附 <exe文件名>.sha256
@@ -19,23 +22,36 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.request
 from pathlib import Path
 
 from bwpdiy import __version__
+
+log = logging.getLogger("bwpdiy.updater")
 
 REPO = "Varisox137/BWPDIY"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 ASSET_RE = re.compile(r"^BWPDIY-v\d+\.\d+\.\d+\.exe$")
 _VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 TIMEOUT = 15  # GitHub API / 下载单段读取超时（秒）
+DOWNLOAD_MAX_SECONDS = 600  # 下载总时长预算：低速涓流连接不会触发单段超时，须整体兜底
 _MIN_EXE_SIZE = 5 * 1024 * 1024  # 打包产物 ~30MB+，小于 5MB 必为错误页/截断
+
+# 下载进度（模块级单例：一键更新同时最多一个，GUI 轮询 /api/update/progress 读取）
+_PROGRESS = {"active": False, "downloaded": 0, "total": 0}
+
+
+def download_progress() -> dict:
+    """当前下载进度快照：{active, downloaded, total}（字节）。"""
+    return dict(_PROGRESS)
 
 
 def parse_version(tag: str) -> tuple[int, int, int] | None:
@@ -81,20 +97,55 @@ def check_update() -> dict:
             "sha256_url": sha_asset["browser_download_url"],
             "size": asset.get("size", 0),
         })
+        result.update({
+            "has_update": True,
+            "latest": data["tag_name"],
+            "asset_name": asset["name"],
+            "asset_url": asset["browser_download_url"],
+            "sha256_url": sha_asset["browser_download_url"],
+            "size": asset.get("size", 0),
+        })
+        log.info("检查更新：发现新版本 %s（当前 %s），资产 %s（%d 字节）",
+                 data["tag_name"], __version__, asset["name"], asset.get("size", 0))
     except Exception as e:  # 离线/限流/格式变化：静默降级为「无更新」
         result["error"] = str(e)
+        log.info("检查更新失败（按无更新处理）：%s", e)
     return result
 
 
-def _download(url: str, dest: Path) -> None:
-    """流式下载 + sanity 检查（HTTPS 由 GitHub 资产 URL 保证）。"""
+def _download(url: str, dest: Path, on_progress=None) -> None:
+    """流式下载 + sanity 检查（HTTPS 由 GitHub 资产 URL 保证）。
+
+    on_progress(本次字节数) 每段回调（进度回报）；总时长超过 DOWNLOAD_MAX_SECONDS
+    抛 TimeoutError（单段超时不覆盖低速涓流）；失败删除半截文件。
+    """
+    log.info("开始下载：%s → %s", url, dest)
+    started = time.monotonic()
+    downloaded = 0
+    next_log = 8 << 20  # 每 8MB 记一次进度（卡死/低速排查用）
     req = urllib.request.Request(url, headers={"User-Agent": f"BWPDIY/{__version__}"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp, open(dest, "wb") as f:
-        while True:
-            chunk = resp.read(1 << 20)
-            if not chunk:
-                break
-            f.write(chunk)
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp, open(dest, "wb") as f:
+            while True:
+                chunk = resp.read(1 << 20)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if on_progress:
+                    on_progress(len(chunk))
+                elapsed = time.monotonic() - started
+                if elapsed > DOWNLOAD_MAX_SECONDS:
+                    raise TimeoutError(
+                        f"下载超过 {DOWNLOAD_MAX_SECONDS // 60} 分钟仍未完成，"
+                        "请检查网络或点击「前往下载」手动更新")
+                if downloaded >= next_log:
+                    log.info("下载中：%.1f MB，已用 %.0fs", downloaded / 1e6, elapsed)
+                    next_log += 8 << 20
+    except Exception:
+        dest.unlink(missing_ok=True)
+        raise
+    log.info("下载完成：%.1f MB，耗时 %.1fs", downloaded / 1e6, time.monotonic() - started)
     if dest.stat().st_size < _MIN_EXE_SIZE:
         dest.unlink(missing_ok=True)
         raise ValueError("下载产物过小，疑似截断或错误页")
@@ -210,9 +261,22 @@ def download_and_schedule_restart(info: dict) -> str:
     inplace = dest == old_exe or not _dir_writable(old_exe.parent)
     if inplace:
         dest = Path(tempfile.gettempdir()) / info["asset_name"]
-    _download(info["asset_url"], dest)
-    _verify_download(dest, _download_text(info["sha256_url"]), info["asset_name"])
+    log.info("一键更新开始：目标版本 %s，运行 exe=%s，下载到 %s（inplace=%s）",
+             info["latest"], old_exe, dest, inplace)
+    _PROGRESS.update(active=True, downloaded=0, total=info.get("size", 0))
+    try:
+        _download(info["asset_url"], dest,
+                  on_progress=lambda n: _PROGRESS.update(downloaded=_PROGRESS["downloaded"] + n))
+        log.info("sha256 校验文件下载与比对")
+        _verify_download(dest, _download_text(info["sha256_url"]), info["asset_name"])
+        log.info("sha256 校验通过")
+    except Exception:
+        _PROGRESS["active"] = False
+        log.exception("一键更新失败")
+        raise
+    _PROGRESS["active"] = False
     bat = _write_updater_bat(old_exe, dest, inplace)
+    log.info("生成替换脚本 %s，启动后本进程退出", bat)
     subprocess.Popen(["cmd.exe", "/c", str(bat)],
                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     timer = threading.Timer(0.8, os._exit, args=(0,))

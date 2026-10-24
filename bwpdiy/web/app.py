@@ -48,8 +48,8 @@ from bwpdiy.web.sample_cards import SAMPLE_CARDS
 _STATIC = Path(__file__).parent / "static"
 _SAMPLE_ART = Path(__file__).parent / "sample_art.png"  # 缺图占位（与样卡机制一致）
 
-# 空闲统计排除的被动轮询路径（前端每 1min 自动请求，不算用户操作）
-_IDLE_EXCLUDE_PATHS = {"/api/update/check"}
+# 空闲统计排除的被动轮询路径（前端自动请求：更新检查每 1min、下载中进度每 1s，不算用户操作）
+_IDLE_EXCLUDE_PATHS = {"/api/update/check", "/api/update/progress"}
 
 
 def create_app(assets_dir: Path, static_dir: Path | None = None,
@@ -171,6 +171,10 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     @app.get("/api/update/check")
     def update_check():
         return JSONResponse(updater.check_update())
+
+    @app.get("/api/update/progress")
+    def update_progress():
+        return JSONResponse(updater.download_progress())
 
     @app.post("/api/update/apply")
     def update_apply():

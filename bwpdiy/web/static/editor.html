@@ -2650,19 +2650,34 @@ function checkUpdate() {
         if (!confirm(`下载并更新到 ${u.latest}？程序将自动重启。`)) return;
         updateApplying = true;
         btn.disabled = true;
-        document.getElementById('update-text').textContent = '正在下载更新，请稍候…';
+        const textEl = document.getElementById('update-text');
+        textEl.textContent = '正在下载更新，请稍候…';
+        // 下载进度轮询（1s）：区分「低速下载中」与「真正卡死」，失败原因见运行目录 logs 日志
+        const progressTimer = setInterval(() => {
+          fetch('/api/update/progress').then(r => r.json()).then(p => {
+            if (!p.active) return;
+            const mb = p.downloaded / 1e6;
+            textEl.textContent = p.total > 0
+              ? `正在下载更新：${mb.toFixed(1)} / ${(p.total / 1e6).toFixed(1)} MB（${Math.floor(p.downloaded / p.total * 100)}%），请稍候…`
+              : `正在下载更新：已下载 ${mb.toFixed(1)} MB，请稍候…`;
+          }).catch(() => {});
+        }, 1000);
         let r;
         try {
           r = await fetch('/api/update/apply', {method: 'POST'});
         } catch (e) {
           // 更新成功时进程退出会掐断连接，也可能落到此处：按成功提示处理
-          document.getElementById('update-text').textContent = '程序正在退出并更新重启（若未自动启动请手动打开）';
+          clearInterval(progressTimer);
+          textEl.textContent = '程序正在退出并更新重启（若未自动启动请手动打开）';
           return;
         }
+        clearInterval(progressTimer);
         if (r.ok) {
-          document.getElementById('update-text').textContent = '下载完成，程序即将退出并自动更新重启';
+          textEl.textContent = '下载完成，程序即将退出并自动更新重启';
         } else {
-          document.getElementById('update-text').textContent = '更新失败：' + (await parseErrorDetail(r)).join('；');
+          textEl.textContent = '更新失败：' + (await parseErrorDetail(r)).join('；')
+            + '（可点右侧「前往下载」手动更新；详细原因见运行目录 logs 日志）';
+          document.getElementById('update-link').style.display = '';
           btn.disabled = false;
           updateApplying = false;
         }

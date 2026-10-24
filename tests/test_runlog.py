@@ -1,6 +1,8 @@
 """单次运行日志（bwpdiy/runlog.py）：文件落盘、幂等、保留最近 10 次。"""
 
 import logging
+import sys
+import threading
 
 import pytest
 
@@ -13,6 +15,7 @@ def clean_root_logger():
     root = logging.getLogger()
     saved_handlers = root.handlers[:]
     saved_level = root.level
+    saved_hooks = sys.excepthook, threading.excepthook
     runlog._LOG_PATH = None
     yield
     for h in root.handlers[:]:
@@ -20,6 +23,7 @@ def clean_root_logger():
             h.close()
     root.handlers[:] = saved_handlers
     root.setLevel(saved_level)
+    sys.excepthook, threading.excepthook = saved_hooks
     runlog._LOG_PATH = None
 
 

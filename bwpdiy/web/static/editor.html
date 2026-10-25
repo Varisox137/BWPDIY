@@ -527,8 +527,9 @@ function buildCardList() {
   }
   for (const c of visible) div.appendChild(cardItem(c, false));
   document.getElementById('c-shiki-count').textContent = `${cards.shikigami.length}/49`;
-  document.getElementById('c-card-count').textContent = visible.length === cards.cards.length
-    ? `${cards.cards.length}/299` : `${visible.length}/${cards.cards.length}（筛选）`;
+  // 数量常驻=项目总组数/299（上限按组计）；有筛选时附「筛选：当前可见数」
+  document.getElementById('c-card-count').textContent = (neutralMode || mainShiki)
+    ? `${cards.cards.length}/299（筛选：${visible.length}）` : `${cards.cards.length}/299`;
   document.getElementById('c-neutral').textContent = neutralMode ? '显示全部卡牌' : '显示中立牌';
 }
 function entryItem(c, activeStem) {

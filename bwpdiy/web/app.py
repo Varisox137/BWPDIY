@@ -18,6 +18,8 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from PIL import Image
 
+import logging
+
 from bwpdiy import __version__
 from bwpdiy import updater
 from bwpdiy.changelog import CHANGELOG
@@ -30,6 +32,7 @@ from bwpdiy.resources import default_library_dir
 from bwpdiy.store import (
     SchemaError,
     StoreError,
+    cleanup_unused_images,
     create_project,
     delete_card,
     delete_mechanism,
@@ -39,6 +42,8 @@ from bwpdiy.store import (
     list_projects,
     load_card,
     load_mechanism,
+    new_card_version,
+    new_mechanism_version,
     rename_project,
     save_card,
     save_mechanism,
@@ -186,6 +191,13 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             latest = updater.download_and_schedule_restart(info)
         except Exception as e:
             raise HTTPException(422, f"更新失败: {e}") from e
+        # 更新即将 os._exit（绕过 atexit）：退出前显式清理未使用卡图，失败不阻断更新
+        try:
+            deleted = cleanup_unused_images(library_dir)
+            if deleted:
+                logging.getLogger("bwpdiy.web").info("退出清理未使用卡图 %d 张：%s", len(deleted), deleted)
+        except Exception:
+            logging.getLogger("bwpdiy.web").exception("退出清理未使用卡图失败")
         return {"ok": True, "latest": latest, "message": "下载完成，程序将退出并自动更新重启"}
 
     @app.get("/api/samples")
@@ -268,6 +280,12 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         # stem 为最终文件名——无 id 卡改名时服务端已把 yaml 重命名为新卡名，前端据此切换选中
         path, updated = save_card(library_dir, project, card, request)
         return {"ok": True, "updated": updated, "stem": path.stem}
+
+    @app.post("/api/projects/{project}/cards/{card}/new_version")
+    def post_card_new_version(project: str, card: str, request: dict = Body(...)):
+        """复制最新版本创建新日期版本（body {date}，留空取当天）；返回新文件 stem。"""
+        path = new_card_version(library_dir, project, card, request.get("date", ""))
+        return {"ok": True, "stem": path.stem}
 
     @app.delete("/api/projects/{project}/cards/{card}")
     def remove_card(project: str, card: str):
@@ -414,6 +432,12 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     @app.get("/api/mechanisms")
     def get_mechanisms():
         return JSONResponse(list_mechanisms(library_dir))
+
+    @app.post("/api/mechanisms/{name}/new_version")
+    def post_mech_new_version(name: str, request: dict = Body(...)):
+        """机制新版本：按 name 归组复制最新版（body {date}，留空取当天）。"""
+        path = new_mechanism_version(library_dir, name, request.get("date", ""))
+        return {"ok": True, "stem": path.stem}
 
     @app.post("/api/mechanisms")
     async def post_mechanism(request: dict):

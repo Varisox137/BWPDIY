@@ -95,8 +95,34 @@ def main() -> int:
         timer.daemon = True  # 服务被 Ctrl+C 打断时 Timer 不得拖住进程退出
         timer.start()
 
-    app = create_app(default_assets_dir(), library_dir=default_library_dir(),
+    # 退出时清理未使用卡图（v1.6.0）：正常退出走 atexit；闲置终止与一键更新
+    # 用 os._exit 绕过 atexit，分别在 on_idle 回调与 update_apply 中显式清理。
+    # Windows 直接关窗可能绕过 atexit，尽力而为。
+    import atexit
+    import os
+
+    from bwpdiy.store import cleanup_unused_images
+
+    library_dir = default_library_dir()
+
+    def _cleanup_images():
+        try:
+            deleted = cleanup_unused_images(library_dir)
+            if deleted:
+                logging.getLogger("bwpdiy").info("退出清理未使用卡图 %d 张：%s", len(deleted), deleted)
+        except Exception:
+            logging.getLogger("bwpdiy").exception("退出清理未使用卡图失败")
+
+    atexit.register(_cleanup_images)
+
+    def _on_idle():
+        print("已连续 2 小时无操作，服务自动终止（防占用），重新启动即可继续使用。", flush=True)
+        _cleanup_images()
+        os._exit(0)
+
+    app = create_app(default_assets_dir(), library_dir=library_dir,
                      idle_timeout=0 if args.no_idle_stop else 7200.0,
+                     on_idle=None if args.no_idle_stop else _on_idle,
                      loopback_guard=args.host in ("127.0.0.1", "localhost", "::1"))
     if args.host not in ("127.0.0.1", "localhost", "::1"):
         # 非回环监听：局域网内任何人可读写/删除项目（无鉴权），且 Host 校验已关闭

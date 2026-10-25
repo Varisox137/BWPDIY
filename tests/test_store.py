@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 import yaml
 
@@ -19,6 +21,20 @@ from bwpdiy.store import (
     validate_card,
     validate_mechanism,
 )
+
+TODAY = date.today().isoformat()
+
+
+def with_today(card):
+    """保存时 version_date 留空填当前系统日期：读回比对统一附带。"""
+    return {**card, "version_date": TODAY}
+
+
+def entry(stem, name, cid=None, vd=TODAY):
+    """单版本分组条目（list_cards/list_mechanisms 口径）。"""
+    return {"stem": stem, "name": name, "id": cid,
+            "versions": [{"stem": stem, "date": vd}], "count": 1}
+
 
 SHIKIGAMI = {"type": "式神", "name": "山风", "faction": "红莲", "power": 3, "health": 4}
 FIGHT = {
@@ -67,7 +83,7 @@ def test_rename_project(lib):
     save_card(lib, "山风", "斩", FIGHT)
     rename_project(lib, "山风", "岚")
     assert list_projects(lib) == ["岚"]
-    assert load_card(lib, "岚", "斩") == FIGHT
+    assert load_card(lib, "岚", "斩") == with_today(FIGHT)
 
 
 def test_rename_project_errors(lib):
@@ -141,8 +157,8 @@ def test_project_dir_not_escape(lib):
 def test_card_round_trip(lib):
     create_project(lib, "山风")
     save_card(lib, "山风", "斩", FIGHT)
-    assert list_cards(lib, "山风") == {"shikigami": [], "cards": [{"stem": "斩", "name": "斩"}]}
-    assert load_card(lib, "山风", "斩") == FIGHT
+    assert list_cards(lib, "山风") == {"shikigami": [], "cards": [entry("斩", "斩")]}
+    assert load_card(lib, "山风", "斩") == with_today(FIGHT)
 
 
 def test_list_cards_reads_name_and_sorts(lib):
@@ -153,11 +169,11 @@ def test_list_cards_reads_name_and_sorts(lib):
     save_card(lib, "山风", "100307", SHIKIGAMI)        # name=山风
     (lib / "山风" / "cards" / "坏.yaml").write_text("- 这不是映射", encoding="utf-8")
     listed = list_cards(lib, "山风")
-    assert listed["shikigami"] == [{"stem": "100307", "name": "山风"}]
+    assert listed["shikigami"] == [entry("100307", "山风")]
     assert listed["cards"] == [
-        {"stem": "10030701", "name": "斩"},
-        {"stem": "10030702", "name": "烈"},
-        {"stem": "坏", "name": None},
+        entry("10030701", "斩"),
+        entry("10030702", "烈"),
+        entry("坏", None, vd=""),
     ]
 
 
@@ -167,7 +183,7 @@ def test_save_preserves_unicode_and_key_order(lib):
     text = (lib / "山风" / "cards" / "斩.yaml").read_text(encoding="utf-8")
     assert "斩" in text and "\\u" not in text  # 中文不转义
     keys = [line.split(":")[0] for line in text.splitlines() if line and not line.startswith(" ")]
-    assert keys == list(FIGHT.keys())  # 键序稳定（插入序）
+    assert keys == [*FIGHT.keys(), "version_date"]  # 键序稳定（插入序；日期保存时追加）
 
 
 def test_load_card_missing(lib):
@@ -267,7 +283,7 @@ def test_save_card_type_dispatches_directory(lib):
     # 同名文件已存在于另一目录（类型与目录不符）→ 报错指引
     with pytest.raises(StoreError, match="与卡牌类型不符"):
         save_card(lib, "山风", "100307", {**FIGHT, "shikigami": "山风"})
-    assert load_card(lib, "山风", "100307") == SHIKIGAMI  # 未被覆盖
+    assert load_card(lib, "山风", "100307") == with_today(SHIKIGAMI)  # 未被覆盖
 
 
 def test_save_card_name_ne_stem(lib):
@@ -276,7 +292,7 @@ def test_save_card_name_ne_stem(lib):
     save_card(lib, "山风", "10030701", {**FIGHT, "name": "突"})
     assert load_card(lib, "山风", "10030701")["name"] == "突"
     listed = list_cards(lib, "山风")["cards"]
-    assert listed == [{"stem": "10030701", "name": "突"}]
+    assert listed == [entry("10030701", "突")]
 
 
 def test_save_card_validates_schema(lib):
@@ -322,11 +338,13 @@ def test_max_shikigami_limit(lib, monkeypatch):
 
 
 def test_shikigami_name_unique(lib):
-    """式神卡 name 全项目唯一（引用按名关联，必须无歧义）。"""
+    """式神卡 name 全项目唯一（引用按名关联）；同 id+卡名的多版本同名允许。"""
     create_project(lib, "山风")
     save_card(lib, "山风", "100307", SHIKIGAMI)
     with pytest.raises(SchemaError, match="唯一"):
-        save_card(lib, "山风", "200307", {**SHIKIGAMI, "name": "山风"})
+        save_card(lib, "山风", "200307", {**SHIKIGAMI, "id": "200307"})  # 跨组同名拒绝
+    # 同组（id+name 均相同）另一文件：视作多版本，允许
+    save_card(lib, "山风", "100307@2026-01-02", with_today(SHIKIGAMI))
     # 同名覆盖自身（同 stem）不冲突
     save_card(lib, "山风", "100307", {**SHIKIGAMI, "power": 4})
     assert load_card(lib, "山风", "100307")["power"] == 4
@@ -359,7 +377,7 @@ def test_rename_cascade_only_for_shikigami(lib):
     save_card(lib, "山风", "斩", FIGHT)
     _, updated = save_card(lib, "山风", "斩", {**FIGHT, "name": "斩改"})
     assert updated == []
-    assert load_card(lib, "山风", "100307") == SHIKIGAMI
+    assert load_card(lib, "山风", "100307") == with_today(SHIKIGAMI)
 
 
 def test_rename_card_renames_file_without_id(lib):
@@ -569,8 +587,8 @@ MECH_SEAL = {"name": "加护", "frame": "seal", "text": "恢复2点生命。", "
 def test_mechanism_round_trip(lib):
     path = save_mechanism(lib, "蛊蚀", MECH)
     assert path == lib / "mechanisms" / "蛊蚀.yaml"
-    assert load_mechanism(lib, "蛊蚀") == MECH
-    assert list_mechanisms(lib) == [{"stem": "蛊蚀", "name": "蛊蚀"}]
+    assert load_mechanism(lib, "蛊蚀") == with_today(MECH)
+    assert list_mechanisms(lib) == [entry("蛊蚀", "蛊蚀")]
 
 
 def test_mechanisms_global_not_project(lib):
@@ -590,7 +608,7 @@ def test_mechanism_rename_renames_file(lib):
     assert path.stem == "魔蛊"
     assert not (lib / "mechanisms" / "蛊蚀.yaml").exists()
     assert load_mechanism(lib, "魔蛊")["name"] == "魔蛊"
-    assert list_mechanisms(lib) == [{"stem": "魔蛊", "name": "魔蛊"}]
+    assert list_mechanisms(lib) == [entry("魔蛊", "魔蛊")]
 
 
 def test_mechanism_rename_conflict(lib):
@@ -668,3 +686,127 @@ def test_mechanism_load_migrates_legacy_marks(lib):
                        allow_unicode=True), encoding="utf-8")
     data = load_mechanism(lib, "旧机制")
     assert "marks" not in data
+
+
+# ---------- 版本日期与多版本（v1.6.0） ----------
+
+from bwpdiy.store import (
+    cleanup_unused_images,
+    new_card_version,
+    new_mechanism_version,
+)
+
+
+def test_version_date_schema(lib):
+    assert validate_card({**FIGHT, "version_date": "2026-10-25"}) == []
+    assert validate_card({**FIGHT, "version_date": ""}) == []  # 空串=未填，保存时填当天
+    assert "version_date" in str(validate_card({**FIGHT, "version_date": "2026-13-01"}))
+    assert "version_date" in str(validate_card({**FIGHT, "version_date": "2026-02-30"}))
+    assert "version_date" in str(validate_card({**FIGHT, "version_date": "2026/10/25"}))
+    assert "version_date" in str(validate_card({**FIGHT, "version_date": 20261025}))
+    assert validate_mechanism({**MECH, "version_date": "2026-10-25"}) == []
+    assert "version_date" in str(validate_mechanism({**MECH, "version_date": "昨天"}))
+
+
+def test_list_cards_groups_by_id_and_name(lib):
+    """id+name 均相同才归组；条目 stem=最新版本，count=版本数，versions 降序。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "10030701", {**FIGHT, "id": "10030701", "version_date": "2026-01-01"})
+    save_card(lib, "山风", "10030701@2026-02-01",
+              {**FIGHT, "id": "10030701", "version_date": "2026-02-01"})
+    save_card(lib, "山风", "20030701", {**FIGHT, "id": "20030701"})  # 同名不同 id：不合并
+    listed = list_cards(lib, "山风")["cards"]
+    assert len(listed) == 2
+    group = next(c for c in listed if c["id"] == "10030701")
+    assert group["stem"] == "10030701@2026-02-01" and group["count"] == 2
+    assert [v["stem"] for v in group["versions"]] == ["10030701@2026-02-01", "10030701"]
+    assert [v["date"] for v in group["versions"]] == ["2026-02-01", "2026-01-01"]
+
+
+def test_save_propagates_shared_layout_and_artwork(lib):
+    """同组共享 layout/artwork：保存任一版本同步到其他版本；键删除同样同步。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", FIGHT)
+    save_card(lib, "山风", "斩@2026-01-02", {**FIGHT, "version_date": "2026-01-02"})
+    v2 = {**FIGHT, "version_date": "2026-01-02",
+          "layout": {"elements": {"name": {"pos": [1, 2]}}},
+          "artwork": {"images": [{"path": "a.png", "offset_x": 5}]}}
+    save_card(lib, "山风", "斩@2026-01-02", v2)
+    old = load_card(lib, "山风", "斩")
+    assert old["layout"] == v2["layout"] and old["artwork"] == v2["artwork"]
+    # 老版本再保存（无 layout/artwork）：同步删除新版本的这两段
+    save_card(lib, "山风", "斩", FIGHT)
+    new = load_card(lib, "山风", "斩@2026-01-02")
+    assert "layout" not in new and "artwork" not in new
+
+
+def test_card_limit_counts_groups(lib, monkeypatch):
+    """数量限制按组计：同组新版本不重复占名额。"""
+    import bwpdiy.store.projects as projects
+    monkeypatch.setattr(projects, "MAX_CARDS", 1)
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", FIGHT)
+    with pytest.raises(StoreError, match="上限"):
+        save_card(lib, "山风", "烈", SPELL)
+    path = new_card_version(lib, "山风", "斩", "2026-01-02")
+    assert path.name == "斩@2026-01-02.yaml"  # 同组新版本不受组数限制
+
+
+def test_version_date_change_renames_at_stem(lib):
+    """带 @ 文件改日期→重命名；无 @ 旧文件不因日期改名；目标冲突拒绝。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩@2026-01-01", {**FIGHT, "version_date": "2026-01-01"})
+    path, _ = save_card(lib, "山风", "斩@2026-01-01", {**FIGHT, "version_date": "2026-03-01"})
+    assert path.name == "斩@2026-03-01.yaml"
+    assert not (lib / "山风" / "cards" / "斩@2026-01-01.yaml").exists()
+    save_card(lib, "山风", "烈", SPELL)
+    path, _ = save_card(lib, "山风", "烈", {**SPELL, "version_date": "2026-04-01"})
+    assert path.name == "烈.yaml"  # 无 @ 不迁移命名
+    save_card(lib, "山风", "斩@2026-05-01", {**FIGHT, "version_date": "2026-05-01"})
+    with pytest.raises(SchemaError, match="已存在"):
+        save_card(lib, "山风", "斩@2026-05-01", {**FIGHT, "version_date": "2026-03-01"})
+
+
+def test_new_card_version_copies_latest(lib):
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", {**FIGHT, "version_date": "2026-01-01", "power+": 1})
+    save_card(lib, "山风", "斩@2026-02-01", {**FIGHT, "version_date": "2026-02-01", "power+": 9})
+    path = new_card_version(lib, "山风", "斩", "2026-03-01")  # 传入旧版 stem 也复制最新版
+    data = load_card(lib, "山风", path.stem)
+    assert data["power+"] == 9 and data["version_date"] == "2026-03-01"
+    with pytest.raises(StoreError, match="已存在"):
+        new_card_version(lib, "山风", "斩", "2026-03-01")
+    path = new_card_version(lib, "山风", "斩", "")  # 留空取当天
+    assert path.stem.endswith(f"@{TODAY}")
+
+
+def test_mechanism_versions(lib):
+    save_mechanism(lib, "蛊蚀", {**MECH, "version_date": "2026-01-01"})
+    path = new_mechanism_version(lib, "蛊蚀", "2026-02-01")
+    assert path.name == "蛊蚀@2026-02-01.yaml"
+    listed = list_mechanisms(lib)
+    assert len(listed) == 1 and listed[0]["count"] == 2
+    assert listed[0]["stem"] == "蛊蚀@2026-02-01"
+    # 带 @ 文件改日期重命名；改机制名同理
+    path = save_mechanism(lib, "蛊蚀@2026-02-01",
+                          {**MECH, "version_date": "2026-03-01"})
+    assert path.name == "蛊蚀@2026-03-01.yaml"
+    path = save_mechanism(lib, "蛊蚀@2026-03-01",
+                          {**MECH, "name": "魔蛊", "version_date": "2026-03-01"})
+    assert path.name == "魔蛊@2026-03-01.yaml"
+    with pytest.raises(StoreError, match="已存在"):
+        new_mechanism_version(lib, "魔蛊@2026-03-01", "2026-03-01")
+
+
+def test_cleanup_unused_images(lib):
+    create_project(lib, "山风")
+    images = lib / "山风" / "images"
+    save_card(lib, "山风", "斩", {**FIGHT, "artwork": {"images": [{"path": "used.png"}]}})
+    save_card(lib, "山风", "烈", SPELL)  # 无 artwork：缺省引用 烈.png
+    for name in ("used.png", "烈.png", "orphan.png", "orphan.jpg"):
+        (images / name).write_bytes(b"x")
+    (images / "notes.txt").write_text("keep", encoding="utf-8")
+    deleted = cleanup_unused_images(lib)
+    assert sorted(d.replace("\\", "/") for d in deleted) == ["山风/images/orphan.jpg", "山风/images/orphan.png"]
+    assert (images / "used.png").is_file() and (images / "烈.png").is_file()
+    assert (images / "notes.txt").is_file()  # 非图片不动

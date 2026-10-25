@@ -12,6 +12,7 @@
 | 原画 | default art | `artwork.images[0]` |
 | 异画 | alt art | `artwork.images[1:]`，仅立绘不同，卡面布局/形状不变；与原画 id 不同、共用一份 yaml |
 | ~~蒙版~~ | ~~mask~~ | **v1.0 废弃**：牌框卡图区天然透明，合成顺序改为 卡图→叠牌框→裁框外内容，不再需要蒙版抠图；旧 masks 封存 `assets/legacy/masks/` |
+| 版本日期 | version_date | 卡牌/机制的日期版本字段（v1.6.0）：YYYY-MM-DD，保存校验合法日期、留空由服务端填当天；每版本一个 yaml（新版本文件名 `基础stem@日期`，旧无 @ 文件不迁移）；卡牌按 id+name 归组、机制按 name 归组，数量限制按组数计，左栏 `卡名(id)` + 右侧 `(版本数)`；同组共享 layout 与 artwork（同图同设置），保存任一版本同步到组内其他版本；带 @ 文件改日期重命名；GUI 右栏日期输入 + 版本下拉 +「新版本」按钮（复制最新版）；保存/上传卡图时 id 或日期未填弹回退命名提示；退出时清理各项目 images/ 无引用图片（缺省 <id 或卡名>.png 也算引用） |
 | 牌框 | frame | 完整卡框（卡图区透明），资源 `frames/{form,combat,spell,field,reinforce}_{框品}.png`（协战仅 norm），PSD 导出经预处理（裁 alpha bbox→等比缩至高 512→居中贴 512×512 透明画布）；版型 `high`/`low` 概念废弃（PSD 框即官方定版） |
 | 框品 | frame_variant | 常规(norm)/琉璃(blue)/墨染(black)/百炼(red)；v1.0 开放——卡牌 yaml 可选字段 `frame_variant`（缺省 norm，式神/战斗/法术/形态/幻境可携带，式神牌框同形态、协战恒 norm），按框品自动切换牌框/稀有度贴图/文字颜色 |
 | 等级标 | level_badge | 三层自底向上叠加（无等级卡牌整体跳过）：① 底座 `levels/base.png`（勾玉底框）→ ② 觉醒图案 `levels/evolve_star.png`（五角星金底，仅觉醒牌；觉醒 = evolve: true，仅战斗/法术/形态/幻境可携带，式神/协战不可）→ ③ 勾玉层 `levels/level_{1,2,3}_{yellow,cyan,purple,red,blue,brown}.png`（官方勾玉个数制；默认黄色，v1.4.0 接入 legacy 六色，卡牌 yaml 可选字段 `level_color`，缺省 yellow 不写进 yaml）；布局参数三组：`pos` 底座坐标、`star_offset` 觉醒星相对底座偏移、`num_offset` 勾玉相对底座偏移（缺省 [0,0]） |

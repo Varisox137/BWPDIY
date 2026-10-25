@@ -23,7 +23,8 @@
   #c-right { width: 300px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
   #c-preview { margin-top: 10px; background: #222; max-width: 512px; max-height: 512px; }  /* 紧致原尺寸显示（卡图高 512 宽按内容、机制框原宽），不拉伸 */
   #c-portrait { display: block; margin: 16px auto 0; background: #222; }
-  .item { padding: 3px 6px; cursor: pointer; }
+  .item { padding: 3px 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 4px; }
+  .item .meta { font-weight: normal; opacity: .7; }
   .item.active { background: #d9b96a; }
   .item.shiki { font-weight: bold; }
   .item.broken { color: #c0392b; }
@@ -491,7 +492,8 @@ async function loadCards(selectStem = null) {
   buildCardList();
   if (curMech) return;  // 机制为全局池：机制编辑态下切项目/刷列表不自动选卡抢占右栏
   const all = [...cards.shikigami, ...cards.cards];
-  const target = selectStem && all.some(c => c.stem === selectStem) ? selectStem
+  const stems = new Set(all.flatMap(c => (c.versions || []).map(v => v.stem)));
+  const target = selectStem && stems.has(selectStem) ? selectStem
     : (all.length ? all[0].stem : null);
   if (target) await selectCard(target, true);
   else clearCard();
@@ -510,7 +512,9 @@ function buildCardList() {
   document.getElementById('c-shiki-count').textContent = `${cards.shikigami.length}/49`;
   document.getElementById('c-card-count').textContent = `${cards.cards.length}/299`;
 }
-function cardItem(c, isShiki) {
+function entryItem(c, activeStem) {
+  // 分组条目（v1.6.0）：卡名(id)（id 空不显示）+ 右侧非加粗 (版本数)；
+  // 点击编辑最新版本（c.stem）；同组任一版本被选中均高亮
   const d = document.createElement('div');
   d.title = c.stem;  // title 附文件名（显示名为卡内 name，与文件名脱钩）
   if (c.name == null) {  // 文件损坏（yaml 无法解析/缺 name）：显示 stem 并标红
@@ -518,10 +522,26 @@ function cardItem(c, isShiki) {
     d.title += '（文件损坏，无法读取卡名）';
     d.className = 'item broken';
   } else {
-    d.textContent = c.name;  // 主要式神有独立栏位，不再加「式神·」前缀
-    d.className = 'item' + (isShiki ? ' shiki' : '');
+    d.className = 'item';
+    const left = document.createElement('span');
+    left.textContent = c.name;
+    if (c.id) {
+      const idSpan = document.createElement('span');
+      idSpan.className = 'meta';
+      idSpan.textContent = `(${c.id})`;
+      left.appendChild(idSpan);
+    }
+    const count = document.createElement('span');
+    count.className = 'meta';
+    count.textContent = `(${c.count})`;
+    d.appendChild(left); d.appendChild(count);
   }
-  if (c.stem === curCard) d.classList.add('active');
+  if ((c.versions || [{stem: c.stem}]).some(v => v.stem === activeStem)) d.classList.add('active');
+  return d;
+}
+function cardItem(c, isShiki) {
+  const d = entryItem(c, curCard);
+  if (isShiki && c.name != null) d.classList.add('shiki');  // 主要式神独立栏位加粗（meta 不加粗）
   d.onclick = () => selectCard(c.stem);
   return d;
 }
@@ -646,7 +666,7 @@ function sanitizeStem(name) {
   return s || 'card';
 }
 function uniqueStem(base) {
-  const used = new Set([...cards.shikigami, ...cards.cards].map(c => c.stem));
+  const used = new Set([...cards.shikigami, ...cards.cards].flatMap(c => (c.versions || []).map(v => v.stem)));
   if (!used.has(base)) return base;
   for (let i = 2; ; i++) {
     const s = `${base}-${i}`;
@@ -920,6 +940,77 @@ document.getElementById('c-btn-help').onclick = () => { helpModal.style.display 
 document.getElementById('help-close').onclick = () => { helpModal.style.display = 'none'; };
 helpModal.onclick = ev => { if (ev.target === helpModal) helpModal.style.display = 'none'; };
 
+// ---- 版本日期与多版本（v1.6.0）：日期输入 + 版本下拉 + 新版本按钮（卡牌/机制共用） ----
+function currentVersions() {
+  const entries = curMech ? mechs : [...cards.shikigami, ...cards.cards];
+  const stem = curMech || curCard;
+  const e = entries.find(e => (e.versions || []).some(v => v.stem === stem));
+  return e ? e.versions : [];
+}
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function validDateStr(v) {  // 可留空；否则须合法 YYYY-MM-DD（含 2/30 等真实日期校验）
+  if (v === undefined || v === null || v === '') return true;
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(v + 'T00:00:00');
+  if (isNaN(d)) return false;
+  return v === `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function versionRows(div, data, setDate) {
+  const l = document.createElement('label');
+  l.textContent = '版本日期 ';
+  const i = document.createElement('input');
+  i.type = 'text'; i.placeholder = 'YYYY-MM-DD（留空取今天）'; i.value = data.version_date ?? '';
+  i.onchange = () => { i.value = i.value.trim(); setDate(i.value); };
+  l.appendChild(i);
+  const versions = currentVersions();
+  if (versions.length > 1) {  // 同组多版本：下拉切换旧版查看/编辑
+    const sel = document.createElement('select');
+    sel.title = '切换该条目的日期版本';
+    for (const v of versions) {
+      const op = document.createElement('option');
+      op.value = v.stem; op.textContent = v.date || v.stem;
+      if (v.stem === (curMech || curCard)) op.selected = true;
+      sel.appendChild(op);
+    }
+    sel.onchange = () => curMech ? selectMech(sel.value) : selectCard(sel.value);
+    l.appendChild(sel);
+  }
+  const nv = document.createElement('button');
+  nv.textContent = '新版本';
+  nv.style.marginLeft = '6px';
+  nv.title = '复制该条目最新版本的全部内容，创建新日期版本';
+  nv.onclick = createNewVersion;
+  l.appendChild(nv);
+  div.appendChild(l);
+}
+async function createNewVersion() {
+  if (!confirmDiscard()) return;
+  const r = await ask({title: '新版本（复制最新版本的全部内容）', value: localToday()});
+  if (r === null) return;
+  const dateStr = r.text.trim();
+  if (!validDateStr(dateStr) || !dateStr) { showFormErrors(['版本日期须为合法 YYYY-MM-DD']); return; }
+  const isMech = !!curMech;
+  const url = isMech ? `/api/mechanisms/${enc(curMech)}/new_version`
+    : `/api/projects/${enc(curProject)}/cards/${enc(curCard)}/new_version`;
+  const resp = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({date: dateStr})});
+  if (!resp.ok) { showFormErrors(await parseErrorDetail(resp)); return; }
+  const res = await resp.json();
+  if (isMech) { mDirty = false; await loadMechs(res.stem); }
+  else { cDirty = false; await loadCards(res.stem); }
+}
+function confirmFallbackNaming() {  // 保存/上传卡图前：id 与版本日期未都填写时提示回退口径
+  const data = curMech ? mechForm : formData;
+  const missing = [];
+  if (!curMech && !(data.id || '').trim()) missing.push('id 未填写：配置文件与卡图将回退按卡名命名');
+  if (!(data.version_date || '').trim()) missing.push('版本日期留空：保存时将取当前系统日期');
+  if (!missing.length) return true;
+  return confirm(missing.join('\n') + '\n继续？');
+}
+
 // ---- 右栏卡牌表单：按类型动态显隐字段，即时校验 + 防抖预览 ----
 function buildForm() {
   const div = document.getElementById('c-form');
@@ -931,6 +1022,7 @@ function buildForm() {
   infoRow(div, '类型', t);
   textRow(div, 'id', formData.id ?? '', v => setOptText('id', v));
   textRow(div, '卡名', formData.name ?? '', v => setField('name', v));
+  versionRows(div, formData, v => setField('version_date', v));
   if (t === '式神') {
     if (extOptions.marker) factionRow(div);  // 标记扩展：派系 + 派系样式并排
     else selRowC(div, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
@@ -1003,6 +1095,7 @@ function buildForm() {
     if (!curProject || !curCard) return;
     const f = fileInput.files[0];
     if (!f) return;
+    if (!confirmFallbackNaming()) { fileInput.value = ''; return; }
     let resp;
     try {
       resp = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/artwork?filename=${enc(f.name)}`,
@@ -1310,7 +1403,8 @@ function validateCardJS(d) {
   if (!TYPES.includes(t)) return [`字段 type：非法卡牌类型「${t}」，须为 ${TYPES.join('/')} 之一`];
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   if ('id' in d && typeof d.id !== 'string') errors.push('字段 id：必须是字符串');
-  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color', 'layout']);
+  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color', 'layout', 'version_date']);
+  if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYY-MM-DD 日期（可留空）');
   (STATS_BY_TYPE[t] || []).forEach(f => allowed.add(`${f}_color`));  // 数值变色伴随字段
   if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', 'portrait', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {
@@ -1407,6 +1501,7 @@ function validateCardJS(d) {
 async function saveCard() {
   const errs = validateCardJS(formData);
   if (errs.length) { showFormErrors(errs); return false; }
+  if (!confirmFallbackNaming()) return false;
   let r;
   try {
     r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}`, {method: 'PUT',
@@ -1498,9 +1593,7 @@ function buildMechList() {
   const div = document.getElementById('c-mechs');
   div.innerHTML = '';
   for (const m of mechs) {
-    const d = document.createElement('div');
-    d.textContent = m.name;
-    d.className = 'item' + (m.stem === curMech ? ' active' : '');
+    const d = entryItem(m, curMech);  // 机制无 id：仅名称 + 右侧 (版本数)
     d.onclick = () => selectMech(m.stem);
     div.appendChild(d);
   }
@@ -1511,9 +1604,9 @@ async function loadMechs(selectName = null) {
   catch (e) { listErr(['机制列表请求失败: ' + e]); return; }
   if (!r.ok) { listErr(await parseErrorDetail(r)); return; }
   mechs = await r.json();
-  if (curMech && !mechs.some(m => m.stem === curMech)) { exitMech(); clearCard(); }  // 机制已被外部删除：退出编辑态
+  if (curMech && !mechs.some(m => (m.versions || []).some(v => v.stem === curMech))) { exitMech(); clearCard(); }  // 机制已被外部删除：退出编辑态
   buildMechList();
-  if (selectName && mechs.some(m => m.stem === selectName)) await selectMech(selectName, true);
+  if (selectName && mechs.some(m => (m.versions || []).some(v => v.stem === selectName))) await selectMech(selectName, true);
 }
 function exitMech() {  // 离开机制编辑态（脏守卫由调用方先行，见 confirmDiscard）
   curMech = null; mechData = null; mechForm = null; mDirty = false;
@@ -1557,6 +1650,7 @@ function buildMechForm() {
   div.innerHTML = '';
   if (!mechForm) { div.textContent = '未选中机制'; return; }
   textRow(div, '关键字名', mechForm.name ?? '', v => setMechField('name', v));
+  versionRows(div, mechForm, v => setMechField('version_date', v));
   selRowC(div, '框类型', MECH_FRAMES.map(([v]) => v), mechForm.frame ?? 'invocation',
     v => { mechForm.frame = v; if (v !== 'seal') mechForm.badge = null; afterMechEdit(true); },
     v => MECH_FRAMES.find(([val]) => val === v)[1]);
@@ -1605,6 +1699,7 @@ function validateMechJS(d) {
   }
   if (d.badge && d.frame !== 'seal') errors.push('字段 badge：仅加护蚀印框可携带角标');
   if (typeof d.text !== 'string') errors.push('字段 text：必须是字符串');
+  if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYY-MM-DD 日期（可留空）');
   return errors;
 }
 
@@ -1635,6 +1730,7 @@ async function mechPreview(withForm) {
 async function saveMech() {
   const errs = validateMechJS(mechForm);
   if (errs.length) { showFormErrors(errs); return; }
+  if (!confirmFallbackNaming()) return;
   const oldName = curMech;
   let r;
   try {
@@ -1642,10 +1738,11 @@ async function saveMech() {
       headers: {'Content-Type': 'application/json'}, body: JSON.stringify(mechForm)});
   } catch (e) { showFormErrors(['保存请求失败: ' + e]); return; }
   if (!r.ok) { showFormErrors(await parseErrorDetail(r)); return; }
+  const res = await r.json();
   mechData = deepCopy(mechForm);
   mDirty = false;
   cStatusEl.textContent = '已保存';
-  await loadMechs(mechForm.name !== oldName ? mechForm.name : oldName);  // 重选刷新列表/表单/预览
+  await loadMechs(res.stem || oldName);  // 按最终文件名重选（改名/改日期会重命名文件）
 }
 
 // ---- 导出描述框：按当前表单内容（含未保存修改）渲染 PNG 直接下载，文件名=关键字名.png ----

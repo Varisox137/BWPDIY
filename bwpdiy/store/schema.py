@@ -24,6 +24,9 @@ GUI 等级下拉 0 = 删 level 键）；rarity 全类型可缺省（缺省 = 无
 
 from __future__ import annotations
 
+import datetime
+import re
+
 CARD_TYPES = ("式神", "战斗", "法术", "形态", "幻境", "协战")
 FACTIONS = ("红莲", "苍叶", "青岚", "紫岩", "无相")
 RARITIES = ("N", "R", "SR", "SSR")
@@ -32,7 +35,7 @@ FRAME_VARIANTS = ("norm", "blue", "black", "red")
 LEVEL_COLORS = ("yellow", "cyan", "purple", "red", "blue", "brown")
 FACTION_STYLES = (1, 2, 3)
 
-_COMMON_FIELDS = ("type", "name", "id", "description")
+_COMMON_FIELDS = ("type", "name", "id", "description", "version_date")
 _SHIKIGAMI_ONLY = ("faction",)
 # 式神专属可选渲染段字段：portrait 头像设置（{offset_x, offset_y, scale, rotate} 变换 +
 # frame 头像框开关，全可缺省；协战双式神框引用该式神卡图作头像时使用；缺省 0/0/1.0/0/画框）
@@ -61,6 +64,22 @@ _SIGNED_STATS = ("power+", "shield+", "health+")
 STAT_VALUE_COLORS = ("red", "green", "purple")
 
 
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _validate_version_date(v) -> list[str]:
+    """版本日期：可缺省/空串（保存时由 store 填当前系统日期）；否则须为合法 YYYY-MM-DD。"""
+    if v is None or v == "":
+        return []
+    if not isinstance(v, str) or not _DATE_RE.match(v):
+        return ["字段 version_date：必须是 YYYY-MM-DD 格式日期字符串（可留空）"]
+    try:
+        datetime.date.fromisoformat(v)
+    except ValueError:
+        return [f"字段 version_date：「{v}」不是合法日期"]
+    return []
+
+
 class SchemaError(Exception):
     """卡牌数据不合 schema；errors 为中文错误列表（每条指出字段名）。"""
 
@@ -73,7 +92,7 @@ class SchemaError(Exception):
 
 MECH_FRAMES = ("invocation", "skill", "seal")  # 灵咒框 / 关键字框 / 加护蚀印框
 MECH_BADGES = ("bless", "eclipse")             # 圆形角标（加护/蚀印），仅 seal 框可携带
-_MECH_FIELDS = ("name", "frame", "text", "badge")
+_MECH_FIELDS = ("name", "frame", "text", "badge", "version_date")
 
 
 def validate_mechanism(data) -> list[str]:
@@ -94,6 +113,8 @@ def validate_mechanism(data) -> list[str]:
             errors.append(f"字段 {key}：机制白名单之外的字段")
     if "text" in data and not isinstance(data["text"], str):
         errors.append("字段 text：必须是字符串")
+    if "version_date" in data:
+        errors += _validate_version_date(data["version_date"])
     if "badge" in data and data["badge"] is not None:
         if data["badge"] not in MECH_BADGES:
             errors.append(f"字段 badge：非法角标「{data['badge']}」，"
@@ -150,6 +171,8 @@ def validate_card(data) -> list[str]:
     # id 可留空（缺省）：BWPro 按 id 取文件/卡图按 id 命名用；仅校验类型
     if "id" in data and not isinstance(data["id"], str):
         errors.append("字段 id：必须是字符串")
+    if "version_date" in data:
+        errors += _validate_version_date(data["version_date"])
 
     for key in data:
         if key != "artwork" and key not in _allowed_fields(ctype):

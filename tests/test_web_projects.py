@@ -2,10 +2,12 @@
 
 fixture 用 tmp_path 的 library_dir + assets 拷贝，不碰真实 library/ 与 assets/layout.json。
 存储模型：library/<项目>/{shikigami,cards}/<任意文件名>.yaml + images/；
-文件名（stem）与卡名（name 字段）脱钩，list_cards 返回 {shikigami, cards} 两组 [{stem, name}]。
+文件名（stem）与卡名（name 字段）脱钩；list_cards 按 id+name 归组返回
+{stem(最新版本), name, id, versions, count}；保存时 version_date 留空填当天。
 """
 
 import shutil
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 
@@ -45,6 +47,18 @@ def _battle_card(name="测试斩", shikigami="测试式神"):
     return {"type": "战斗", "name": name, "level": 2, "rarity": "R",
             "shikigami": shikigami, "power+": 1, "shield+": 1,
             "description": "测试描述。"}
+
+
+TODAY = date.today().isoformat()
+
+
+def with_today(card):
+    return {**card, "version_date": TODAY}
+
+
+def entry(stem, name, vd=TODAY):
+    return {"stem": stem, "name": name, "id": None,
+            "versions": [{"stem": stem, "date": vd}], "count": 1}
 
 
 def _png_size(resp) -> tuple:
@@ -135,7 +149,7 @@ def project(client):
     return "测试项目"
 
 
-_SHIKI_ENTRY = {"stem": "shikigami", "name": "测试式神"}
+_SHIKI_ENTRY = entry("shikigami", "测试式神")
 
 
 def test_card_save_and_load_roundtrip(client, project):
@@ -143,9 +157,9 @@ def test_card_save_and_load_roundtrip(client, project):
     r = client.put(f"/api/projects/{project}/cards/测试斩", json=card)
     assert r.status_code == 200 and r.json() == {"ok": True, "updated": [], "stem": "测试斩"}
     assert client.get(f"/api/projects/{project}/cards").json() == {
-        "shikigami": [_SHIKI_ENTRY], "cards": [{"stem": "测试斩", "name": "测试斩"}]}
+        "shikigami": [_SHIKI_ENTRY], "cards": [entry("测试斩", "测试斩")]}
     got = client.get(f"/api/projects/{project}/cards/测试斩").json()
-    assert got == card
+    assert got == with_today(card)
 
 
 def test_card_rename_without_id_renames_file(client, project):
@@ -154,7 +168,7 @@ def test_card_rename_without_id_renames_file(client, project):
     r = client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card("斩改"))
     assert r.status_code == 200 and r.json()["stem"] == "斩改"
     assert client.get(f"/api/projects/{project}/cards").json()["cards"] == [
-        {"stem": "斩改", "name": "斩改"}]
+        entry("斩改", "斩改")]
     r2 = client.get(f"/api/projects/{project}/cards/测试斩")
     assert r2.status_code == 404
 
@@ -164,8 +178,7 @@ def test_card_list_sorted_by_name(client, project):
     client.put(f"/api/projects/{project}/cards/stem-a", json=_battle_card("B卡"))
     client.put(f"/api/projects/{project}/cards/stem-b", json=_battle_card("A卡"))
     lst = client.get(f"/api/projects/{project}/cards").json()
-    assert lst["cards"] == [{"stem": "stem-b", "name": "A卡"},
-                            {"stem": "stem-a", "name": "B卡"}]
+    assert lst["cards"] == [entry("stem-b", "A卡"), entry("stem-a", "B卡")]
 
 
 def test_card_save_schema_error_422_chinese(client, project):
@@ -183,7 +196,7 @@ def test_card_save_name_decoupled_from_stem(client, project):
     r = client.put(f"/api/projects/{project}/cards/stem-1", json=_battle_card("卡内名"))
     assert r.status_code == 200
     lst = client.get(f"/api/projects/{project}/cards").json()
-    assert lst["cards"] == [{"stem": "stem-1", "name": "卡内名"}]
+    assert lst["cards"] == [entry("stem-1", "卡内名")]
     assert client.get(f"/api/projects/{project}/cards/stem-1").json()["name"] == "卡内名"
 
 
@@ -195,7 +208,7 @@ def test_card_save_shikigami_rename_syncs_references(client, project):
     assert r.json() == {"ok": True, "updated": ["测试斩"], "stem": "shikigami"}
     assert client.get(f"/api/projects/{project}/cards/测试斩").json()["shikigami"] == "新名"
     lst = client.get(f"/api/projects/{project}/cards").json()
-    assert lst["shikigami"] == [{"stem": "shikigami", "name": "新名"}]
+    assert lst["shikigami"] == [entry("shikigami", "新名")]
 
 
 def test_card_save_shikigami_overwrite(client, project):
@@ -222,7 +235,7 @@ def test_card_save_reinforce_shikigami12(client, project):
             "shikigami1": "测试式神", "shikigami2": "另一式神", "description": "测试描述。"}
     r = client.put(f"/api/projects/{project}/cards/共鸣", json=card)
     assert r.status_code == 200
-    assert client.get(f"/api/projects/{project}/cards/共鸣").json() == card
+    assert client.get(f"/api/projects/{project}/cards/共鸣").json() == with_today(card)
     bad = dict(card, shikigami="测试式神")
     assert client.put(f"/api/projects/{project}/cards/共鸣", json=bad).status_code == 422
 
@@ -617,8 +630,8 @@ def test_mechanism_crud_roundtrip(client, library_dir):
     r = client.post("/api/mechanisms", json=_mech())
     assert r.status_code == 200 and r.json()["stem"] == "蛊蚀"
     assert (library_dir / "mechanisms" / "蛊蚀.yaml").is_file()
-    assert client.get("/api/mechanisms").json() == [{"stem": "蛊蚀", "name": "蛊蚀"}]
-    assert client.get("/api/mechanisms/蛊蚀").json() == _mech()
+    assert client.get("/api/mechanisms").json() == [entry("蛊蚀", "蛊蚀")]
+    assert client.get("/api/mechanisms/蛊蚀").json() == with_today(_mech())
     # 更新（PUT 同名覆盖）
     r = client.put("/api/mechanisms/蛊蚀", json=_mech(text="改后的描述。"))
     assert r.status_code == 200
@@ -640,7 +653,7 @@ def test_mechanism_rename_via_put(client, library_dir):
     r = client.put("/api/mechanisms/蛊蚀", json=_mech(name="魔蛊"))
     assert r.status_code == 200 and r.json()["stem"] == "魔蛊"
     assert not (library_dir / "mechanisms" / "蛊蚀.yaml").exists()
-    assert client.get("/api/mechanisms").json() == [{"stem": "魔蛊", "name": "魔蛊"}]
+    assert client.get("/api/mechanisms").json() == [entry("魔蛊", "魔蛊")]
 
 
 def test_mechanism_save_schema_error_422_chinese(client):
@@ -672,7 +685,7 @@ def test_mechanism_put_upsert_creates(client):
     """PUT 为 upsert 语义（与卡牌保存一致）：路径名不存在时新建。"""
     r = client.put("/api/mechanisms/新机制", json=_mech(name="新机制"))
     assert r.status_code == 200 and r.json()["stem"] == "新机制"
-    assert client.get("/api/mechanisms").json() == [{"stem": "新机制", "name": "新机制"}]
+    assert client.get("/api/mechanisms").json() == [entry("新机制", "新机制")]
 
 
 def test_mechanism_preview_png(client):
@@ -690,7 +703,7 @@ def test_mechanism_preview_override_unsaved(client):
     override = _mech(frame="seal", badge="eclipse", text="受到的伤害+1。")
     r = client.post("/api/mechanisms/蛊蚀/preview", json={"mechanism": override})
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
-    assert client.get("/api/mechanisms/蛊蚀").json() == _mech()  # 落盘未变
+    assert client.get("/api/mechanisms/蛊蚀").json() == with_today(_mech())  # 落盘未变
 
 
 def test_mechanism_preview_unrenderable_422(client):
@@ -705,4 +718,49 @@ def test_mechanism_cross_project_visible(client):
     client.post("/api/projects", json={"name": "项目甲"})
     client.post("/api/mechanisms", json=_mech())
     assert client.get("/api/projects").json() == ["项目甲"]
-    assert client.get("/api/mechanisms").json() == [{"stem": "蛊蚀", "name": "蛊蚀"}]
+    assert client.get("/api/mechanisms").json() == [entry("蛊蚀", "蛊蚀")]
+
+
+# ---------- 版本日期与多版本（v1.6.0） ----------
+
+def test_new_version_endpoint_and_grouped_list(client, project):
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    r = client.post(f"/api/projects/{project}/cards/测试斩/new_version", json={"date": "2099-01-02"})
+    assert r.status_code == 200 and r.json()["stem"] == "测试斩@2099-01-02"
+    listed = client.get(f"/api/projects/{project}/cards").json()["cards"]
+    assert len(listed) == 1 and listed[0]["count"] == 2
+    assert listed[0]["stem"] == "测试斩@2099-01-02"
+    assert [v["date"] for v in listed[0]["versions"]] == ["2099-01-02", TODAY]
+    assert client.post(f"/api/projects/{project}/cards/测试斩/new_version",
+                       json={"date": "2099-01-02"}).status_code == 409
+    assert client.post(f"/api/projects/{project}/cards/测试斩/new_version",
+                       json={"date": "不是日期"}).status_code == 422
+
+
+def test_upload_artwork_shared_across_versions(client, project, library_dir):
+    """同图同设置：上传到任一版本，同组其他版本 artwork 同步。"""
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    client.post(f"/api/projects/{project}/cards/测试斩/new_version", json={"date": "2099-01-02"})
+    r = client.post(f"/api/projects/{project}/cards/测试斩@2099-01-02/artwork?filename=a.png",
+                    content=SAMPLE_ART.read_bytes(),
+                    headers={"Content-Type": "application/octet-stream"})
+    assert r.status_code == 200
+    old = client.get(f"/api/projects/{project}/cards/测试斩").json()
+    assert old["artwork"]["images"][0]["path"] == r.json()["path"]
+
+
+def test_save_invalid_version_date_422(client, project):
+    r = client.put(f"/api/projects/{project}/cards/测试斩",
+                   json={**_battle_card(), "version_date": "2026-02-30"})
+    assert r.status_code == 422 and any("version_date" in e for e in r.json()["detail"])
+
+
+def test_mechanism_new_version_endpoint(client):
+    client.post("/api/mechanisms", json=_mech())
+    r = client.post("/api/mechanisms/蛊蚀/new_version", json={"date": "2099-01-02"})
+    assert r.status_code == 200 and r.json()["stem"] == "蛊蚀@2099-01-02"
+    listed = client.get("/api/mechanisms").json()
+    assert len(listed) == 1 and listed[0]["count"] == 2
+    assert listed[0]["stem"] == "蛊蚀@2099-01-02"
+    assert client.post("/api/mechanisms/蛊蚀/new_version",
+                       json={"date": "2099-01-02"}).status_code == 409

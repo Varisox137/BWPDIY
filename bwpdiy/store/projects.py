@@ -152,7 +152,7 @@ def _card_group(pdir: Path, sub: str, key: tuple[str, str]) -> list[tuple[Path, 
     return out
 
 
-def _group_entries(items: list[tuple[Path, dict | None]]) -> list[dict]:
+def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = False) -> list[dict]:
     """(路径, 数据|None) → 分组条目：stem=最新版本（date 最大、并列取 stem 大者；
     缺日期视为最旧），versions 按日期降序，count=版本数；损坏文件单列不合并。
     机制复用：_group_key 的 id 恒空、name=机制名，天然按名归组。"""
@@ -161,15 +161,26 @@ def _group_entries(items: list[tuple[Path, dict | None]]) -> list[dict]:
     for path, data in items:
         if data is None:
             out.append({"stem": path.stem, "name": None, "id": None,
-                        "versions": [{"stem": path.stem, "date": ""}], "count": 1})
+                        "versions": [{"stem": path.stem, "date": ""}], "count": 1,
+                        "shikigami": None, "shikigami1": None, "shikigami2": None})
         else:
             groups.setdefault(_group_key(data), []).append((path, data))
     for (cid, name), versions in groups.items():
         vs = sorted(({"stem": p.stem, "date": _norm_date(d.get("version_date")) or ""}
                      for p, d in versions), key=lambda v: (v["date"], v["stem"]))
+        latest_data = next(d for p, d in versions if p.stem == vs[-1]["stem"])
         out.append({"stem": vs[-1]["stem"], "name": name or None, "id": cid or None,
-                    "versions": list(reversed(vs)), "count": len(vs)})
-    out.sort(key=lambda c: (c["name"] is None, c["name"] or ""))
+                    "versions": list(reversed(vs)), "count": len(vs),
+                    # 最新版本的所属式神引用：GUI 按主要式神筛选/中立牌过滤用（机制恒 None）
+                    "shikigami": latest_data.get("shikigami"),
+                    "shikigami1": latest_data.get("shikigami1"),
+                    "shikigami2": latest_data.get("shikigami2")})
+    if sort_by_id:  # 主要式神/卡牌衍生物：有 id 按 id 升序（数字按数值），无 id 在后按名称
+        out.sort(key=lambda c: (not c["id"], not str(c["id"] or "").isdigit(),
+                                int(c["id"]) if str(c["id"] or "").isdigit() else (c["id"] or ""),
+                                c["name"] is None, c["name"] or ""))
+    else:  # 机制等：按名称
+        out.sort(key=lambda c: (c["name"] is None, c["name"] or ""))
     return out
 
 
@@ -234,7 +245,7 @@ def list_cards(library: Path, project: str) -> dict[str, list[dict]]:
     for sub in ("shikigami", "cards"):
         cdir = pdir / sub
         items = [(p, _read_yaml(p)) for p in cdir.glob("*.yaml")] if cdir.is_dir() else []
-        result[sub] = _group_entries(items)
+        result[sub] = _group_entries(items, sort_by_id=True)
     return result
 
 

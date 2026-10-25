@@ -30,10 +30,11 @@ def with_today(card):
     return {**card, "version_date": TODAY}
 
 
-def entry(stem, name, cid=None, vd=TODAY):
-    """单版本分组条目（list_cards/list_mechanisms 口径）。"""
+def entry(stem, name, cid=None, vd=TODAY, shiki=None):
+    """单版本分组条目（list_cards/list_mechanisms 口径；shiki=所属式神，机制/式神卡为 None）。"""
     return {"stem": stem, "name": name, "id": cid,
-            "versions": [{"stem": stem, "date": vd}], "count": 1}
+            "versions": [{"stem": stem, "date": vd}], "count": 1,
+            "shikigami": shiki, "shikigami1": None, "shikigami2": None}
 
 
 SHIKIGAMI = {"type": "式神", "name": "山风", "faction": "红莲", "power": 3, "health": 4}
@@ -157,7 +158,7 @@ def test_project_dir_not_escape(lib):
 def test_card_round_trip(lib):
     create_project(lib, "山风")
     save_card(lib, "山风", "斩", FIGHT)
-    assert list_cards(lib, "山风") == {"shikigami": [], "cards": [entry("斩", "斩")]}
+    assert list_cards(lib, "山风") == {"shikigami": [], "cards": [entry("斩", "斩", shiki="山风")]}
     assert load_card(lib, "山风", "斩") == with_today(FIGHT)
 
 
@@ -171,8 +172,8 @@ def test_list_cards_reads_name_and_sorts(lib):
     listed = list_cards(lib, "山风")
     assert listed["shikigami"] == [entry("100307", "山风")]
     assert listed["cards"] == [
-        entry("10030701", "斩"),
-        entry("10030702", "烈"),
+        entry("10030701", "斩", shiki="山风"),
+        entry("10030702", "烈", shiki="山风"),
         entry("坏", None, vd=""),
     ]
 
@@ -292,7 +293,7 @@ def test_save_card_name_ne_stem(lib):
     save_card(lib, "山风", "10030701", {**FIGHT, "name": "突"})
     assert load_card(lib, "山风", "10030701")["name"] == "突"
     listed = list_cards(lib, "山风")["cards"]
-    assert listed == [entry("10030701", "突")]
+    assert listed == [entry("10030701", "突", shiki="山风")]
 
 
 def test_save_card_validates_schema(lib):

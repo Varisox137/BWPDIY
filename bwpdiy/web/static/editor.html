@@ -115,17 +115,21 @@
     <div id="c-proj-secs" style="display:none">
       <h4>主要式神 <span id="c-shiki-count"></span></h4>
       <div id="c-shikigami"></div>
+      <div class="btnrow">
+        <button id="c-new-shiki">新建</button><button id="c-del-shiki">删除</button>
+      </div>
       <h4>卡牌/衍生物 <span id="c-card-count"></span></h4>
       <div id="c-cards"></div>
       <div class="btnrow">
         <button id="c-new-card">新建</button><button id="c-del-card">删除</button>
+        <button id="c-neutral" style="margin-left:auto">显示中立牌</button>
       </div>
     </div>
     <hr class="cat-sep">
     <h4 class="cat">机制</h4>
     <div id="c-mechs"></div>
     <div class="btnrow">
-      <button id="c-new-mech">新建</button><button id="c-ren-mech">重命名</button><button id="c-del-mech">删除</button>
+      <button id="c-new-mech">新建</button><button id="c-del-mech">删除</button>
     </div>
     <div id="c-ask"></div>
     <div id="c-list-error"></div>
@@ -476,6 +480,7 @@ function buildProjectList() {
 async function selectProject(p) {
   if (p === curProject || !confirmDiscard()) return;
   cDirty = false;
+  mainShiki = null; neutralMode = false;
   curProject = p;
   listErr([]);
   buildProjectList();
@@ -489,6 +494,7 @@ async function loadCards(selectStem = null) {
   catch (e) { listErr(['卡牌列表请求失败: ' + e]); return; }
   if (!r.ok) { cards = {shikigami: [], cards: []}; buildCardList(); if (!curMech) clearCard(); listErr(await parseErrorDetail(r)); return; }
   cards = await r.json();
+  if (mainShiki && !shikiGroupByName(mainShiki)) mainShiki = null;  // 主要式神已删除：解除筛选
   buildCardList();
   if (curMech) return;  // 机制为全局池：机制编辑态下切项目/刷列表不自动选卡抢占右栏
   const all = [...cards.shikigami, ...cards.cards];
@@ -502,15 +508,28 @@ async function loadCards(selectStem = null) {
 function shikigamiNames() {
   return cards.shikigami.map(c => c.name).filter(n => n != null);
 }
+// 主要式神筛选（v1.6.2）：选中某主要式神后卡牌栏只显示其所属卡（协战任一命中即算），
+// 该选择独立于 curCard（点选其他卡仍保持）；「显示中立牌」进入中立模式（无所属式神的卡），
+// 再点「显示全部卡牌」或选中任一条目退出。列表按 id 升序（无 id 在后按名称，store 已排好）。
+let mainShiki = null;   // 当前主要式神名（筛选上下文）
+let neutralMode = false;
+function shikiGroupByName(name) { return cards.shikigami.find(g => g.name === name) || null; }
 function buildCardList() {
   const shikiDiv = document.getElementById('c-shikigami');
   const div = document.getElementById('c-cards');
   shikiDiv.innerHTML = '';
   div.innerHTML = '';
   for (const c of cards.shikigami) shikiDiv.appendChild(cardItem(c, true));
-  for (const c of cards.cards) div.appendChild(cardItem(c, false));
+  let visible = cards.cards;
+  if (neutralMode) visible = visible.filter(c => !c.shikigami && !c.shikigami1 && !c.shikigami2);
+  else if (mainShiki) {
+    visible = visible.filter(c => [c.shikigami, c.shikigami1, c.shikigami2].includes(mainShiki));
+  }
+  for (const c of visible) div.appendChild(cardItem(c, false));
   document.getElementById('c-shiki-count').textContent = `${cards.shikigami.length}/49`;
-  document.getElementById('c-card-count').textContent = `${cards.cards.length}/299`;
+  document.getElementById('c-card-count').textContent = visible.length === cards.cards.length
+    ? `${cards.cards.length}/299` : `${visible.length}/${cards.cards.length}（筛选）`;
+  document.getElementById('c-neutral').textContent = neutralMode ? '显示全部卡牌' : '显示中立牌';
 }
 function entryItem(c, activeStem) {
   // 分组条目（v1.6.0）：卡名(id)（id 空不显示）+ 右侧非加粗 (版本数)；
@@ -549,6 +568,9 @@ async function selectCard(stem, force = false) {
   if (!force && (stem === curCard || !confirmDiscard())) return;
   if (curMech) exitMech();  // 选中卡牌与选中机制互斥（mDirty 守卫已在 confirmDiscard 完成）
   curCard = stem;
+  const sg = cards.shikigami.find(e => (e.versions || []).some(v => v.stem === stem));
+  if (sg) mainShiki = sg.name;
+  neutralMode = false;
   buildCardList();
   listErr([]);
   cStatusEl.textContent = '';
@@ -720,7 +742,13 @@ function askNewCard() {
       const tp = typeSel.value;
       if (tp === '式神') getters = [];
       else if (tp === '协战') getters = [['shikigami1', combo('所属式神1')], ['shikigami2', combo('所属式神2')]];
-      else getters = [['shikigami', combo('所属式神')]];
+      else if (mainShiki) {
+        // 已选主要式神：免填所属式神，自动适配（协战除外）
+        const note = document.createElement('div');
+        note.textContent = `所属式神：${mainShiki}（当前主要式神）`;
+        shikiBox.appendChild(note);
+        getters = [['shikigami', () => mainShiki]];
+      } else getters = [['shikigami', combo('所属式神')]];
     };
     typeSel.onchange = rebuildShiki;
     rebuildShiki();
@@ -748,11 +776,44 @@ document.getElementById('c-new-card').onclick = async () => {
   const r = await askNewCard();
   if (!r || !r.name) return;
   const stem = uniqueStem(sanitizeStem(r.name));
+  const newCard = skeleton(r.type, r.name, r.shiki);
+  if (mainShiki && r.type !== '式神') {
+    // 版本日期优先复制当前主要式神的最早版本日期（无则留空=保存时取当天）
+    const g = shikiGroupByName(mainShiki);
+    const dates = g ? g.versions.map(v => v.date).filter(Boolean).sort() : [];
+    if (dates.length) newCard.version_date = dates[0];
+  }
   const resp = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(stem)}`, {method: 'PUT',
-    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(skeleton(r.type, r.name, r.shiki))});
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(newCard)});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   listErr([]);
   await loadCards(stem);
+};
+document.getElementById('c-new-shiki').onclick = async () => {
+  if (!curProject) { listErr(['请先选择项目']); return; }
+  const r = await ask({title: '新建式神（卡名）'});
+  if (!r || !r.text) return;
+  const name = r.text.trim();
+  if (!name) return;
+  const stem = uniqueStem(sanitizeStem(name));
+  const resp = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(stem)}`, {method: 'PUT',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(skeleton('式神', name))});
+  if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
+  listErr([]);
+  await loadCards(stem);
+};
+document.getElementById('c-del-shiki').onclick = () => {
+  if (!curCard || !cards.shikigami.some(e => (e.versions || []).some(v => v.stem === curCard))) {
+    listErr(['请先选择主要式神']); return;
+  }
+  document.getElementById('c-del-card').onclick();
+};
+document.getElementById('c-neutral').onclick = () => {
+  if (neutralMode) { neutralMode = false; buildCardList(); return; }
+  neutralMode = true;
+  mainShiki = null;  // 取消主要式神选择（同步隐藏其专属牌），转为显示全部中立牌
+  clearCard();
+  buildCardList();
 };
 document.getElementById('c-del-card').onclick = async () => {
   if (!curCard) { listErr(['请先选择卡牌']); return; }
@@ -966,7 +1027,7 @@ function versionRows(div, data, setDate) {
   i.onchange = () => { i.value = i.value.trim(); setDate(i.value); };
   l.appendChild(i);
   const versions = currentVersions();
-  if (versions.length > 1) {  // 同组多版本：下拉切换旧版查看/编辑
+  if (versions.length) {  // 版本下拉常驻：切换该条目的日期版本（单版本也可编辑日期后保存）
     const sel = document.createElement('select');
     sel.title = '切换该条目的日期版本';
     for (const v of versions) {
@@ -984,6 +1045,11 @@ function versionRows(div, data, setDate) {
   nv.title = '复制该条目最新版本的全部内容，创建新日期版本';
   nv.onclick = createNewVersion;
   l.appendChild(nv);
+  const dv = document.createElement('button');
+  dv.textContent = '删除此版本';
+  dv.style.marginLeft = '6px';
+  dv.onclick = deleteCurrentVersion;
+  l.appendChild(dv);
   div.appendChild(l);
 }
 async function createNewVersion() {
@@ -1001,6 +1067,25 @@ async function createNewVersion() {
   const res = await resp.json();
   if (isMech) { mDirty = false; await loadMechs(res.stem); }
   else { cDirty = false; await loadCards(res.stem); }
+}
+async function deleteCurrentVersion() {
+  const isMech = !!curMech;
+  const stem = curMech || curCard;
+  if (!stem) return;
+  if (!confirm(`删除当前版本「${stem}」？（同组其他版本不受影响）`)) return;
+  const url = isMech ? `/api/mechanisms/${enc(stem)}`
+    : `/api/projects/${enc(curProject)}/cards/${enc(stem)}`;
+  const resp = await fetch(url, {method: 'DELETE'});
+  if (!resp.ok) { showFormErrors(await parseErrorDetail(resp)); return; }
+  const remaining = currentVersions().filter(v => v.stem !== stem);
+  const next = remaining.length ? remaining[0].stem : null;  // versions 降序，首个=剩余最新版
+  if (isMech) {
+    mDirty = false;
+    await loadMechs(next);  // 被删当前版本自动退出编辑态，剩余最新版被选中
+  } else {
+    cDirty = false; curCard = null;
+    await loadCards(next);
+  }
 }
 function confirmFallbackNaming() {  // 保存/上传卡图前：id 与版本日期未都填写时提示回退口径
   const data = curMech ? mechForm : formData;
@@ -1098,7 +1183,7 @@ function buildForm() {
     if (!confirmFallbackNaming()) { fileInput.value = ''; return; }
     let resp;
     try {
-      resp = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/artwork?filename=${enc(f.name)}`,
+      resp = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/artwork?filename=${enc(f.name)}&id=${enc(formData.id ?? '')}`,
         {method: 'POST', headers: {'Content-Type': 'application/octet-stream'}, body: f});
     } catch (e) { showFormErrors(['上传请求失败: ' + e]); return; }
     if (!resp.ok) { showFormErrors(await parseErrorDetail(resp)); return; }
@@ -1765,7 +1850,7 @@ async function exportMech() {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-// ---- 机制操作（新建/重命名/删除） ----
+// ---- 机制操作（新建/删除；重命名=右侧名称输入框修改后保存） ----
 const MECH_FRAME_BY_LABEL = Object.fromEntries(MECH_FRAMES.map(([v, l]) => [l, v]));
 document.getElementById('c-new-mech').onclick = async () => {
   const r = await ask({title: '新机制（名称 + 框体）',
@@ -1777,19 +1862,6 @@ document.getElementById('c-new-mech').onclick = async () => {
     body: JSON.stringify({name: r.text,
       frame: MECH_FRAME_BY_LABEL[r.sel] || 'skill', text: '', badge: null})});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
-  listErr([]);
-  await loadMechs(r.text);
-};
-document.getElementById('c-ren-mech').onclick = async () => {
-  if (!curMech) { listErr(['请先选择机制']); return; }
-  const r = await ask({title: `重命名机制「${curMech}」为`, value: curMech});
-  if (!r || !r.text || r.text === curMech) return;
-  if (mDirty && !confirm('当前机制有未保存修改，重命名后将丢弃，继续？')) return;
-  const resp = await fetch(`/api/mechanisms/${enc(curMech)}`, {method: 'PUT',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({...mechData, name: r.text})});  // 后端以 body 完整数据+name 变化判定改名
-  if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
-  mDirty = false;
   listErr([]);
   await loadMechs(r.text);
 };

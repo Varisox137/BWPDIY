@@ -56,9 +56,10 @@ def with_today(card):
     return {**card, "version_date": TODAY}
 
 
-def entry(stem, name, vd=TODAY):
+def entry(stem, name, vd=TODAY, shiki=None):
     return {"stem": stem, "name": name, "id": None,
-            "versions": [{"stem": stem, "date": vd}], "count": 1}
+            "versions": [{"stem": stem, "date": vd}], "count": 1,
+            "shikigami": shiki, "shikigami1": None, "shikigami2": None}
 
 
 def _png_size(resp) -> tuple:
@@ -157,7 +158,7 @@ def test_card_save_and_load_roundtrip(client, project):
     r = client.put(f"/api/projects/{project}/cards/测试斩", json=card)
     assert r.status_code == 200 and r.json() == {"ok": True, "updated": [], "stem": "测试斩"}
     assert client.get(f"/api/projects/{project}/cards").json() == {
-        "shikigami": [_SHIKI_ENTRY], "cards": [entry("测试斩", "测试斩")]}
+        "shikigami": [_SHIKI_ENTRY], "cards": [entry("测试斩", "测试斩", shiki="测试式神")]}
     got = client.get(f"/api/projects/{project}/cards/测试斩").json()
     assert got == with_today(card)
 
@@ -168,7 +169,7 @@ def test_card_rename_without_id_renames_file(client, project):
     r = client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card("斩改"))
     assert r.status_code == 200 and r.json()["stem"] == "斩改"
     assert client.get(f"/api/projects/{project}/cards").json()["cards"] == [
-        entry("斩改", "斩改")]
+        entry("斩改", "斩改", shiki="测试式神")]
     r2 = client.get(f"/api/projects/{project}/cards/测试斩")
     assert r2.status_code == 404
 
@@ -178,7 +179,7 @@ def test_card_list_sorted_by_name(client, project):
     client.put(f"/api/projects/{project}/cards/stem-a", json=_battle_card("B卡"))
     client.put(f"/api/projects/{project}/cards/stem-b", json=_battle_card("A卡"))
     lst = client.get(f"/api/projects/{project}/cards").json()
-    assert lst["cards"] == [entry("stem-b", "A卡"), entry("stem-a", "B卡")]
+    assert lst["cards"] == [entry("stem-b", "A卡", shiki="测试式神"), entry("stem-a", "B卡", shiki="测试式神")]
 
 
 def test_card_save_schema_error_422_chinese(client, project):
@@ -196,7 +197,7 @@ def test_card_save_name_decoupled_from_stem(client, project):
     r = client.put(f"/api/projects/{project}/cards/stem-1", json=_battle_card("卡内名"))
     assert r.status_code == 200
     lst = client.get(f"/api/projects/{project}/cards").json()
-    assert lst["cards"] == [entry("stem-1", "卡内名")]
+    assert lst["cards"] == [entry("stem-1", "卡内名", shiki="测试式神")]
     assert client.get(f"/api/projects/{project}/cards/stem-1").json()["name"] == "卡内名"
 
 
@@ -764,3 +765,20 @@ def test_mechanism_new_version_endpoint(client):
     assert listed[0]["stem"] == "蛊蚀@20990102"
     assert client.post("/api/mechanisms/蛊蚀/new_version",
                        json={"date": "20990102"}).status_code == 409
+
+
+def test_upload_artwork_uses_form_id(client, project):
+    """上传卡图优先按 id 命名：query 带表单当前 id（可未保存）；两位简写同样展开。"""
+    client.put(f"/api/projects/{project}/cards/shikigami", json={**_shikigami_card(), "id": "100101"})
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=a.png&id=01",
+                    content=SAMPLE_ART.read_bytes(),
+                    headers={"Content-Type": "application/octet-stream"})
+    assert r.status_code == 200 and r.json()["path"] == "10010101.png"
+    # 无 id 卡且不带 query：回退卡名命名
+    client.put(f"/api/projects/{project}/cards/无id卡",
+               json={"type": "法术", "name": "无id卡", "level": 1, "rarity": "R"})
+    r = client.post(f"/api/projects/{project}/cards/无id卡/artwork?filename=a.png",
+                    content=SAMPLE_ART.read_bytes(),
+                    headers={"Content-Type": "application/octet-stream"})
+    assert r.status_code == 200 and r.json()["path"] == "无id卡.png"

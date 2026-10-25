@@ -388,6 +388,10 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         except Exception as e:
             raise HTTPException(422, f"不是有效的图片文件: {e}") from e
         card_data = load_card(library_dir, project, card)  # 卡牌不存在 → 404；卡名合法性在此校验
+        if "id" in request.query_params:
+            card_data["id"] = request.query_params["id"]  # 表单当前 id（可尚未保存）
+        from bwpdiy.store.projects import _expand_shorthand_id
+        _expand_shorthand_id(library_dir / project, card_data)  # 两位简写与保存同口径展开
         stem = card_data.get("id") or card_data.get("name", "")
         stem = "".join(c for c in str(stem) if c not in '<>:"/\\|?*').strip().rstrip(". ")
         _WIN_RESERVED = {"CON", "PRN", "AUX", "NUL",

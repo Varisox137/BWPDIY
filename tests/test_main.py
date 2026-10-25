@@ -31,6 +31,9 @@ def fakes(monkeypatch):
                         lambda app, host, port, **kw: calls.update(uvicorn=(host, port)))
     from bwpdiy import runlog
     monkeypatch.setattr(runlog, "setup_run_logging", lambda: "test.log")  # 测试不落真实日志文件
+    import atexit
+    # main 退出清理注册在测试中不得生效：pytest 进程退出时会对真实 library/ 删图
+    monkeypatch.setattr(atexit, "register", lambda fn: None)
     import bwpdiy.__main__ as m
     monkeypatch.setattr(m, "_probe_running", lambda host, port: None)  # 不打真实网络
     return calls

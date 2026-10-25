@@ -110,6 +110,26 @@ def _norm_date(v):
     return v
 
 
+def _expand_shorthand_id(pdir: Path, data: dict) -> None:
+    """两位 id 简写展开（v1.6.2）：非协战卡有所属式神、且该式神 id 为 6 位数字时，
+    id=两位数字 → <式神id><两位>（保存时展开，存储/卡图命名恒为全长）。
+    协战（双式神前缀歧义）、无所属式神、引用不存在或式神 id 非 6 位时不展开。"""
+    cid = data.get("id")
+    if not isinstance(cid, str) or len(cid) != 2 or not cid.isdigit():
+        return
+    shiki = data.get("shikigami")
+    if not shiki or data.get("type") == "协战":
+        return
+    sdir = pdir / "shikigami"
+    for p in sorted(sdir.glob("*.yaml")) if sdir.is_dir() else []:
+        other = _read_yaml(p)
+        if other and other.get("name") == shiki:
+            sid = other.get("id")
+            if isinstance(sid, str) and len(sid) == 6 and sid.isdigit():
+                data["id"] = sid + cid
+            return
+
+
 def _split_stem(stem: str) -> tuple[str, str]:
     """stem 拆 基础名@版本日期；无 @（或 @ 位置不合法）→ (stem, "")。"""
     base, sep, d = stem.rpartition("@")
@@ -253,6 +273,7 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
     data = dict(data)
     if "version_date" in data:
         data["version_date"] = _norm_date(data["version_date"])
+    _expand_shorthand_id(pdir, data)
     errors = validate_card(data)
     if errors:
         raise SchemaError(errors)

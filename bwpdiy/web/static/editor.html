@@ -1020,7 +1020,7 @@ function buildForm() {
   // 类型创建时定死；id 可留空（上传卡图按 id 命名、留空回退卡名；改 id 不动已有卡图）；
   // 卡名直接编辑（name 字段，文件名 stem 不在 GUI 改）
   infoRow(div, '类型', t);
-  textRow(div, 'id（6/8位）', formData.id ?? '', v => setOptText('id', v));
+  textRow(div, 'id（2/6/8位）', formData.id ?? '', v => setOptText('id', v));
   textRow(div, '卡名', formData.name ?? '', v => setField('name', v));
   versionRows(div, formData, v => setField('version_date', v));
   if (t === '式神') {

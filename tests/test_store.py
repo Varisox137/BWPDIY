@@ -819,3 +819,20 @@ def test_legacy_dashed_version_date_normalized(lib):
     assert load_card(lib, "山风", "斩")["version_date"] == "20260102"
     save_mechanism(lib, "蛊蚀", {**MECH, "version_date": "2026-01-02"})
     assert load_mechanism(lib, "蛊蚀")["version_date"] == "20260102"
+
+
+def test_shorthand_id_expands_with_shikigami(lib):
+    """两位 id 简写（v1.6.2）：有所属式神且其 id 为 6 位时保存展开为全长。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "100307", {**SHIKIGAMI, "id": "100307"})
+    save_card(lib, "山风", "斩", {**FIGHT, "id": "01"})
+    assert load_card(lib, "山风", "斩")["id"] == "10030701"
+    save_card(lib, "山风", "共鸣", {**ASSIST, "id": "02"})  # 协战双式神前缀歧义：不展开
+    assert load_card(lib, "山风", "共鸣")["id"] == "02"
+    save_card(lib, "山风", "中立", {**FIGHT, "name": "中立", "shikigami": "", "id": "03"})
+    assert load_card(lib, "山风", "中立")["id"] == "03"  # 无所属式神：不展开
+    save_card(lib, "山风", "200307", {**SHIKIGAMI, "name": "薰", "id": "abc"})
+    save_card(lib, "山风", "烈", {**SPELL, "shikigami": "薰", "id": "04"})
+    assert load_card(lib, "山风", "烈")["id"] == "04"  # 式神 id 非 6 位：不展开
+    save_card(lib, "山风", "斩", {**FIGHT, "id": "10030701"})  # 全长：原样
+    assert load_card(lib, "山风", "斩")["id"] == "10030701"

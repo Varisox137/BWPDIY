@@ -64,15 +64,16 @@ _SIGNED_STATS = ("power+", "shield+", "health+")
 STAT_VALUE_COLORS = ("red", "green", "purple")
 
 
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_DATE_RE = re.compile(r"^\d{8}$")
 
 
 def _validate_version_date(v) -> list[str]:
-    """版本日期：可缺省/空串（保存时由 store 填当前系统日期）；否则须为合法 YYYY-MM-DD。"""
+    """版本日期（v1.6.1 起 8 位数字 YYYYMMDD）：可缺省/空串（保存时由 store 填当前
+    系统日期）；否则须为合法 8 位数字日期。旧带短横线数据由 store 读取/保存时归一。"""
     if v is None or v == "":
         return []
     if not isinstance(v, str) or not _DATE_RE.match(v):
-        return ["字段 version_date：必须是 YYYY-MM-DD 格式日期字符串（可留空）"]
+        return ["字段 version_date：必须是 YYYYMMDD 格式（8 位数字）日期字符串（可留空）"]
     try:
         datetime.date.fromisoformat(v)
     except ValueError:

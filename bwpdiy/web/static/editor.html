@@ -949,20 +949,20 @@ function currentVersions() {
 }
 function localToday() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 }
-function validDateStr(v) {  // 可留空；否则须合法 YYYY-MM-DD（含 2/30 等真实日期校验）
+function validDateStr(v) {  // 可留空；否则须合法 8 位数字 YYYYMMDD（含 2/30 等真实日期校验）
   if (v === undefined || v === null || v === '') return true;
-  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
-  const d = new Date(v + 'T00:00:00');
-  if (isNaN(d)) return false;
-  return v === `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  if (typeof v !== 'string' || !/^\d{8}$/.test(v)) return false;
+  const y = +v.slice(0, 4), m = +v.slice(4, 6), d = +v.slice(6, 8);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
 function versionRows(div, data, setDate) {
   const l = document.createElement('label');
   l.textContent = '版本日期 ';
   const i = document.createElement('input');
-  i.type = 'text'; i.placeholder = 'YYYY-MM-DD（留空取今天）'; i.value = data.version_date ?? '';
+  i.type = 'text'; i.placeholder = 'YYYYMMDD（留空取今天）'; i.value = data.version_date ?? '';
   i.onchange = () => { i.value = i.value.trim(); setDate(i.value); };
   l.appendChild(i);
   const versions = currentVersions();
@@ -991,7 +991,7 @@ async function createNewVersion() {
   const r = await ask({title: '新版本（复制最新版本的全部内容）', value: localToday()});
   if (r === null) return;
   const dateStr = r.text.trim();
-  if (!validDateStr(dateStr) || !dateStr) { showFormErrors(['版本日期须为合法 YYYY-MM-DD']); return; }
+  if (!validDateStr(dateStr) || !dateStr) { showFormErrors(['版本日期须为合法 YYYYMMDD（8 位数字）']); return; }
   const isMech = !!curMech;
   const url = isMech ? `/api/mechanisms/${enc(curMech)}/new_version`
     : `/api/projects/${enc(curProject)}/cards/${enc(curCard)}/new_version`;
@@ -1020,7 +1020,7 @@ function buildForm() {
   // 类型创建时定死；id 可留空（上传卡图按 id 命名、留空回退卡名；改 id 不动已有卡图）；
   // 卡名直接编辑（name 字段，文件名 stem 不在 GUI 改）
   infoRow(div, '类型', t);
-  textRow(div, 'id', formData.id ?? '', v => setOptText('id', v));
+  textRow(div, 'id（6/8位）', formData.id ?? '', v => setOptText('id', v));
   textRow(div, '卡名', formData.name ?? '', v => setField('name', v));
   versionRows(div, formData, v => setField('version_date', v));
   if (t === '式神') {
@@ -1404,7 +1404,7 @@ function validateCardJS(d) {
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   if ('id' in d && typeof d.id !== 'string') errors.push('字段 id：必须是字符串');
   const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color', 'layout', 'version_date']);
-  if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYY-MM-DD 日期（可留空）');
+  if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYYMMDD 日期（8 位数字，可留空）');
   (STATS_BY_TYPE[t] || []).forEach(f => allowed.add(`${f}_color`));  // 数值变色伴随字段
   if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', 'portrait', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {
@@ -1699,7 +1699,7 @@ function validateMechJS(d) {
   }
   if (d.badge && d.frame !== 'seal') errors.push('字段 badge：仅加护蚀印框可携带角标');
   if (typeof d.text !== 'string') errors.push('字段 text：必须是字符串');
-  if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYY-MM-DD 日期（可留空）');
+  if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYYMMDD 日期（8 位数字，可留空）');
   return errors;
 }
 

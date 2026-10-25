@@ -49,7 +49,7 @@ def _battle_card(name="测试斩", shikigami="测试式神"):
             "description": "测试描述。"}
 
 
-TODAY = date.today().isoformat()
+TODAY = date.today().strftime("%Y%m%d")
 
 
 def with_today(card):
@@ -725,14 +725,14 @@ def test_mechanism_cross_project_visible(client):
 
 def test_new_version_endpoint_and_grouped_list(client, project):
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
-    r = client.post(f"/api/projects/{project}/cards/测试斩/new_version", json={"date": "2099-01-02"})
-    assert r.status_code == 200 and r.json()["stem"] == "测试斩@2099-01-02"
+    r = client.post(f"/api/projects/{project}/cards/测试斩/new_version", json={"date": "20990102"})
+    assert r.status_code == 200 and r.json()["stem"] == "测试斩@20990102"
     listed = client.get(f"/api/projects/{project}/cards").json()["cards"]
     assert len(listed) == 1 and listed[0]["count"] == 2
-    assert listed[0]["stem"] == "测试斩@2099-01-02"
-    assert [v["date"] for v in listed[0]["versions"]] == ["2099-01-02", TODAY]
+    assert listed[0]["stem"] == "测试斩@20990102"
+    assert [v["date"] for v in listed[0]["versions"]] == ["20990102", TODAY]
     assert client.post(f"/api/projects/{project}/cards/测试斩/new_version",
-                       json={"date": "2099-01-02"}).status_code == 409
+                       json={"date": "20990102"}).status_code == 409
     assert client.post(f"/api/projects/{project}/cards/测试斩/new_version",
                        json={"date": "不是日期"}).status_code == 422
 
@@ -740,8 +740,8 @@ def test_new_version_endpoint_and_grouped_list(client, project):
 def test_upload_artwork_shared_across_versions(client, project, library_dir):
     """同图同设置：上传到任一版本，同组其他版本 artwork 同步。"""
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
-    client.post(f"/api/projects/{project}/cards/测试斩/new_version", json={"date": "2099-01-02"})
-    r = client.post(f"/api/projects/{project}/cards/测试斩@2099-01-02/artwork?filename=a.png",
+    client.post(f"/api/projects/{project}/cards/测试斩/new_version", json={"date": "20990102"})
+    r = client.post(f"/api/projects/{project}/cards/测试斩@20990102/artwork?filename=a.png",
                     content=SAMPLE_ART.read_bytes(),
                     headers={"Content-Type": "application/octet-stream"})
     assert r.status_code == 200
@@ -751,16 +751,16 @@ def test_upload_artwork_shared_across_versions(client, project, library_dir):
 
 def test_save_invalid_version_date_422(client, project):
     r = client.put(f"/api/projects/{project}/cards/测试斩",
-                   json={**_battle_card(), "version_date": "2026-02-30"})
+                   json={**_battle_card(), "version_date": "20260230"})
     assert r.status_code == 422 and any("version_date" in e for e in r.json()["detail"])
 
 
 def test_mechanism_new_version_endpoint(client):
     client.post("/api/mechanisms", json=_mech())
-    r = client.post("/api/mechanisms/蛊蚀/new_version", json={"date": "2099-01-02"})
-    assert r.status_code == 200 and r.json()["stem"] == "蛊蚀@2099-01-02"
+    r = client.post("/api/mechanisms/蛊蚀/new_version", json={"date": "20990102"})
+    assert r.status_code == 200 and r.json()["stem"] == "蛊蚀@20990102"
     listed = client.get("/api/mechanisms").json()
     assert len(listed) == 1 and listed[0]["count"] == 2
-    assert listed[0]["stem"] == "蛊蚀@2099-01-02"
+    assert listed[0]["stem"] == "蛊蚀@20990102"
     assert client.post("/api/mechanisms/蛊蚀/new_version",
-                       json={"date": "2099-01-02"}).status_code == 409
+                       json={"date": "20990102"}).status_code == 409

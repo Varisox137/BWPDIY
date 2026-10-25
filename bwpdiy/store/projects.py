@@ -103,6 +103,13 @@ def _read_yaml(path: Path):
     return data if isinstance(data, dict) else None
 
 
+def _norm_date(v):
+    """旧版带短横线日期（YYYY-MM-DD）归一为 8 位数字（v1.6.1）；其他值原样。"""
+    if isinstance(v, str) and len(v) == 10 and v[4] == "-" and v[7] == "-":
+        return v.replace("-", "")
+    return v
+
+
 def _split_stem(stem: str) -> tuple[str, str]:
     """stem 拆 基础名@版本日期；无 @（或 @ 位置不合法）→ (stem, "")。"""
     base, sep, d = stem.rpartition("@")
@@ -138,7 +145,7 @@ def _group_entries(items: list[tuple[Path, dict | None]]) -> list[dict]:
         else:
             groups.setdefault(_group_key(data), []).append((path, data))
     for (cid, name), versions in groups.items():
-        vs = sorted(({"stem": p.stem, "date": d.get("version_date") or ""}
+        vs = sorted(({"stem": p.stem, "date": _norm_date(d.get("version_date")) or ""}
                      for p, d in versions), key=lambda v: (v["date"], v["stem"]))
         out.append({"stem": vs[-1]["stem"], "name": name or None, "id": cid or None,
                     "versions": list(reversed(vs)), "count": len(vs)})
@@ -148,7 +155,7 @@ def _group_entries(items: list[tuple[Path, dict | None]]) -> list[dict]:
 
 def _checked_new_date(value) -> str:
     """新版本日期：留空取当天；否则须合法 YYYY-MM-DD。"""
-    vd = value or date.today().isoformat()
+    vd = value or date.today().strftime("%Y%m%d")
     errors = _validate_version_date(vd)
     if errors:
         raise StoreError("；".join(errors), code="invalid_data")
@@ -227,6 +234,8 @@ def load_card(library: Path, project: str, card_name: str) -> dict:
     if not isinstance(data, dict):
         raise StoreError(f"卡牌文件内容必须是 yaml 映射：{project}/{card_name}",
                          code="invalid_data")
+    if "version_date" in data:
+        data["version_date"] = _norm_date(data["version_date"])  # 旧带短横线数据读取归一
     return data
 
 
@@ -241,12 +250,14 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
     """
     pdir = _require_project(library, project)
     _check_name(card_name, "卡名")
+    data = dict(data)
+    if "version_date" in data:
+        data["version_date"] = _norm_date(data["version_date"])
     errors = validate_card(data)
     if errors:
         raise SchemaError(errors)
-    data = dict(data)
     if not data.get("version_date"):
-        data["version_date"] = date.today().isoformat()  # 留空按当前系统日期
+        data["version_date"] = date.today().strftime("%Y%m%d")  # 留空按当前系统日期
     sub = "shikigami" if data["type"] == "式神" else "cards"
     other = "cards" if sub == "shikigami" else "shikigami"
     if (pdir / other / f"{card_name}.yaml").is_file():
@@ -376,9 +387,9 @@ def new_card_version(library: Path, project: str, card_name: str, version_date) 
     sub = src.parent.name
     data = load_card(library, project, card_name)
     group = _card_group(pdir, sub, _group_key(data))
-    latest_path, latest = max(group, key=lambda pd: (pd[1].get("version_date") or "", pd[0].stem))
+    latest_path, latest = max(group, key=lambda pd: (_norm_date(pd[1].get("version_date")) or "", pd[0].stem))
     vd = _checked_new_date(version_date)
-    if any((d.get("version_date") or "") == vd for _, d in group):
+    if any((_norm_date(d.get("version_date")) or "") == vd for _, d in group):
         raise StoreError(f"该卡牌已存在版本日期为 {vd} 的版本", code="already_exists")
     target = pdir / sub / f"{_split_stem(latest_path.stem)[0]}@{vd}.yaml"
     if target.is_file():
@@ -487,6 +498,8 @@ def load_mechanism(library: Path, name: str) -> dict:
     if not isinstance(data, dict):
         raise StoreError(f"机制文件内容必须是 yaml 映射：{name}", code="invalid_data")
     data.pop("marks", None)  # marks（唯一/瞬发角标）已移除：旧文件静默迁移，保存时不再写回
+    if "version_date" in data:
+        data["version_date"] = _norm_date(data["version_date"])
     return data
 
 
@@ -495,10 +508,12 @@ def save_mechanism(library: Path, name: str, data: dict) -> Path:
     无 @ 的旧文件保持仅机制名（不强制加日期）；带 @ 的文件名随机制名/日期同步
     重命名（目标已存在则拒绝）。返回落盘路径。"""
     _check_name(name, "机制名")
+    data = dict(data)
+    if "version_date" in data:
+        data["version_date"] = _norm_date(data["version_date"])
     errors = validate_mechanism(data)
     if errors:
         raise SchemaError(errors)
-    data = dict(data)
     if not data.get("version_date"):
         data["version_date"] = date.today().isoformat()
     mdir = _mech_dir(library)
@@ -532,9 +547,9 @@ def new_mechanism_version(library: Path, name: str, version_date) -> Path:
         d = _read_yaml(p)
         if d and d.get("name") == current["name"]:
             group.append((p, d))
-    latest_path, latest = max(group, key=lambda pd: (pd[1].get("version_date") or "", pd[0].stem))
+    latest_path, latest = max(group, key=lambda pd: (_norm_date(pd[1].get("version_date")) or "", pd[0].stem))
     vd = _checked_new_date(version_date)
-    if any((d.get("version_date") or "") == vd for _, d in group):
+    if any((_norm_date(d.get("version_date")) or "") == vd for _, d in group):
         raise StoreError(f"该机制已存在版本日期为 {vd} 的版本", code="already_exists")
     target = mdir / f"{_split_stem(latest_path.stem)[0]}@{vd}.yaml"
     if target.is_file():

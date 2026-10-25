@@ -106,6 +106,21 @@ def test_check_update_bad_tag(monkeypatch):
     assert updater.check_update()["has_update"] is False
 
 
+
+def test_check_update_error_log_dedup(monkeypatch, caplog):
+    """自动轮询每 1min 一次：相同错误只记一条日志，错误变化再记。"""
+    import logging
+    updater._LAST_CHECK_LOG.update(error=None, latest=None)
+    _mock_urlopen(monkeypatch, exc=OSError("离线"))
+    with caplog.at_level(logging.INFO, logger="bwpdiy.updater"):
+        updater.check_update()
+        updater.check_update()
+    assert len(caplog.records) == 1
+    _mock_urlopen(monkeypatch, exc=OSError("另一种错误"))
+    with caplog.at_level(logging.INFO, logger="bwpdiy.updater"):
+        updater.check_update()
+    assert len(caplog.records) == 2
+
 # ---------- sha256 下载校验 ----------
 
 def test_verify_download_ok(tmp_path):

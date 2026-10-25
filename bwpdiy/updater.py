@@ -49,6 +49,11 @@ _MIN_EXE_SIZE = 5 * 1024 * 1024  # 打包产物 ~30MB+，小于 5MB 必为错误
 _PROGRESS = {"active": False, "downloaded": 0, "total": 0}
 
 
+# 检查更新日志去重：自动轮询每 1min 一次，相同错误/相同新版本只记一次，
+# 一次成功检查后重置错误去重（网络恢复后再失败会重新记录）
+_LAST_CHECK_LOG = {"error": None, "latest": None}
+
+
 def download_progress() -> dict:
     """当前下载进度快照：{active, downloaded, total}（字节）。"""
     return dict(_PROGRESS)
@@ -75,6 +80,7 @@ def check_update() -> dict:
         })
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             data = json.loads(resp.read())
+        _LAST_CHECK_LOG["error"] = None  # 检查成功：重置错误去重（恢复后再失败会重新记）
         latest = parse_version(str(data.get("tag_name", "")))
         current = parse_version(__version__)
         if latest is None or current is None or latest <= current:
@@ -105,11 +111,15 @@ def check_update() -> dict:
             "sha256_url": sha_asset["browser_download_url"],
             "size": asset.get("size", 0),
         })
-        log.info("检查更新：发现新版本 %s（当前 %s），资产 %s（%d 字节）",
-                 data["tag_name"], __version__, asset["name"], asset.get("size", 0))
+        if _LAST_CHECK_LOG["latest"] != data["tag_name"]:
+            log.info("检查更新：发现新版本 %s（当前 %s），资产 %s（%d 字节）",
+                     data["tag_name"], __version__, asset["name"], asset.get("size", 0))
+            _LAST_CHECK_LOG["latest"] = data["tag_name"]
     except Exception as e:  # 离线/限流/格式变化：静默降级为「无更新」
         result["error"] = str(e)
-        log.info("检查更新失败（按无更新处理）：%s", e)
+        if _LAST_CHECK_LOG["error"] != str(e):
+            log.info("检查更新失败（按无更新处理）：%s", e)
+            _LAST_CHECK_LOG["error"] = str(e)
     return result
 
 

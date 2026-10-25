@@ -835,7 +835,7 @@ async function cPreviewPortrait(withForm) {
 // 右键按住+滚轮=旋转（每档 ±3°，正角度顺时针，与 artRow 数值口径一致）；
 // 数值双向同步右侧输入框（artRow 输入框按 id 回写）；撤回栈与脏标记同 afterEdit 口径，
 // 但用 60ms 短防抖且只刷新当前通道预览（卡图四项不影响头像预览、头像四项不影响卡面）
-// 无卡图（或机制编辑态/非式神卡的头像框）时不响应
+// 机制编辑态（或非式神卡的头像框）不响应；无显式 artwork.path 的缺省图（<id 或卡名>.png）同样可调
 function afterMouseEdit(channel) {
   noteEdit();
   cDirty = true;
@@ -848,21 +848,28 @@ function afterMouseEdit(channel) {
     else cPreviewForm(false);
   }, 60);
 }
+function ensureArtFirst() {
+  // 物化 artwork.images[0] 编辑条目（path 可缺省 = <id 或卡名>.png，缺省图同样吃变换）
+  if (!formData.artwork || typeof formData.artwork !== 'object') formData.artwork = {};
+  const images = Array.isArray(formData.artwork.images) ? formData.artwork.images : [];
+  const first = (images[0] && typeof images[0] === 'object') ? images[0] : {};
+  formData.artwork.images = [first, ...images.slice(1)];
+  return first;
+}
 function artMouseChannel(img) {
   if (!formData || curMech) return null;
   const art = formData.artwork && Array.isArray(formData.artwork.images) ? formData.artwork.images[0] : null;
-  if (!art || !art.path) return null;
   const isPortrait = img === cPortraitImg;
   if (isPortrait && formData.type !== '式神') return null;
   const get = k => {
     const src = isPortrait
       ? (formData.portrait && typeof formData.portrait === 'object' ? formData.portrait : {})
-      : art;
+      : (art || {});
     return src[k] ?? (k === 'scale' ? 1 : 0);
   };
   const set = (k, v) => {
     if (isPortrait) formData.portrait = {...(formData.portrait || {}), [k]: v};
-    else art[k] = v;
+    else ensureArtFirst()[k] = v;
     const inp = document.getElementById(`${isPortrait ? 'portrait' : 'art'}-${k}`);
     if (inp) { inp.value = v; inp._cur = v; }  // 回写输入框（_cur 为手动提交的回退基准）
     afterMouseEdit(isPortrait ? 'portrait' : 'art');
@@ -1004,11 +1011,7 @@ function buildForm() {
     if (!resp.ok) { showFormErrors(await parseErrorDetail(resp)); return; }
     const res = await resp.json();
     // 上传已写盘：把 artwork 路径并进表单数据（不置脏），避免后续保存用旧值覆盖
-    if (!formData.artwork || typeof formData.artwork !== 'object') formData.artwork = {};
-    const images = Array.isArray(formData.artwork.images) ? formData.artwork.images : [];
-    const first = (images[0] && typeof images[0] === 'object') ? images[0] : {};
-    first.path = res.path;
-    formData.artwork.images = [first, ...images.slice(1)];
+    ensureArtFirst().path = res.path;
     buildForm();  // 重建表单：立即出现卡图定位输入框（原先仅表单构建时按旧 path 条件渲染）
     if (cDirty) scheduleCardPreview(); else cPreviewProject();
   };
@@ -1022,9 +1025,10 @@ function buildForm() {
   div.appendChild(curArtRow);
   // 卡图定位：dx/dy/scale/旋转数字输入（旋转绕图片中心、画布自动扩展；亦可在预览画布上拖拽/滚轮/右键滚轮操作，双向同步），改动走保存按钮；
   // 式神卡每项右侧并排「头像」设置（portrait 段，协战双式神框引用本卡图作头像时使用）
-  if (curArt) {
-    const artFirst = formData.artwork.images[0];
-    const setArt = (k, v) => { artFirst[k] = v; afterEdit(); };
+  {
+    const artFirst = (formData.artwork && Array.isArray(formData.artwork.images) &&
+      formData.artwork.images[0]) || {};
+    const setArt = (k, v) => { ensureArtFirst()[k] = v; afterEdit(); };
     const isShiki = t === '式神';
     const port = (isShiki && formData.portrait && typeof formData.portrait === 'object') ? formData.portrait : {};
     const setPort = (k, v) => { formData.portrait = {...(formData.portrait || {}), [k]: v}; afterEdit(); };

@@ -2048,8 +2048,10 @@ let cardLayoutMode = null;   // null | 当前卡 stem
 let singleLayout = null;     // 合并后的单类型布局工作副本（typeLayout() 在模式内返回它）
 let singleSnapshot = null;   // 进入模式时的快照（「还原更改」基准）
 let singleDirty = false;
-// ---- 机制布局模式：布局 tab 第七类「机制」，三画布同屏预览三类框体（仅全局模式可进）----
+// ---- 机制布局模式：布局 tab 第八类「机制」，三画布同屏预览三类框体（仅全局模式可进）----
 let mechLayoutMode = false;
+// 对局式神是独立全局布局段，不属于六种卡牌类型，也与卡牌库临时预览模式分离。
+let entityLayoutMode = false;
 // 与 render/mech.py DEFAULT_LAYOUT 同口径（缺键/缺段时补齐，保存时全段随 layouts 写回）：
 // 三类框共用仅字号/小图标；角标配置随 seal 区域（badge 仅 seal 合法）；名称无独立偏移
 const MECH_LAYOUT_DEFAULTS = {name_size: 26, text_size: 24, icon_scale: 1.0};
@@ -2108,7 +2110,10 @@ async function layoutBoot() {
   }
   buildTypes(); selectType(cardLayoutMode ? curType : '式神');  // 默认卡牌类型：式神（单卡模式保持该卡类型）
 }
-function typeLayout() { return cardLayoutMode ? singleLayout : layouts[curType]; }
+function typeLayout() {
+  if (entityLayoutMode) return layouts['对局式神'];
+  return cardLayoutMode ? singleLayout : layouts[curType];
+}
 function markDirty() { if (cardLayoutMode) singleDirty = true; else dirty = true; }
 // 快照记录：仅在无未保存修改时覆写，保证快照恒为本轮编辑前的已保存状态
 function captureLayoutSnapshot() {
@@ -2135,11 +2140,12 @@ function formatDiffs(diffs) {
   const shown = diffs.slice(0, 10).join('、');
   return diffs.length > 10 ? `${shown} 等 ${diffs.length} 处` : shown;
 }
-// 还原：all=false 仅还原当前类型（机制模式为「机制」段），true 还原六类型+机制；
+// 还原：all=false 仅还原当前独立布局段，true 还原六类型+对局式神+机制；
 // 还原本身计入未保存修改（markDirty）
 function restoreLayout(all) {
   if (!layoutSnapshot) { statusEl.textContent = '布局尚未加载'; return; }
-  const targets = all ? [...TYPES, '机制'] : [mechLayoutMode ? '机制' : curType];
+  const current = entityLayoutMode ? '对局式神' : (mechLayoutMode ? '机制' : curType);
+  const targets = all ? [...TYPES, '对局式神', '机制'] : [current];
   const parts = [];
   for (const t of targets) {
     const d = layoutDiffs(layouts[t] || {}, layoutSnapshot[t] || {});
@@ -2151,7 +2157,9 @@ function restoreLayout(all) {
     if (t in layoutSnapshot) layouts[t] = deepCopy(layoutSnapshot[t]);
   }
   markDirty();
-  if (mechLayoutMode) selectMechLayout(); else selectType(curType);  // 全套重建并刷新预览
+  if (entityLayoutMode) selectEntityLayout();
+  else if (mechLayoutMode) selectMechLayout();
+  else selectType(curType);  // 全套重建并刷新预览
   statusEl.textContent = '已还原（未保存）';
 }
 // 当前类型卡牌内容：样卡字段 + 用户覆盖（覆盖优先；不改的不传，后端深拷贝合并）；
@@ -2181,16 +2189,16 @@ function schedulePreview() {
 }
 
 // 尺寸类字段跨类型同步：同名元素在所有类型间保持一致（pos 与内容类字段不同步）；
-// 单卡模式无跨类型同步（只改单卡工作副本）
+// 单卡与对局式神模式均无跨类型同步（只改各自独立布局段）
 function syncElemField(name, key, val) {
-  if (cardLayoutMode) return;
+  if (cardLayoutMode || entityLayoutMode) return;
   for (const t of TYPES) {
     const el = layouts[t] && layouts[t].elements && layouts[t].elements[name];
     if (el && key in el) el[key] = val;
   }
 }
 function syncRegionField(name, key, val) {
-  if (cardLayoutMode) return;
+  if (cardLayoutMode || entityLayoutMode) return;
   for (const t of TYPES) {
     const r = layouts[t] && layouts[t].text_regions && layouts[t].text_regions[name];
     if (r && key in r) r[key] = val;
@@ -2217,13 +2225,21 @@ function buildTypes() {
     b.textContent = t; b.className = 'tab';
     b.onclick = () => {
       // 切换类型不丢弃修改（layouts 常驻内存），但提醒仍未保存
-      if ((t !== curType || mechLayoutMode) && dirty &&
+      if ((t !== curType || mechLayoutMode || entityLayoutMode) && dirty &&
           !confirm('布局有未保存修改（切换类型不会丢弃，但仍未保存），继续？')) return;
       selectType(t);
     };
     div.appendChild(b);
   }
-  // 第七类「机制」：机制描述框布局（三画布同屏预览三类框体，配置三类共用）
+  const be = document.createElement('button');
+  be.textContent = '对局式神'; be.className = 'tab';
+  be.onclick = () => {
+    if (!entityLayoutMode && dirty &&
+        !confirm('布局有未保存修改（切换类型不会丢弃，但仍未保存），继续？')) return;
+    selectEntityLayout();
+  };
+  div.appendChild(be);
+  // 第八类「机制」：机制描述框布局（三画布同屏预览三类框体，配置三类共用）
   const bm = document.createElement('button');
   bm.textContent = '机制'; bm.className = 'tab';
   bm.onclick = () => {
@@ -2256,12 +2272,20 @@ function restoreSingleLayout() {
   statusEl.textContent = '已还原（未保存）';
 }
 function selectType(t) {
-  mechLayoutMode = false; showMechPanel(false);
+  entityLayoutMode = false; mechLayoutMode = false; showMechPanel(false);
   curType = t; sel = null; previewImg = null;  // 清旧图，避免与新类型覆盖层短暂共存
   document.querySelectorAll('#l-types .tab').forEach(b =>
     b.classList.toggle('active', b.textContent === t));
   document.querySelectorAll('#l-frame-variants .fv').forEach(b =>
     b.disabled = !FRAME_VARIANT_TYPES.has(t));
+  buildLists(); buildCardProps(); buildProps(); refreshPreview();
+}
+function selectEntityLayout() {
+  entityLayoutMode = true; mechLayoutMode = false; sel = null; previewImg = null;
+  document.querySelectorAll('#l-types .tab').forEach(b =>
+    b.classList.toggle('active', b.textContent === '对局式神'));
+  showMechPanel(false);
+  document.querySelectorAll('#l-frame-variants .fv').forEach(b => b.disabled = true);
   buildLists(); buildCardProps(); buildProps(); refreshPreview();
 }
 
@@ -2274,7 +2298,7 @@ function showMechPanel(on) {
     document.getElementById(id).style.display = on ? 'none' : '';
 }
 function selectMechLayout() {
-  mechLayoutMode = true; sel = null; previewImg = null;
+  entityLayoutMode = false; mechLayoutMode = true; sel = null; previewImg = null;
   document.querySelectorAll('#l-types .tab').forEach(b =>
     b.classList.toggle('active', b.textContent === '机制'));
   showMechPanel(true);
@@ -2365,6 +2389,7 @@ async function refreshMechPreview() {
 function buildCardProps() {
   const div = document.getElementById('l-cardprops');
   div.innerHTML = '';
+  if (entityLayoutMode) return;  // 对局式神布局使用固定样卡，不编辑卡牌内容
   if (!cardLayoutMode && (!samples || !samples[curType])) return;  // 单卡模式数据源是 formData，无需样卡
   textRow(div, '卡名', cardField('name') || '', v => setCardField('name', v));
   selRow(div, '等级', ['0', '1', '2', '3'], String(cardField('level') ?? 0),
@@ -2464,6 +2489,7 @@ function refreshSel() {
 
 // 预览
 async function refreshPreview() {
+  if (entityLayoutMode) return refreshEntityLayoutPreview();
   if (mechLayoutMode) return refreshMechPreview();  // 机制模式：三画布分通道刷新
   const seq = ++previewSeq;
   let r;
@@ -2493,6 +2519,27 @@ async function refreshPreview() {
     statusEl.textContent = '预览请求失败: ' + e;
     return;
   }
+  return handleLayoutPreviewResponse(r, seq);
+}
+async function refreshEntityLayoutPreview() {
+  const seq = ++previewSeq;
+  let r;
+  try {
+    r = await fetch('/api/entity-preview', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        card: {type: '式神', name: '布局样卡'},
+        state: {level: 2, power: 2, health: 5, combat_power: 1, shield: -1},
+        layout: typeLayout(),
+      }),
+    });
+  } catch (e) {
+    if (seq === previewSeq) statusEl.textContent = '预览请求失败: ' + e;
+    return;
+  }
+  return handleLayoutPreviewResponse(r, seq);
+}
+async function handleLayoutPreviewResponse(r, seq) {
   if (seq !== previewSeq) return;  // 期间又有新调整，丢弃本次结果
   if (!r.ok) {
     statusEl.textContent = '预览失败: ' + (await r.json()).detail;
@@ -2507,6 +2554,9 @@ async function refreshPreview() {
     if (seq !== previewSeq) { URL.revokeObjectURL(img.src); return; }
     previewOffset = (off.length === 2 && off.every(Number.isFinite)) ? off : [0, 0];
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    const scale = entityLayoutMode ? 4 : 1;
+    canvas.style.width = scale === 1 ? '' : `${img.naturalWidth * scale}px`;
+    canvas.style.height = scale === 1 ? '' : `${img.naturalHeight * scale}px`;
     previewImg = img; draw(); URL.revokeObjectURL(img.src);
   };
   img.src = URL.createObjectURL(blob);
@@ -2544,7 +2594,7 @@ function draw() {
       handle(centers[1], active ? '#ff4' : '#4f4', 4);
     }
   }
-  for (const [name, r] of Object.entries(tl.text_regions)) {
+  for (const [name, r] of Object.entries(tl.text_regions || {})) {
     const active = sel && sel.name === name;
     ctx.strokeStyle = active ? '#ff4' : '#4f4';
     ctx.strokeRect(r.center[0] - r.width / 2, r.center[1] - r.height / 2, r.width, r.height);
@@ -2579,9 +2629,12 @@ window.addEventListener('mousemove', ev => {
 window.addEventListener('mouseup', () => { if (drag) { drag = null; refreshPreview(); } });
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, Math.round(v))); }
 function mousePos(ev) {
-  // 画布像素 → 卡面空间布局坐标（加回裁剪原点）
+  // 显示像素先按画布实际缩放比反算为原生像素，再加回裁剪原点。
   const r = canvas.getBoundingClientRect();
-  return [ev.clientX - r.left + previewOffset[0], ev.clientY - r.top + previewOffset[1]];
+  return [
+    (ev.clientX - r.left) * canvas.width / r.width + previewOffset[0],
+    (ev.clientY - r.top) * canvas.height / r.height + previewOffset[1],
+  ];
 }
 function pick(mx, my) {
   const tl = typeLayout();
@@ -2618,7 +2671,7 @@ function pick(mx, my) {
     }
     if (near(...e.pos)) return { sel: {kind: 'element', name}, set: (x, y) => { e.pos = [x, y]; } };
   }
-  for (const [name, r] of Object.entries(tl.text_regions)) {
+  for (const [name, r] of Object.entries(tl.text_regions || {})) {
     const off = r.center_offset || [0, 0];
     // 居中锚点仅在偏移非零时可拖（与中心重合时让位给中心拖拽）
     if ((off[0] || off[1]) && near(r.center[0] + off[0], r.center[1] + off[1]))
@@ -2724,10 +2777,12 @@ function buildProps() {
     if (e.kind === 'level_badge') {
       // 等级组件是否绘制由卡面等级决定（等级 0=无等级不绘制），不再提供启用开关
       numRow(div, '底座尺寸', e.base_size, v => { e.base_size = v; syncElemField(sel.name, 'base_size', v); });
-      numRow(div, '星标尺寸', e.star_size, v => { e.star_size = v; syncElemField(sel.name, 'star_size', v); });
-      e.star_offset ??= [0, 0];
-      numRow(div, '星标偏移 x', e.star_offset[0], v => { e.star_offset[0] = v; syncElemField(sel.name, 'star_offset', [...e.star_offset]); draw(); });
-      numRow(div, '星标偏移 y', e.star_offset[1], v => { e.star_offset[1] = v; syncElemField(sel.name, 'star_offset', [...e.star_offset]); draw(); });
+      if (!entityLayoutMode) {
+        numRow(div, '星标尺寸', e.star_size, v => { e.star_size = v; syncElemField(sel.name, 'star_size', v); });
+        e.star_offset ??= [0, 0];
+        numRow(div, '星标偏移 x', e.star_offset[0], v => { e.star_offset[0] = v; syncElemField(sel.name, 'star_offset', [...e.star_offset]); draw(); });
+        numRow(div, '星标偏移 y', e.star_offset[1], v => { e.star_offset[1] = v; syncElemField(sel.name, 'star_offset', [...e.star_offset]); draw(); });
+      }
       numRow(div, '勾玉尺寸', e.num_size, v => { e.num_size = v; syncElemField(sel.name, 'num_size', v); });
       e.num_offset ??= [0, 0];
       numRow(div, '勾玉偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
@@ -2810,6 +2865,7 @@ const STYLE_KEYS = new Set(["size", "icon_size", "font_size", "num_offset", "sig
                             "fragile_icon_size", "fragile_num_offset", "fragile_sign_offset", "fragile_variant",
                             "margin", "base_size", "star_size", "num_size", "font", "style"]);
 function propagateFromCurrentType() {
+  if (entityLayoutMode) return;
   const cur = typeLayout().elements || {};
   for (const [name, el] of Object.entries(cur)) {
     for (const t of TYPES) {

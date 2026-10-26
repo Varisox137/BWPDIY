@@ -349,7 +349,7 @@ def test_propagate_style_keys_only(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
-let curType = "战斗";
+let curType = "战斗", entityLayoutMode = false;
 {style_keys}
 {propagate}
 const layouts = {{
@@ -523,6 +523,154 @@ assert.ok(validateCardJS({{...battle, layout: 'junk'}}).some(e => e.includes('la
 assert.ok(validateCardJS({{...battle, layout: {{junk: {{}}}}}}).some(e => e.includes('layout.junk')));
 assert.ok(validateCardJS({{...battle, layout: {{elements: {{name: 'x'}}}}}}).some(e => e.includes('layout.elements')));
 console.log("OK");
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_layout_mode_isolated_from_card_types(tmp_path):
+    """实体布局独立编辑、切换和还原，不向六种卡牌类型传播，也不显示觉醒星。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function typeLayout()",
+        "function syncElemField(name, key, val)",
+        "function syncRegionField(name, key, val)",
+        "function selectType(t)",
+        "function selectMechLayout()",
+        "function selectEntityLayout()",
+        "function layoutDiffs(a, b)",
+        "function formatDiffs(diffs)",
+        "function restoreLayout(all)",
+        "function buildTypes()",
+        "function buildProps()",
+    ))
+    import re
+    style_keys = re.search(r"const STYLE_KEYS = .*?;", script, re.S).group(0)
+    propagate = _extract_js(script, "function propagateFromCurrentType()")
+    driver = f"""
+const assert = require('node:assert');
+const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
+const FRAME_VARIANT_TYPES = new Set(TYPES.filter(t => t !== '协战'));
+let curType = '式神', cardLayoutMode = null, singleLayout = {{elements: {{}}}};
+let entityLayoutMode = false, mechLayoutMode = false;
+let sel = null, previewImg = null, dirty = false, singleDirty = false;
+const base = () => ({{elements: {{power: {{kind: 'stat', field: 'power', pos: [1, 2],
+  icon_size: 16, num_offset: [0, 1], font_size: 12}}}},
+  text_regions: {{desc: {{center: [1, 2], width: 20, height: 10}}}}}});
+const layouts = Object.fromEntries(TYPES.map(t => [t, base()]));
+layouts['对局式神'] = {{elements: {{level: {{kind: 'level_badge', pos: [32, 88],
+  base_size: 18, num_size: 14, num_offset: [0, 0]}}}}}};
+layouts['机制'] = {{text_size: 24}};
+const statusEl = {{textContent: ''}};
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function markDirty() {{ dirty = true; }}
+function showMechPanel(on) {{}}
+function buildLists() {{}}
+function buildCardProps() {{}}
+function buildMechProps() {{}}
+function refreshPreview() {{}}
+function restoreSingleLayout() {{}}
+function draw() {{}}
+function confirm() {{ return true; }}
+function disp(key) {{ return key; }}
+function title(text) {{ return {{text}}; }}
+const propLabels = [];
+function numRow(div, label) {{ propLabels.push(label); }}
+function element(tag) {{ return {{tag, children: [], className: '', textContent: '', style: {{}},
+  appendChild(child) {{ this.children.push(child); }} }}; }}
+const typesDiv = element('div'), propsDiv = element('div');
+const document = {{
+  getElementById: id => id === 'l-types' ? typesDiv : propsDiv,
+  querySelectorAll: () => [],
+  createElement: element,
+}};
+{style_keys}
+{propagate}
+{functions}
+entityLayoutMode = true;
+assert.strictEqual(typeLayout(), layouts['对局式神']);
+const before = deepCopy(layouts);
+syncElemField('power', 'icon_size', 99);
+syncRegionField('desc', 'width', 99);
+propagateFromCurrentType();
+assert.deepStrictEqual(layouts, before);
+selectType('战斗');
+assert(!entityLayoutMode && !mechLayoutMode);
+selectEntityLayout();
+assert(entityLayoutMode && !mechLayoutMode);
+selectMechLayout();
+assert(!entityLayoutMode && mechLayoutMode);
+buildTypes();
+const tabs = typesDiv.children.filter(x => x.className === 'tab').map(x => x.textContent);
+assert.deepStrictEqual(tabs, [...TYPES, '对局式神', '机制']);
+assert(!TYPES.includes('对局式神'));
+const snapshot = deepCopy(layouts);
+layouts['战斗'].elements.power.pos = [9, 9];
+layouts['对局式神'].elements.level.pos = [1, 1];
+layouts['机制'].text_size = 30;
+let layoutSnapshot = deepCopy(snapshot);
+restoreLayout(true);
+assert.deepStrictEqual(layouts, snapshot);
+entityLayoutMode = true; mechLayoutMode = false;
+sel = {{kind: 'element', name: 'level'}};
+propLabels.length = 0;
+buildProps();
+assert(propLabels.includes('底座尺寸') && propLabels.includes('勾玉尺寸'));
+assert(!propLabels.some(label => label.includes('星标')));
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_layout_preview_native_size_and_scaled_mouse(tmp_path):
+    """实体布局固定样卡走无项目预览；CSS 放大不改变 PNG 尺寸，鼠标按比例反算。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "async function refreshPreview()",
+        "async function refreshEntityLayoutPreview()",
+        "async function handleLayoutPreviewResponse(r, seq)",
+        "function mousePos(ev)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let entityLayoutMode = true, mechLayoutMode = false, cardLayoutMode = null;
+let previewSeq = 0, dirty = false, singleDirty = false;
+let previewImg = null, previewOffset = [0, 0];
+const layouts = {{'对局式神': {{elements: {{}}}}}};
+const canvas = {{width: 0, height: 0, style: {{}},
+  getBoundingClientRect: () => ({{left: 10, top: 20, width: 256, height: 384}})}};
+const statusEl = {{textContent: ''}};
+const requests = [];
+function typeLayout() {{ return layouts['对局式神']; }}
+function draw() {{}}
+const URL = {{createObjectURL: () => 'blob:entity', revokeObjectURL: () => {{}}}};
+class Image {{
+  constructor() {{ this.naturalWidth = 64; this.naturalHeight = 96; }}
+  set src(value) {{ this._src = value; this.onload(); }}
+  get src() {{ return this._src; }}
+}}
+async function fetch(url, options) {{
+  requests.push({{url, options}});
+  return {{ok: true, headers: {{get: () => '0,0'}}, blob: async () => ({{kind: 'png'}})}};
+}}
+{functions}
+(async () => {{
+  await refreshPreview();
+  assert.strictEqual(requests.length, 1);
+  assert.strictEqual(requests[0].url, '/api/entity-preview');
+  assert.deepStrictEqual(JSON.parse(requests[0].options.body), {{
+    card: {{type: '式神', name: '布局样卡'}},
+    state: {{level: 2, power: 2, health: 5, combat_power: 1, shield: -1}},
+    layout: layouts['对局式神'],
+  }});
+  assert.strictEqual(canvas.width, 64);
+  assert.strictEqual(canvas.height, 96);
+  assert.strictEqual(canvas.style.width, '256px');
+  assert.strictEqual(canvas.style.height, '384px');
+  assert.deepStrictEqual(mousePos({{clientX: 138, clientY: 212}}), [32, 48]);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
 """
     _run_node(tmp_path, driver)
 

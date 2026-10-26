@@ -1,3 +1,4 @@
+import pytest
 from PIL import Image
 
 from bwpdiy.render.artwork import fit_artwork, rotate_artwork
@@ -17,6 +18,23 @@ def test_fit_scale_enlarges():
     # scale 放大后裁剪窗口左移空间变大，不报错且尺寸不变
     out = fit_artwork(make_art(), (512, 512), scale=1.5)
     assert out.size == (512, 512)
+
+
+def test_fit_rejects_oversized_resize_before_allocation(monkeypatch):
+    def forbidden_resize(self, *args, **kwargs):
+        pytest.fail("超限卡图不得进入 resize")
+
+    monkeypatch.setattr(Image.Image, "resize", forbidden_resize)
+    with pytest.raises(ValueError, match="超像素上限"):
+        fit_artwork(make_art(2, 2), (64, 96), scale=1e100)
+
+
+def test_fit_allows_exact_output_pixel_limit(monkeypatch):
+    import bwpdiy.render.artwork as artwork
+
+    monkeypatch.setattr(artwork, "ARTWORK_MAX_PIXELS", 4)
+    out = fit_artwork(make_art(1, 1), (2, 2))
+    assert out.size == (2, 2)
 
 
 def test_fit_offset_shifts_window():

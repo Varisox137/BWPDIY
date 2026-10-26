@@ -216,6 +216,18 @@ def test_entity_art_scale_replaces_source_scale_and_maps_offsets(
     assert not images_equal(scaled, smaller)
 
 
+def test_entity_rejects_oversized_artwork_before_resize(
+        assets_dir, sample_art, monkeypatch):
+    from PIL import Image
+
+    def forbidden_resize(self, *args, **kwargs):
+        pytest.fail("超限对局卡图不得进入 resize")
+
+    monkeypatch.setattr(Image.Image, "resize", forbidden_resize)
+    with pytest.raises(ValueError, match="超像素上限"):
+        render_entity(make_card(sample_art), {"art_scale": 1e100}, assets_dir)
+
+
 @pytest.mark.parametrize("ref", [
     {"offset_x": 40},
     {"offset_y": -30},

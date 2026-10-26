@@ -8,7 +8,7 @@ from PIL import Image
 if TYPE_CHECKING:
     from bwpdiy.render.assets import AssetLibrary
 
-# 卡图像素上限（防解压炸弹：用户供图全量解码后才缩放/旋转）
+# 卡图原图与缩放中间图的像素上限（原图防解压炸弹，中间图防巨额分配）
 ARTWORK_MAX_PIXELS = 64_000_000  # 8000×8000
 
 
@@ -62,6 +62,8 @@ def fit_artwork(img: Image.Image, target_size: tuple[int, int],
     w, h = img.size
     cover = max(tw / bw, th / bh) * scale
     nw, nh = max(round(w * cover), 1), max(round(h * cover), 1)
+    if nw * nh > ARTWORK_MAX_PIXELS:
+        raise ValueError(f"卡图缩放后过大: {nw}×{nh} 超像素上限")
     resized = img.convert("RGBA").resize((nw, nh), Image.Resampling.LANCZOS)
     # RGBA 下 crop 越界区域填透明（RGB 会填不透明黑），故先转 RGBA；
     # offset 为图像位置：图像右/下移 = 取景窗左/上移

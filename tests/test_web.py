@@ -988,6 +988,7 @@ const cPortraitImg = {{style: {{display: 'none'}}}};
 const cSubpreviews = {{style: {{display: 'flex'}}}};
 const requests = [], downloads = [], created = [];
 const cErrorEl = {{textContent: ''}};
+function setPreviewError() {{}}
 const cFormErrors = {{textContent: ''}};
 const document = {{getElementById: id => id === 'c-form-errors' ? cFormErrors : null,
                    createElement: tag => ({{click() {{ downloads.push({{href: this.href,
@@ -1039,6 +1040,7 @@ const assert = require('node:assert');
 let cPreviewSeq = 1, cPreviewUrl = 'blob:current';
 const cPreviewImg = {{src: 'blob:current', onload: null}};
 const cErrorEl = {{textContent: '初始'}};
+function setPreviewError() {{}}
 const created = [];
 const URL = {{createObjectURL: blob => {{ created.push(blob); return 'blob:stale'; }},
              revokeObjectURL() {{}}}};
@@ -1151,6 +1153,171 @@ assert(cDirty && notes === 1);
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_select_card_rechecks_seq_after_json(tmp_path):
+    """A/B 选卡 JSON 逆序完成时，旧 A 不得覆盖已提交的 B 表单。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function entityEligible(card)",
+        "function makeEntityState(card)",
+        "async function selectCard(stem, force = false)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+const LEVELS = [1, 2, 3];
+const LEVEL_COLOR_VALUES = new Set(['yellow']);
+let curCard = null, curProject = '项目', curMech = null, formData = null, cardData = null;
+let entityState = null, cDirty = false, mainShiki = null, neutralMode = false, selectSeq = 0;
+let cards = {{shikigami: [], cards: []}}, builds = 0, previews = 0;
+const cStatusEl = {{textContent: ''}};
+function confirmDiscard() {{ return true; }}
+function buildCardList() {{}}
+function listErr() {{}}
+function enc(value) {{ return value; }}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function resetUndo() {{}}
+function buildForm() {{ builds++; }}
+function cPreviewProject() {{ previews++; }}
+const pending = {{}};
+async function fetch(url) {{
+  const stem = url.endsWith('/A') ? 'A' : 'B';
+  return {{ok: true, json: () => new Promise(resolve => {{ pending[stem] = resolve; }})}};
+}}
+{functions}
+(async () => {{
+  const a = selectCard('A');
+  while (!pending.A) await Promise.resolve();
+  const b = selectCard('B');
+  while (!pending.B) await Promise.resolve();
+  pending.B({{type: '形态', name: 'B', power: 2, health: 3}});
+  await b;
+  pending.A({{type: '形态', name: 'A', power: 9, health: 9}});
+  await a;
+  assert.strictEqual(curCard, 'B');
+  assert.strictEqual(cardData.name, 'B');
+  assert.strictEqual(formData.name, 'B');
+  assert.strictEqual(entityState.power, 2);
+  assert.strictEqual(builds, 1);
+  assert.strictEqual(previews, 1);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_preview_urls_released_on_replace_and_clear_without_onload(tmp_path):
+    """三通道连续两次换图均立即释放旧 URL，清卡释放最后一张，不依赖 onload。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "async function cHandlePreviewResponse(r, seq)",
+        "async function cHandleEntityPreviewResponse(r, seq)",
+        "async function cPreviewPortrait(withForm)",
+        "function clearCard()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let cPreviewSeq = 1, cEntitySeq = 1, cPortraitSeq = 0;
+let cPreviewTimer = null, cEntityTimer = null, cPortraitTimer = null;
+let cPreviewUrl = 'main-old', cEntityUrl = 'entity-old', cPortraitUrl = 'portrait-old';
+let curCard = 'stem', curProject = '项目', curMech = null, cardData = {{}}, formData = {{type: '式神'}};
+let entityState = {{}}, cDirty = false;
+const cPreviewImg = {{src: 'main-old', removeAttribute() {{}}}};
+const cEntityImg = {{src: 'entity-old', style: {{}}, removeAttribute() {{}}}};
+const cPortraitImg = {{src: 'portrait-old', style: {{}}, removeAttribute() {{}}}};
+const cSubpreviews = {{style: {{}}}};
+const cErrorEl = {{textContent: ''}};
+const cPreviewErrors = {{main: '', entity: ''}};
+let cPreviewErrorChannel = null;
+function setPreviewError() {{}}
+const revoked = [];
+const URL = {{createObjectURL: blob => blob, revokeObjectURL: url => revoked.push(url)}};
+function clearTimeout() {{}}
+function syncSubpreviews() {{}}
+function enc(value) {{ return value; }}
+function resetUndo() {{}}
+const document = {{getElementById: () => ({{textContent: ''}})}};
+let portraitRequests = 0;
+async function fetch() {{ return {{ok: true, blob: async () => 'portrait-' + (++portraitRequests)}}; }}
+function success(url) {{ return {{ok: true, blob: async () => url}}; }}
+{functions}
+const mainResponse = r => cHandlePreviewResponse(r, ++cPreviewSeq);
+const entityResponse = r => cHandleEntityPreviewResponse(r, ++cEntitySeq);
+(async () => {{
+  await mainResponse(success('main-1'));
+  await mainResponse(success('main-2'));
+  await entityResponse(success('entity-1'));
+  await entityResponse(success('entity-2'));
+  await cPreviewPortrait(true);
+  await cPreviewPortrait(true);
+  assert.deepStrictEqual(revoked,
+    ['main-old', 'main-1', 'entity-old', 'entity-1', 'portrait-old', 'portrait-1']);
+  clearCard();
+  assert.deepStrictEqual(revoked,
+    ['main-old', 'main-1', 'entity-old', 'entity-1', 'portrait-old', 'portrait-1',
+     'portrait-2', 'entity-2', 'main-2']);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_preview_errors_are_cleared_per_channel(tmp_path):
+    """实体成功只清实体错误；主卡/实体交错失败时保留另一通道错误。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "async function cHandlePreviewResponse(r, seq)",
+        "async function cHandleEntityPreviewResponse(r, seq)",
+    ))
+    error_helper = (_extract_js(script, "function setPreviewError(channel, text)")
+                    if "function setPreviewError(channel, text)" in script else """
+function setPreviewError(channel, text) {
+  cPreviewErrors[channel] = text;
+  if (text) cPreviewErrorChannel = channel;
+  else if (cPreviewErrorChannel === channel)
+    cPreviewErrorChannel = cPreviewErrors[channel === 'main' ? 'entity' : 'main']
+      ? (channel === 'main' ? 'entity' : 'main') : null;
+  cErrorEl.textContent = cPreviewErrorChannel ? cPreviewErrors[cPreviewErrorChannel] : '';
+}
+""")
+    driver = f"""
+const assert = require('node:assert');
+let cPreviewSeq = 0, cEntitySeq = 0, cPreviewUrl = null, cEntityUrl = null;
+const cPreviewImg = {{src: '', onload: null}}, cEntityImg = {{src: '', onload: null}};
+const cErrorEl = {{textContent: ''}};
+const cPreviewErrors = {{main: '', entity: ''}};
+let cPreviewErrorChannel = null;
+const URL = {{createObjectURL: blob => blob, revokeObjectURL() {{}}}};
+async function parseErrorDetail(response) {{ return [response.detail]; }}
+function success(url) {{ return {{ok: true, blob: async () => url}}; }}
+function failure(detail) {{ return {{ok: false, detail}}; }}
+{error_helper}
+{functions}
+const mainResponse = r => cHandlePreviewResponse(r, ++cPreviewSeq);
+const entityResponse = r => cHandleEntityPreviewResponse(r, ++cEntitySeq);
+(async () => {{
+  await entityResponse(failure('实体一'));
+  assert(cErrorEl.textContent.includes('实体一'));
+  await entityResponse(success('entity-ok'));
+  assert.strictEqual(cErrorEl.textContent, '');
+  await mainResponse(failure('主卡一'));
+  await entityResponse(failure('实体二'));
+  assert(cErrorEl.textContent.includes('实体二'));
+  await mainResponse(success('main-ok'));
+  assert(cErrorEl.textContent.includes('实体二'));
+  await entityResponse(success('entity-ok-2'));
+  assert.strictEqual(cErrorEl.textContent, '');
+  await mainResponse(failure('主卡二'));
+  await entityResponse(failure('实体三'));
+  await entityResponse(success('entity-ok-3'));
+  assert(cErrorEl.textContent.includes('主卡二'));
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_select_card_initializes_entity_and_clear_cancels_all_channels(tmp_path):
     """切卡重建临时实体状态；清卡取消三通道并释放全部 objectURL。"""
     script = _script()
@@ -1169,6 +1336,8 @@ let curCard = 'old', curProject = '项目', curMech = null, formData = {{name: '
 let cardData = null, cDirty = true, mainShiki = null, neutralMode = false, selectSeq = 0;
 let cards = {{shikigami: [], cards: []}};
 const cStatusEl = {{textContent: ''}}, cErrorEl = {{textContent: ''}};
+const cPreviewErrors = {{main: '', entity: ''}};
+let cPreviewErrorChannel = null;
 const removed = [];
 const cPreviewImg = {{removeAttribute() {{ removed.push('main'); }}}};
 const cPortraitImg = {{style: {{}}, removeAttribute() {{ removed.push('portrait'); }}}};

@@ -440,6 +440,16 @@ let mechForm = null;   // 编辑副本（保存前不落盘）
 let mDirty = false;
 const cStatusEl = document.getElementById('c-status');
 const cErrorEl = document.getElementById('c-error');
+const cPreviewErrors = {main: '', entity: ''};
+let cPreviewErrorChannel = null;
+function setPreviewError(channel, text) {
+  const other = channel === 'main' ? 'entity' : 'main';
+  cPreviewErrors[channel] = text;
+  if (text) cPreviewErrorChannel = channel;
+  else if (cPreviewErrorChannel === channel)
+    cPreviewErrorChannel = cPreviewErrors[other] ? other : null;
+  cErrorEl.textContent = cPreviewErrorChannel ? cPreviewErrors[cPreviewErrorChannel] : '';
+}
 const cPreviewImg = document.getElementById('c-preview');
 let cPreviewTimer = null;
 let cPreviewSeq = 0;   // 预览请求序号：旧响应到达时丢弃，避免乱序覆盖新图
@@ -585,7 +595,9 @@ async function selectCard(stem, force = false) {
   catch (e) { if (seq === selectSeq) { clearCard(); listErr(['卡牌读取请求失败: ' + e]); } return; }
   if (seq !== selectSeq) return;  // 期间又选了别的卡，丢弃本次慢响应
   if (!r.ok) { clearCard(); listErr(await parseErrorDetail(r)); return; }
-  cardData = await r.json();
+  const data = await r.json();
+  if (seq !== selectSeq) return;  // JSON 解析期间又选了别的卡，旧数据不得提交
+  cardData = data;
   formData = deepCopy(cardData);
   entityState = entityEligible(formData) ? makeEntityState(formData) : null;
   cDirty = false;
@@ -612,6 +624,7 @@ function clearCard() {
   if (cPortraitUrl) { URL.revokeObjectURL(cPortraitUrl); cPortraitUrl = null; }
   if (cEntityUrl) { URL.revokeObjectURL(cEntityUrl); cEntityUrl = null; }
   if (cPreviewUrl) { URL.revokeObjectURL(cPreviewUrl); cPreviewUrl = null; }
+  cPreviewErrors.main = ''; cPreviewErrors.entity = ''; cPreviewErrorChannel = null;
   cErrorEl.textContent = '';
 }
 
@@ -863,33 +876,34 @@ async function cHandlePreviewResponse(r, seq) {
   if (!r.ok) {
     const detail = await parseErrorDetail(r);
     if (seq !== cPreviewSeq) return;
-    cErrorEl.textContent = '预览失败：' + detail.join('\n');
+    setPreviewError('main', '预览失败：' + detail.join('\n'));
     return;
   }
-  cErrorEl.textContent = '';
+  setPreviewError('main', '');
   const blob = await r.blob();
   if (seq !== cPreviewSeq) return;
   const url = URL.createObjectURL(blob);
   const prev = cPreviewUrl;
   cPreviewUrl = url;
-  cPreviewImg.onload = () => { if (prev) URL.revokeObjectURL(prev); };  // 新图加载成功才释放旧图
   cPreviewImg.src = url;
+  if (prev) URL.revokeObjectURL(prev);
 }
 async function cHandleEntityPreviewResponse(r, seq) {
   if (seq !== cEntitySeq) return;
   if (!r.ok) {
     const detail = await parseErrorDetail(r);
     if (seq !== cEntitySeq) return;
-    cErrorEl.textContent = '对局式神预览失败：' + detail.join('\n');
+    setPreviewError('entity', '对局式神预览失败：' + detail.join('\n'));
     return;
   }
+  setPreviewError('entity', '');
   const blob = await r.blob();
   if (seq !== cEntitySeq) return;
   const url = URL.createObjectURL(blob);
   const prev = cEntityUrl;
   cEntityUrl = url;
-  cEntityImg.onload = () => { if (prev) URL.revokeObjectURL(prev); };
   cEntityImg.src = url;
+  if (prev) URL.revokeObjectURL(prev);
 }
 async function cPreviewProject() {
   if (!curProject || !curCard) return;
@@ -901,7 +915,7 @@ async function cPreviewProject() {
     r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/preview`, {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'});
   } catch (e) {
-    if (seq === cPreviewSeq) cErrorEl.textContent = '预览请求失败: ' + e;
+    if (seq === cPreviewSeq) setPreviewError('main', '预览请求失败: ' + e);
     return;
   }
   await cHandlePreviewResponse(r, seq);
@@ -920,7 +934,7 @@ async function cPreviewForm(withPortrait = true) {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({card: formData})});
   } catch (e) {
-    if (seq === cPreviewSeq) cErrorEl.textContent = '预览请求失败: ' + e;
+    if (seq === cPreviewSeq) setPreviewError('main', '预览请求失败: ' + e);
     return;
   }
   await cHandlePreviewResponse(r, seq);
@@ -943,7 +957,7 @@ async function entityPreview() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({project: curProject, card: formData, state: entityState})});
   } catch (e) {
-    if (seq === cEntitySeq) cErrorEl.textContent = '对局式神预览请求失败: ' + e;
+    if (seq === cEntitySeq) setPreviewError('entity', '对局式神预览请求失败: ' + e);
     return;
   }
   await cHandleEntityPreviewResponse(r, seq);
@@ -982,8 +996,8 @@ async function cPreviewPortrait(withForm) {
   const url = URL.createObjectURL(blob);
   const prev = cPortraitUrl;
   cPortraitUrl = url;
-  cPortraitImg.onload = () => { if (prev) URL.revokeObjectURL(prev); };
   cPortraitImg.src = url;
+  if (prev) URL.revokeObjectURL(prev);
 }
 
 // ---- 卡图/头像鼠标操作（仅卡牌库 tab 卡牌编辑态；布局 tab 画布交互在 #l-preview 上，不受影响）----

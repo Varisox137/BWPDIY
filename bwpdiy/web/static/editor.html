@@ -609,6 +609,7 @@ function clearCard() {
   clearTimeout(cPreviewTimer);
   clearTimeout(cPortraitTimer);
   clearTimeout(cEntityTimer);
+  cPreviewTimer = cPortraitTimer = cEntityTimer = null;
   cPreviewSeq++;
   cPortraitSeq++;
   cEntitySeq++;
@@ -865,11 +866,17 @@ function syncSubpreviews() {
 }
 function scheduleCardPreview() {
   clearTimeout(cPreviewTimer);
-  cPreviewTimer = setTimeout(cPreviewForm, 300);
+  cPreviewTimer = setTimeout(() => {
+    cPreviewTimer = null;
+    return cPreviewForm();
+  }, 300);
 }
 function scheduleEntityPreview() {
   clearTimeout(cEntityTimer);
-  cEntityTimer = setTimeout(entityPreview, 300);
+  cEntityTimer = setTimeout(() => {
+    cEntityTimer = null;
+    return entityPreview();
+  }, 300);
 }
 async function cHandlePreviewResponse(r, seq) {
   if (seq !== cPreviewSeq) return;  // 期间又有新调整，丢弃本次结果
@@ -1029,6 +1036,15 @@ function afterMouseEdit(channel) {
   const d = document.getElementById('c-dirty');
   if (d) d.textContent = '● 未保存';
   showFormErrors(validateCardJS(formData));
+  const cardPending = cPreviewTimer !== null, entityPending = cEntityTimer !== null;
+  if (cardPending) { clearTimeout(cPreviewTimer); cPreviewTimer = null; }
+  if (entityPending) { clearTimeout(cEntityTimer); cEntityTimer = null; }
+  if (cardPending) {
+    scheduleMousePreview('art');
+    scheduleMousePreview('entity');
+    scheduleMousePreview('portrait');
+  }
+  if (entityPending) scheduleMousePreview('entity');
   scheduleMousePreview(channel);
   if (channel === 'art') scheduleMousePreview('entity');
 }
@@ -1061,27 +1077,32 @@ function artMouseChannel(img) {
   return {get, set};
 }
 function bindArtMouse(img) {
-  let dragStart = null;
+  let dragStart = null, dragMoved = false;
   img.addEventListener('mousedown', ev => {
     if (ev.button !== 0) return;
     const ch = artMouseChannel(img);
     if (!ch) return;
     ev.preventDefault();  // 阻止图片原生拖拽/选中
+    dragMoved = false;
     dragStart = {x: ev.clientX, y: ev.clientY, ox: ch.get('offset_x'), oy: ch.get('offset_y')};
   });
   window.addEventListener('mousemove', ev => {
     if (!dragStart) return;
     const ch = artMouseChannel(img);
-    if (!ch) { dragStart = null; return; }
+    if (!ch) { dragStart = null; dragMoved = false; return; }
     // 画布属性像素 vs CSS 显示像素换算（图片可能缩放显示）
     const rect = img.getBoundingClientRect();
     const ratio = rect.width > 0 && img.naturalWidth > 0 ? img.naturalWidth / rect.width : 1;
     ch.set('offset_x', Math.round(dragStart.ox + (ev.clientX - dragStart.x) * ratio));
     ch.set('offset_y', Math.round(dragStart.oy + (ev.clientY - dragStart.y) * ratio));
+    dragMoved = true;
   });
   window.addEventListener('mouseup', () => {
     if (!dragStart) return;
+    const moved = dragMoved;
     dragStart = null;
+    dragMoved = false;
+    if (!moved) return;
     const channel = img === cPortraitImg ? 'portrait' : 'art';
     flushMousePreview(channel);
     if (channel === 'art') flushMousePreview('entity');

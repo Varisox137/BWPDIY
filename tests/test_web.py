@@ -1112,6 +1112,7 @@ def test_mouse_preview_frames_coalesce_latest_and_stay_independent(tmp_path):
 const assert = require('node:assert');
 let formData = {{type: '式神', artwork: {{images: [{{offset_x: 0}}]}}}};
 let cDirty = false, notes = 0;
+let cPreviewTimer = null, cEntityTimer = null;
 const previews = [];
 const document = {{getElementById: () => null}};
 function noteEdit() {{ notes++; }}
@@ -1168,6 +1169,7 @@ def test_mouseup_flushes_only_the_active_drag_channels(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 let formData = {{type: '式神'}}, cDirty = false;
+let cPreviewTimer = null, cEntityTimer = null;
 const previews = [];
 const document = {{getElementById: () => null}};
 function noteEdit() {{}}
@@ -1201,6 +1203,10 @@ bindArtMouse(cPortraitImg);
 dispatchWindow('mouseup');
 assert.deepStrictEqual(previews, []);
 artImg.listeners.mousedown({{button: 0, clientX: 0, clientY: 0, preventDefault() {{}}}});
+dispatchWindow('mouseup');
+assert.deepStrictEqual(previews, []);
+assert.strictEqual(frames.size, 0);
+artImg.listeners.mousedown({{button: 0, clientX: 0, clientY: 0, preventDefault() {{}}}});
 dispatchWindow('mousemove', {{clientX: 5, clientY: 5}});
 assert.strictEqual(frames.size, 2);
 dispatchWindow('mouseup');
@@ -1219,8 +1225,56 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_card_portrait_entity_preview_scheduling_is_independent(tmp_path):
-    """普通输入仍使用独立的 300ms 防抖，主卡刷新联动实体与头像。"""
+def test_mouse_edit_coalesces_pending_normal_preview_without_losing_channels(tmp_path):
+    """普通防抖未到期时鼠标编辑接管其通道，每通道最终只请求一次。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function scheduleCardPreview()",
+        "function scheduleEntityPreview()",
+        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "function scheduleMousePreview(channel)",
+        "function flushMousePreview(channel)",
+        "function afterMouseEdit(channel)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let cPreviewTimer = null, cEntityTimer = null;
+let formData = {{type: '式神', artwork: {{images: [{{offset_x: 7}}]}}}}, cDirty = false;
+const previews = [];
+const document = {{getElementById: () => null}};
+function noteEdit() {{}}
+function showFormErrors() {{}}
+function validateCardJS() {{ return []; }}
+function cPreviewForm() {{ previews.push('art'); }}
+function entityPreview() {{ previews.push('entity'); }}
+function cPreviewPortrait() {{ previews.push('portrait'); }}
+let nextTimer = 0, nextFrame = 0;
+const timers = new Map(), frames = new Map();
+function setTimeout(fn) {{ const id = ++nextTimer; timers.set(id, fn); return id; }}
+function clearTimeout(id) {{ timers.delete(id); }}
+function requestAnimationFrame(fn) {{ const id = ++nextFrame; frames.set(id, fn); return id; }}
+function cancelAnimationFrame(id) {{ frames.delete(id); }}
+{functions}
+scheduleCardPreview();
+scheduleEntityPreview();
+assert.strictEqual(timers.size, 2);
+afterMouseEdit('art');
+assert.strictEqual(timers.size, 0);
+assert.strictEqual(frames.size, 3);
+assert.deepStrictEqual(previews, []);
+for (const id of [...frames.keys()]) {{
+  const fn = frames.get(id); frames.delete(id); fn();
+}}
+assert.deepStrictEqual(previews.sort(), ['art', 'entity', 'portrait']);
+assert.strictEqual(timers.size, 0);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_normal_preview_debounce_refreshes_one_round(tmp_path):
+    """纯普通输入在 300ms 后只刷新一轮，实体独立输入仍只刷新实体。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function scheduleCardPreview()",
@@ -1230,7 +1284,7 @@ def test_card_portrait_entity_preview_scheduling_is_independent(tmp_path):
     ))
     driver = f"""
 const assert = require('node:assert');
-let cPreviewTimer = null, cPortraitTimer = null, cEntityTimer = null;
+let cPreviewTimer = null, cEntityTimer = null;
 let cPreviewSeq = 0, formData = {{type: '式神'}}, curProject = '项目', curCard = 'stem';
 let portraits = 0, entities = 0, handled = 0;
 let nextTimer = 0;
@@ -1239,6 +1293,9 @@ function setTimeout(fn, delay) {{
   const id = ++nextTimer; timers.set(id, fn); delays.push(delay); return id;
 }}
 function clearTimeout(id) {{ timers.delete(id); }}
+async function runTimer(id) {{
+  const fn = timers.get(id); timers.delete(id); await fn();
+}}
 function enc(value) {{ return value; }}
 function validateCardJS() {{ return []; }}
 function entityPreview() {{ entities++; }}
@@ -1246,24 +1303,21 @@ function cPreviewPortrait() {{ portraits++; }}
 async function cHandlePreviewResponse() {{ handled++; }}
 async function fetch() {{ return {{ok: true}}; }}
 {functions}
-scheduleEntityPreview();
-scheduleEntityPreview();
-scheduleCardPreview();
-scheduleCardPreview();
-assert.strictEqual(timers.size, 2);
-assert.deepStrictEqual(delays, [300, 300, 300, 300]);
 (async () => {{
-  await cPreviewForm(false);
-  assert.strictEqual(entities, 1);
-  assert.strictEqual(portraits, 0);
-  assert.strictEqual(handled, 1);
-  await cPreviewForm(true);
-  assert.strictEqual(entities, 2);
-  assert.strictEqual(portraits, 1);
+  scheduleCardPreview();
+  scheduleCardPreview();
+  assert.strictEqual(timers.size, 1);
+  assert.strictEqual(handled + entities + portraits, 0);
+  await runTimer(cPreviewTimer);
+  assert.deepStrictEqual([handled, entities, portraits], [1, 1, 1]);
   await cPreviewProject();
-  assert.strictEqual(entities, 3);
-  assert.strictEqual(portraits, 2);
-  assert.strictEqual(handled, 3);
+  assert.deepStrictEqual([handled, entities, portraits], [2, 2, 2]);
+  scheduleEntityPreview();
+  scheduleEntityPreview();
+  assert.strictEqual(timers.size, 1);
+  await runTimer(cEntityTimer);
+  assert.deepStrictEqual([handled, entities, portraits], [2, 3, 2]);
+  assert.deepStrictEqual(delays, [300, 300, 300, 300]);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
@@ -1487,6 +1541,9 @@ async function fetch() {{ return {{ok: true, json: async () => ({{type: '形态'
   clearCard();
   assert.strictEqual(entityState, null);
   assert.deepStrictEqual(cancelled, [11, 12, 13]);
+  assert.strictEqual(cPreviewTimer, null);
+  assert.strictEqual(cPortraitTimer, null);
+  assert.strictEqual(cEntityTimer, null);
   assert.deepStrictEqual(revoked, ['blob:portrait', 'blob:entity', 'blob:main']);
   assert.strictEqual(cPreviewSeq, 2);
   assert.strictEqual(cPortraitSeq, 3);

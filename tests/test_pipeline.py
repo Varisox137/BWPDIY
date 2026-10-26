@@ -357,7 +357,7 @@ def test_shared_artwork_ref_and_loading(assets_dir, sample_art):
         load_card_artwork(card, get_library(assets_dir))
 
 
-# ---------- 普通卡静态覆盖层缓存 ----------
+# ---------- 普通卡静态绘制命令/层序列缓存 ----------
 
 def _render_card_reference(card, assets_dir, crop, layout=None):
     """缓存改造前的逐层合成顺序，作为逐像素独立参考。"""
@@ -498,7 +498,7 @@ def _uncached_render(monkeypatch, card, assets_dir, **kw):
     return render_card(card, assets_dir, **kw)
 
 
-def test_static_overlay_reused_when_only_artwork_offset_changes(
+def test_static_layers_reused_when_only_artwork_offset_changes(
         assets_dir, sample_art, monkeypatch):
     import bwpdiy.render.badges as badges
     import bwpdiy.render.pipeline as pipeline
@@ -531,7 +531,7 @@ def test_static_overlay_reused_when_only_artwork_offset_changes(
     {"power+": 7},
     {"frame_variant": "black"},
 ])
-def test_static_overlay_invalidated_by_card_content(
+def test_static_layers_invalidated_by_card_content(
         assets_dir, sample_art, monkeypatch, changes):
     import bwpdiy.render.pipeline as pipeline
 
@@ -552,7 +552,7 @@ def test_static_overlay_invalidated_by_card_content(
     assert len(calls) > first_calls
 
 
-def test_static_overlay_invalidated_by_actual_layout(assets_dir, sample_art, monkeypatch):
+def test_static_layers_invalidated_by_actual_layout(assets_dir, sample_art, monkeypatch):
     from bwpdiy.render.layout import get_type_layout, load_layouts
     import bwpdiy.render.pipeline as pipeline
 
@@ -579,7 +579,7 @@ def test_static_overlay_invalidated_by_actual_layout(assets_dir, sample_art, mon
     {"_duo": object()},
     {"_preview": object()},
 ])
-def test_static_overlay_bypasses_duo_and_unserializable_data(
+def test_static_layers_bypasses_duo_and_unserializable_data(
         assets_dir, sample_art, monkeypatch, internal):
     import bwpdiy.render.badges as badges
     import bwpdiy.render.pipeline as pipeline
@@ -603,7 +603,7 @@ def test_static_overlay_bypasses_duo_and_unserializable_data(
     assert len(pipeline._STATIC_OVERLAY_CACHE) == cached_entries
 
 
-def test_static_overlay_cache_is_bounded(assets_dir, sample_art, monkeypatch):
+def test_static_layers_cache_is_bounded(assets_dir, sample_art, monkeypatch):
     import bwpdiy.render.pipeline as pipeline
 
     monkeypatch.setattr(pipeline, "STATIC_OVERLAY_CACHE_MAX_ENTRIES", 2)
@@ -613,7 +613,7 @@ def test_static_overlay_cache_is_bounded(assets_dir, sample_art, monkeypatch):
     assert len(pipeline._STATIC_OVERLAY_CACHE) == 2
 
 
-def test_static_overlay_drawing_runs_outside_lock(assets_dir, sample_art, monkeypatch):
+def test_static_layers_drawing_runs_outside_lock(assets_dir, sample_art, monkeypatch):
     import threading
     import bwpdiy.render.pipeline as pipeline
 

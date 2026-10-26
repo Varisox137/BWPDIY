@@ -38,14 +38,20 @@ def test_entity_layout_backfilled(tmp_path):
     (tmp_path / "layout.json").write_text(
         '{"式神": {"elements": {}, "text_regions": {}}}', encoding="utf-8")
     layouts = layout.load_layouts(tmp_path)
-    assert layouts["对局式神"]["elements"]["level"]["pos"] == [32, 88]
+    entity = layouts["对局式神"]
+    assert entity["version"] == 2
+    assert entity["art_window"] == {
+        "center": [48, 72], "width": 84, "height": 132,
+        "frame_center": True, "offset_y": 0,
+    }
+    assert entity["elements"]["level"]["pos"] == [48, 132]
     assert "机制" in layouts
-    assert "text_regions" not in layouts["对局式神"]
+    assert "text_regions" not in entity
 
 
 def test_independent_layouts_not_size_normalized(tmp_path):
     custom = {t: {"elements": {"power": _stat(30)}, "text_regions": {}} for t in TYPES}
-    custom["对局式神"] = {"elements": {"power": _stat(18)}}
+    custom["对局式神"] = {"version": 2, "elements": {"power": _stat(18)}}
     (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -227,3 +233,102 @@ def test_merge_card_layout():
     # 非 dict override / None：原样（深拷贝）返回
     assert layout.merge_card_layout(base, None)["elements"]["name"]["pos"] == [256, 60]
     assert layout.merge_card_layout(base, "junk")["elements"]["name"]["pos"] == [256, 60]
+
+
+def _write_entity_layout(tmp_path, entity):
+    (tmp_path / "layout.json").write_text(
+        json.dumps({"对局式神": entity}, ensure_ascii=False), encoding="utf-8")
+
+
+def test_legacy_default_entity_layout_migrates_to_96(tmp_path):
+    legacy = {
+        "elements": {
+            "level": {"kind": "level_badge", "pos": [32, 88], "base_size": 18,
+                      "num_size": 14, "num_offset": [0, 0]},
+            "power": {"kind": "stat", "field": "power", "pos": [10, 82],
+                      "icon_size": 16, "num_offset": [0, 10],
+                      "font_size": 14, "stroke_width": 1},
+            "health": {"kind": "stat", "field": "health", "pos": [54, 82],
+                       "icon_size": 16, "num_offset": [0, 10],
+                       "font_size": 14, "stroke_width": 1},
+            "combat_power": {"kind": "stat", "field": "combat_power", "pos": [10, 62],
+                             "icon_size": 14, "num_offset": [0, 9],
+                             "font_size": 12, "stroke_width": 1},
+            "shield": {"kind": "stat", "field": "shield", "pos": [54, 62],
+                       "icon_size": 14, "num_offset": [0, 9],
+                       "font_size": 12, "stroke_width": 1},
+        },
+    }
+    _write_entity_layout(tmp_path, legacy)
+    entity = layout.load_layouts(tmp_path)["对局式神"]
+    assert entity["version"] == 2
+    assert entity["art_window"] == {
+        "center": [48, 72], "width": 84, "height": 132,
+        "frame_center": True, "offset_y": 0,
+    }
+    assert entity["elements"]["level"] == {
+        "kind": "level_badge", "pos": [48, 132], "base_size": 27,
+        "num_size": 21, "num_offset": [0, 0],
+    }
+    assert entity["elements"]["power"]["pos"] == [15, 123]
+    assert entity["elements"]["power"]["num_offset"] == [0, 6]
+    assert entity["elements"]["power"]["icon_size"] == 24
+    assert entity["elements"]["power"]["font_size"] == 21
+    assert entity["elements"]["combat_power"]["num_offset"] == [0, 5]
+    assert entity["elements"]["shield"]["num_offset"] == [0, 5]
+
+
+def test_legacy_custom_entity_numbers_scale_once(tmp_path):
+    legacy = {
+        "elements": {
+            "level": {"kind": "level_badge", "pos": [20, 30], "base_size": 20,
+                      "num_size": 10, "num_offset": [2, 4]},
+            "power": {"kind": "stat", "field": "power", "pos": [8, 70],
+                      "icon_size": 20, "num_offset": [1, 12],
+                      "font_size": 10, "stroke_width": 2},
+        },
+    }
+    _write_entity_layout(tmp_path, legacy)
+    migrated = layout.load_layouts(tmp_path)
+    entity = migrated["对局式神"]
+    assert entity["elements"]["level"] == {
+        "kind": "level_badge", "pos": [30, 45], "base_size": 30,
+        "num_size": 15, "num_offset": [3, 6],
+    }
+    assert entity["elements"]["power"] == {
+        "kind": "stat", "field": "power", "pos": [12, 105],
+        "icon_size": 30, "num_offset": [1.5, 18],
+        "font_size": 15, "stroke_width": 3,
+    }
+    _write_entity_layout(tmp_path, migrated["对局式神"])
+    assert layout.load_layouts(tmp_path) == migrated
+
+
+def test_version_2_entity_layout_only_deep_fills_defaults(tmp_path):
+    current = {
+        "version": 2,
+        "art_window": {"width": 100},
+        "elements": {"level": {"pos": [32, 88], "num_offset": [0, 10]}},
+    }
+    _write_entity_layout(tmp_path, current)
+    entity = layout.load_layouts(tmp_path)["对局式神"]
+    assert entity["version"] == 2
+    assert entity["art_window"] == {
+        "center": [48, 72], "width": 100, "height": 132,
+        "frame_center": True, "offset_y": 0,
+    }
+    assert entity["elements"]["level"]["pos"] == [32, 88]
+    assert entity["elements"]["level"]["num_offset"] == [0, 10]
+    assert entity["elements"]["level"]["base_size"] == 27
+    assert entity["elements"]["power"]["pos"] == [15, 123]
+
+
+def test_three_default_entity_layouts_are_synchronized():
+    from bwpdiy.render.entity import _DEFAULT_LAYOUT
+
+    packaged = layout.load_layouts(Path("bwpdiy/render"))["对局式神"]
+    shipped = layout.load_layouts(Path("assets"))["对局式神"]
+    assert packaged == shipped == _DEFAULT_LAYOUT
+    assert packaged["version"] == 2
+    assert packaged["elements"]["power"]["num_offset"] == [0, 6]
+    assert packaged["elements"]["combat_power"]["num_offset"] == [0, 5]

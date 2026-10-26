@@ -1,10 +1,13 @@
 import math
+from copy import deepcopy
 
 import pytest
-from PIL import ImageChops
+from PIL import Image, ImageChops, ImageDraw
 
 from bwpdiy.render import entity_eligible, render_entity, validate_entity_state
 from bwpdiy.render.assets import get_library
+from bwpdiy.render.entity import _DEFAULT_LAYOUT
+from bwpdiy.render.pipeline import _normalize_frame
 
 
 def make_card(sample_art, **kw):
@@ -93,7 +96,7 @@ def test_entity_native_size_and_zero_stats(assets_dir, sample_art, monkeypatch):
 
     image = render_entity(card, state, assets_dir, crop=False)
 
-    assert image.size == (64, 96)
+    assert image.size == (96, 144)
     assert image.mode == "RGBA"
     assert "power" in badges and "health" in badges
     assert digits == ["0", "0"]
@@ -201,6 +204,7 @@ def test_entity_art_scale_replaces_source_scale_and_maps_offsets(
         return original(*args, **kwargs)
 
     monkeypatch.setattr(entity, "fit_artwork", capture)
+    monkeypatch.setattr(entity, "frame_art_window_center", lambda frame: (256, 256))
     scaled = render_entity(card, {"art_scale": 2}, assets_dir, crop=False)
     args, kwargs = calls[-1]
     inner_size = args[1]
@@ -218,11 +222,13 @@ def test_entity_art_scale_replaces_source_scale_and_maps_offsets(
 
 def test_entity_rejects_oversized_artwork_before_resize(
         assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
     from PIL import Image
 
     def forbidden_resize(self, *args, **kwargs):
         pytest.fail("超限对局卡图不得进入 resize")
 
+    monkeypatch.setattr(entity, "_normalize_frame", lambda frame: frame)
     monkeypatch.setattr(Image.Image, "resize", forbidden_resize)
     with pytest.raises(ValueError, match="超像素上限"):
         render_entity(make_card(sample_art), {"art_scale": 1e100}, assets_dir)
@@ -265,3 +271,100 @@ def test_entity_artwork_path_escape_rejected(assets_dir, sample_art):
     card = make_card(sample_art, artwork={"images": [{"path": "../outside.png"}]})
     with pytest.raises(ValueError, match="越出基准目录"):
         render_entity(card, {}, assets_dir)
+
+
+def test_entity_frame_window_correction(assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
+    monkeypatch.setattr(entity, "frame_art_window_center", lambda frame: (255, 169.5))
+    captured = {}
+    original = entity.fit_artwork
+
+    def capture(img, target, offset_x, offset_y, scale, cover_base):
+        captured.update(target=target, x=offset_x, y=offset_y)
+        return original(img, target, offset_x, offset_y, scale, cover_base)
+
+    monkeypatch.setattr(entity, "fit_artwork", capture)
+    card = make_card(sample_art, artwork={"images": [{
+        "path": sample_art.name, "offset_y": 8,
+    }]})
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["art_window"]["offset_y"] = 2
+    render_entity(card, {}, assets_dir, layout=layout)
+    assert captured["target"] == (84, 132)
+    assert captured["y"] == 8 * 84 / 512 + (256 - 169.5) * 84 / 512 + 2
+
+
+def test_entity_custom_window_without_frame_correction(assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
+    captured = {}
+    original = entity.fit_artwork
+
+    def capture(img, target, offset_x, offset_y, scale, cover_base):
+        captured.update(target=target, x=offset_x, y=offset_y)
+        return original(img, target, offset_x, offset_y, scale, cover_base)
+
+    monkeypatch.setattr(entity, "fit_artwork", capture)
+    monkeypatch.setattr(entity, "frame_art_window_center", lambda frame: (255, 100))
+    card = make_card(sample_art, artwork={"images": [{
+        "path": sample_art.name, "offset_x": 12, "offset_y": 8,
+    }]})
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["art_window"] = {
+        "center": [40, 50], "width": 60, "height": 100,
+        "frame_center": False, "offset_y": -3,
+    }
+    render_entity(card, {}, assets_dir, layout=layout)
+    assert captured == {"target": (60, 100), "x": 12 * 60 / 512,
+                        "y": 8 * 60 / 512 - 3}
+
+
+@pytest.mark.parametrize("code", ["form", "combat", "spell", "field"])
+@pytest.mark.parametrize("variant", ["norm", "red", "blue", "black"])
+def test_real_frames_use_largest_enclosed_transparent_window(assets_dir, code, variant):
+    from bwpdiy.render.entity import frame_art_window_center
+
+    frame = _normalize_frame(get_library(assets_dir).frame(code, variant))
+    center_x, center_y = frame_art_window_center(frame)
+    assert 0 <= center_x <= 512
+    assert 0 <= center_y <= 512
+    if (code, variant) == ("form", "red"):
+        assert center_y == pytest.approx(168.5, abs=1)
+        assert center_y != pytest.approx(247, abs=1)
+
+
+def test_frame_window_ignores_edge_opening_and_smaller_hole():
+    from bwpdiy.render.entity import frame_art_window_center
+
+    frame = Image.new("RGBA", (30, 20), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(frame)
+    draw.rectangle((0, 0, 0, 5), fill=(0, 0, 0, 0))
+    draw.rectangle((2, 2, 7, 7), fill=(0, 0, 0, 127))
+    draw.rectangle((12, 2, 25, 15), fill=(0, 0, 0, 0))
+    assert frame_art_window_center(frame) == (19, 9)
+
+
+def test_frame_window_requires_enclosed_transparency():
+    from bwpdiy.render.entity import frame_art_window_center
+
+    with pytest.raises(ValueError, match="牌框缺少封闭卡图窗"):
+        frame_art_window_center(Image.new("RGBA", (10, 10), (0, 0, 0, 0)))
+
+
+@pytest.mark.parametrize("field, value", [
+    ("width", 0), ("height", -1), ("width", math.nan),
+    ("height", math.inf), ("width", True),
+])
+def test_entity_rejects_invalid_art_window(assets_dir, sample_art, field, value):
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["art_window"][field] = value
+    with pytest.raises(ValueError, match="卡图窗"):
+        render_entity(make_card(sample_art), {}, assets_dir, layout=layout)
+
+
+def test_entity_rejects_oversized_art_window(assets_dir, sample_art):
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["art_window"].update(width=8001, height=8000)
+    with pytest.raises(ValueError, match="卡图窗"):
+        render_entity(make_card(sample_art), {}, assets_dir, layout=layout)

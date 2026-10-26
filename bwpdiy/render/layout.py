@@ -71,6 +71,30 @@ def _normalize_size_fields(layouts: dict) -> None:
                         item[key] = chosen
 
 
+def _scale_legacy_entity(value, key=None):
+    if isinstance(value, dict):
+        return {name: _scale_legacy_entity(item, name) for name, item in value.items()}
+    if isinstance(value, list):
+        scaled = [_scale_legacy_entity(item) for item in value]
+        if key == "num_offset" and len(value) == 2 and not isinstance(value[1], bool):
+            if value[1] == 10:
+                scaled[1] = 6
+            elif value[1] == 9:
+                scaled[1] = 5
+        return scaled
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    return value * 1.5
+
+
+def _fill_entity_defaults(entity: dict, default: dict) -> None:
+    for key, value in default.items():
+        if key not in entity:
+            entity[key] = copy.deepcopy(value)
+        elif isinstance(value, dict) and isinstance(entity[key], dict):
+            _fill_entity_defaults(entity[key], value)
+
+
 def load_layouts(assets_dir: Path) -> dict:
     """加载布局表。assets_dir/layout.json 优先，缺失回退包内默认；
     用户文件缺「对局式神」「机制」独立段时从包内默认补齐。"""
@@ -78,11 +102,17 @@ def load_layouts(assets_dir: Path) -> dict:
     if not path.is_file():
         path = _DEFAULT
     layouts = json.loads(path.read_text(encoding="utf-8"))
-    if path != _DEFAULT and any(name not in layouts for name in ("对局式神", "机制")):
-        default = json.loads(_DEFAULT.read_text(encoding="utf-8"))
-        for name in ("对局式神", "机制"):
-            if name not in layouts and name in default:
-                layouts[name] = default[name]
+    default = json.loads(_DEFAULT.read_text(encoding="utf-8"))
+    for name in ("对局式神", "机制"):
+        if name not in layouts and name in default:
+            layouts[name] = copy.deepcopy(default[name])
+    entity = layouts.get("对局式神")
+    if isinstance(entity, dict):
+        if "version" not in entity:
+            layouts["对局式神"] = _scale_legacy_entity(entity)
+            entity = layouts["对局式神"]
+            entity["version"] = 2
+        _fill_entity_defaults(entity, default["对局式神"])
     _normalize_size_fields(layouts)
     return layouts
 

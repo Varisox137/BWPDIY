@@ -25,7 +25,8 @@ from bwpdiy import updater
 from bwpdiy.changelog import CHANGELOG
 from bwpdiy.render.assets import get_library
 from bwpdiy.render.duo import render_portrait
-from bwpdiy.render.entity import entity_eligible, render_entity, validate_entity_state
+from bwpdiy.render.entity import (
+    entity_eligible, render_entity, validate_entity_art_window, validate_entity_state)
 from bwpdiy.render.layout import get_type_layout, load_layouts, merge_card_layout
 from bwpdiy.render.mech import MECH_FRAMES, render_mechanism
 from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
@@ -140,15 +141,22 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     async def put_layout(request: dict):
         # 最小形状校验：非空 dict，每个卡牌类型值须与 load_layouts 产物同构；
         # 不强制六类型齐全（部分保存、缺省回退默认是特性）；
-        # 「机制」段为扁平参数映射；「对局式神」仅有 elements，均无 text_regions
+        # 「机制」段为扁平参数映射；两个独立段均无 text_regions
         if not request:
             raise HTTPException(422, "布局为空：拒绝覆盖现有配置")
         for card_type, type_layout in request.items():
             if card_type in ("对局式神", "机制"):
                 if not isinstance(type_layout, dict):
                     raise HTTPException(422, f"布局形状非法: 「{card_type}」段必须是对象")
-                if card_type == "对局式神" and not isinstance(type_layout.get("elements"), dict):
-                    raise HTTPException(422, "布局形状非法: 「对局式神」段必须含 elements 对象")
+                if card_type == "对局式神":
+                    if not isinstance(type_layout.get("elements"), dict):
+                        raise HTTPException(422, "布局形状非法: 「对局式神」段必须含 elements 对象")
+                    if type(type_layout.get("version")) is not int or type_layout["version"] != 2:
+                        raise HTTPException(422, "布局数值非法: 「对局式神」version 必须为 2")
+                    try:
+                        validate_entity_art_window(type_layout.get("art_window"))
+                    except ValueError as e:
+                        raise HTTPException(422, f"布局数值非法: {e}") from e
                 continue
             if (not isinstance(type_layout, dict)
                     or "elements" not in type_layout

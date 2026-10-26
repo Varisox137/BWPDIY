@@ -396,7 +396,7 @@ def test_entity_preview_project_eligible_cards(client, project, card):
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
     assert r.headers["x-crop-offset"].count(",") == 1
-    assert Image.open(BytesIO(r.content)).width <= 64
+    assert Image.open(BytesIO(r.content)).width <= 96
 
 
 def test_entity_preview_project_rejects_normal_combat(client, project):

@@ -104,12 +104,36 @@ def test_put_layout_partial_types(client, assets_dir):
 def test_put_layout_entity_section(client, assets_dir):
     layouts = client.get("/api/layout").json()
     entity = layouts["对局式神"]
-    assert set(entity) == {"elements"}
+    assert set(entity) == {"version", "art_window", "elements"}
+    assert entity["version"] == 2
     entity["elements"]["level"]["pos"] = [30, 88]
+    entity["art_window"]["offset_y"] = 2
     assert client.put("/api/layout", json={"对局式神": entity}).status_code == 200
     assert client.get("/api/layout").json()["对局式神"] == entity
     before = (assets_dir / "layout.json").read_bytes()
     assert client.put("/api/layout", json={"对局式神": {"elements": []}}).status_code == 422
+    assert (assets_dir / "layout.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("patch", [
+    {"version": 1}, {"version": 2.0}, {"version": True}, {"art_window": []},
+    {"art_window": {"center": [48], "width": 84, "height": 132,
+                    "frame_center": True, "offset_y": 0}},
+    {"art_window": {"center": [48, 72], "width": 0, "height": 132,
+                    "frame_center": True, "offset_y": 0}},
+    {"art_window": {"center": [48, 72], "width": 8001, "height": 8000,
+                    "frame_center": True, "offset_y": 0}},
+    {"art_window": {"center": [48, 72], "width": 84, "height": 132,
+                    "frame_center": 1, "offset_y": 0}},
+    {"art_window": {"center": [48, 72], "width": 84, "height": 132,
+                    "frame_center": True, "offset_y": "2"}},
+])
+def test_put_layout_rejects_invalid_entity_window(client, assets_dir, patch):
+    entity = client.get("/api/layout").json()["对局式神"]
+    entity.update(patch)
+    before = (assets_dir / "layout.json").read_bytes()
+    response = client.put("/api/layout", json={"对局式神": entity})
+    assert response.status_code == 422
     assert (assets_dir / "layout.json").read_bytes() == before
 
 

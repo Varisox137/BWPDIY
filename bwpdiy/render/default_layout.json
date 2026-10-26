@@ -664,15 +664,26 @@
     }
   },
   "对局式神": {
+    "version": 2,
+    "art_window": {
+      "center": [
+        48,
+        72
+      ],
+      "width": 84,
+      "height": 132,
+      "frame_center": true,
+      "offset_y": 0
+    },
     "elements": {
       "level": {
         "kind": "level_badge",
         "pos": [
-          32,
-          88
+          48,
+          132
         ],
-        "base_size": 18,
-        "num_size": 14,
+        "base_size": 27,
+        "num_size": 21,
         "num_offset": [
           0,
           0
@@ -682,61 +693,61 @@
         "kind": "stat",
         "field": "power",
         "pos": [
-          10,
-          82
+          15,
+          123
         ],
-        "icon_size": 16,
+        "icon_size": 24,
         "num_offset": [
           0,
-          10
+          6
         ],
-        "font_size": 14,
-        "stroke_width": 1
+        "font_size": 21,
+        "stroke_width": 1.5
       },
       "health": {
         "kind": "stat",
         "field": "health",
         "pos": [
-          54,
-          82
+          81,
+          123
         ],
-        "icon_size": 16,
+        "icon_size": 24,
         "num_offset": [
           0,
-          10
+          6
         ],
-        "font_size": 14,
-        "stroke_width": 1
+        "font_size": 21,
+        "stroke_width": 1.5
       },
       "combat_power": {
         "kind": "stat",
         "field": "combat_power",
         "pos": [
-          10,
-          62
+          15,
+          93
         ],
-        "icon_size": 14,
+        "icon_size": 21,
         "num_offset": [
           0,
-          9
+          5
         ],
-        "font_size": 12,
-        "stroke_width": 1
+        "font_size": 18,
+        "stroke_width": 1.5
       },
       "shield": {
         "kind": "stat",
         "field": "shield",
         "pos": [
-          54,
-          62
+          81,
+          93
         ],
-        "icon_size": 14,
+        "icon_size": 21,
         "num_offset": [
           0,
-          9
+          5
         ],
-        "font_size": 12,
-        "stroke_width": 1
+        "font_size": 18,
+        "stroke_width": 1.5
       }
     }
   },

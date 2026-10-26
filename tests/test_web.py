@@ -95,11 +95,22 @@ def test_put_layout_roundtrip(client, assets_dir, tmp_path):
 
 
 def test_put_layout_partial_types(client, assets_dir):
-    """允许只保存部分类型（缺省类型回退默认布局是特性）；「机制」段缺失时
-    load_layouts 从包内默认补齐，故 GET 恒附带。"""
+    """允许只保存部分类型；独立段缺失时 load_layouts 从包内默认补齐。"""
     r = client.put("/api/layout", json={"战斗": client.get("/api/layout").json()["战斗"]})
     assert r.status_code == 200 and r.json()["ok"]
-    assert list(client.get("/api/layout").json()) == ["战斗", "机制"]
+    assert list(client.get("/api/layout").json()) == ["战斗", "对局式神", "机制"]
+
+
+def test_put_layout_entity_section(client, assets_dir):
+    layouts = client.get("/api/layout").json()
+    entity = layouts["对局式神"]
+    assert set(entity) == {"elements"}
+    entity["elements"]["level"]["pos"] = [30, 88]
+    assert client.put("/api/layout", json={"对局式神": entity}).status_code == 200
+    assert client.get("/api/layout").json()["对局式神"] == entity
+    before = (assets_dir / "layout.json").read_bytes()
+    assert client.put("/api/layout", json={"对局式神": {"elements": []}}).status_code == 422
+    assert (assets_dir / "layout.json").read_bytes() == before
 
 
 def test_put_layout_mech_section(client, assets_dir):
@@ -136,6 +147,40 @@ def test_mech_layout_preview(client):
     assert client.post("/api/mech-preview", json={"frame": "unknown"}).status_code == 400
     r = client.post("/api/mech-preview", json={"frame": "skill", "layout": "bad"})
     assert r.status_code == 400
+
+
+def test_entity_layout_preview(client):
+    body = {
+        "card": {"type": "形态", "name": "样例"},
+        "state": {"level": 3, "level_color": "cyan", "power": 2,
+                  "health": 5, "combat_power": -1, "shield": 4},
+    }
+    response = client.post("/api/entity-preview", json=body)
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert "x-crop-offset" in response.headers
+    entity_layout = client.get("/api/layout").json()["对局式神"]
+    assert client.post("/api/entity-preview",
+                       json={**body, "layout": entity_layout}).status_code == 200
+    assert client.post("/api/entity-preview",
+                       json={**body, "layout": "bad"}).status_code == 422
+
+
+def test_entity_layout_preview_forces_packaged_sample_art(client, tmp_path):
+    from PIL import Image
+    outside = tmp_path / "outside.png"
+    Image.new("RGB", (32, 32), "red").save(outside)
+    body = {"card": {"type": "式神", "name": "样例"}, "state": {}}
+    baseline = client.post("/api/entity-preview", json=body)
+    hostile = {
+        "card": {"type": "式神", "name": "样例", "_base_dir": str(tmp_path),
+                 "_private": "discard",
+                 "artwork": {"images": [{"path": str(outside.resolve())}]}},
+        "state": {},
+    }
+    response = client.post("/api/entity-preview", json=hostile)
+    assert response.status_code == 200
+    assert response.content == baseline.content
 
 
 def test_put_layout_backup(client, assets_dir):

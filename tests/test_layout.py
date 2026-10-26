@@ -34,6 +34,27 @@ def test_assets_layout_takes_precedence(tmp_path):
     assert layouts["战斗"]["elements"]["rarity"]["pos"] == [1, 2]
 
 
+def test_entity_layout_backfilled(tmp_path):
+    (tmp_path / "layout.json").write_text(
+        '{"式神": {"elements": {}, "text_regions": {}}}', encoding="utf-8")
+    layouts = layout.load_layouts(tmp_path)
+    assert layouts["对局式神"]["elements"]["level"]["pos"] == [32, 88]
+    assert "机制" in layouts
+    assert "text_regions" not in layouts["对局式神"]
+
+
+def test_independent_layouts_not_size_normalized(tmp_path):
+    custom = {t: {"elements": {"power": _stat(30)}, "text_regions": {}} for t in TYPES}
+    custom["对局式神"] = {"elements": {"power": _stat(18)}}
+    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        layouts = layout.load_layouts(tmp_path)
+    assert not [w for w in caught if issubclass(w.category, UserWarning)]
+    assert layouts["对局式神"]["elements"]["power"]["font_size"] == 18
+    assert all(layouts[t]["elements"]["power"]["font_size"] == 30 for t in TYPES)
+
+
 def test_unknown_type_raises():
     layouts = layout.load_layouts(Path("不存在的目录"))
     with pytest.raises(ValueError, match="布局缺失"):

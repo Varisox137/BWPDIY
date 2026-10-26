@@ -25,6 +25,7 @@ from bwpdiy import updater
 from bwpdiy.changelog import CHANGELOG
 from bwpdiy.render.assets import get_library
 from bwpdiy.render.duo import render_portrait
+from bwpdiy.render.entity import entity_eligible, render_entity, validate_entity_state
 from bwpdiy.render.layout import get_type_layout, load_layouts, merge_card_layout
 from bwpdiy.render.mech import MECH_FRAMES, render_mechanism
 from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
@@ -139,13 +140,15 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     async def put_layout(request: dict):
         # 最小形状校验：非空 dict，每个卡牌类型值须与 load_layouts 产物同构；
         # 不强制六类型齐全（部分保存、缺省回退默认是特性）；
-        # 「机制」段为扁平参数映射（name_size/text_size 等），形状由渲染层兜底
+        # 「机制」段为扁平参数映射；「对局式神」仅有 elements，均无 text_regions
         if not request:
             raise HTTPException(422, "布局为空：拒绝覆盖现有配置")
         for card_type, type_layout in request.items():
-            if card_type == "机制":
+            if card_type in ("对局式神", "机制"):
                 if not isinstance(type_layout, dict):
-                    raise HTTPException(422, "布局形状非法: 「机制」段必须是对象")
+                    raise HTTPException(422, f"布局形状非法: 「{card_type}」段必须是对象")
+                if card_type == "对局式神" and not isinstance(type_layout.get("elements"), dict):
+                    raise HTTPException(422, "布局形状非法: 「对局式神」段必须含 elements 对象")
                 continue
             if (not isinstance(type_layout, dict)
                     or "elements" not in type_layout
@@ -240,6 +243,44 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         buf = BytesIO()
         img.save(buf, "PNG")
         # 紧致裁剪图 + 裁剪原点响应头（卡面空间，与布局坐标同系）：布局页覆盖层/鼠标据此换算
+        ox, oy = info["crop_origin"]
+        return Response(buf.getvalue(), media_type="image/png",
+                        headers={"X-Crop-Offset": f"{ox},{oy}"})
+
+    @app.post("/api/entity-preview")
+    async def entity_preview(request: dict = Body(...)):
+        project = request.get("project")
+        if project is not None:
+            if not isinstance(project, str) or not project:
+                raise HTTPException(422, "project 必须是非空字符串")
+            if project not in list_projects(library_dir):
+                raise StoreError(f"项目不存在：{project}", code="not_found")
+        card = request.get("card")
+        state = request.get("state")
+        entity_layout = request.get("layout")
+        try:
+            if not isinstance(card, dict):
+                raise ValueError("card 必须是对象")
+            if not entity_eligible(card):
+                raise ValueError("该卡牌类型不支持对局式神渲染")
+            validate_entity_state(state)
+            if project is not None:
+                card = _with_artwork_fallback(card, library_dir / project / "images")
+            else:
+                card = {k: copy.deepcopy(v) for k, v in card.items()
+                        if not k.startswith("_") and k != "artwork"}
+                card["_base_dir"] = str(_SAMPLE_ART.parent)
+                card["artwork"] = {"images": [{"path": _SAMPLE_ART.name}]}
+            if entity_layout is None:
+                entity_layout = get_type_layout(load_layouts(assets_dir), "对局式神")
+            elif not isinstance(entity_layout, dict):
+                raise ValueError("layout 必须是对象")
+            info: dict = {}
+            img = render_entity(card, state, assets_dir, layout=entity_layout, info=info)
+        except Exception as e:
+            raise HTTPException(422, f"渲染失败: {e}") from e
+        buf = BytesIO()
+        img.save(buf, "PNG")
         ox, oy = info["crop_origin"]
         return Response(buf.getvalue(), media_type="image/png",
                         headers={"X-Crop-Offset": f"{ox},{oy}"})

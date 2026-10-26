@@ -368,6 +368,85 @@ def test_preview_unrenderable_card_422(client, project, library_dir):
     assert r.status_code == 422 and "渲染失败" in r.json()["detail"]
 
 
+# ---------- 对局式神预览 ----------
+
+
+def _entity_card(card_type="式神", **extra):
+    return {"type": card_type, "name": "对局样例", **extra}
+
+
+def _entity_body(card=None, state=None, **extra):
+    return {"card": _entity_card() if card is None else card,
+            "state": {} if state is None else state, **extra}
+
+
+@pytest.mark.parametrize("card", [
+    _entity_card(),
+    _entity_card("形态"),
+    _entity_card("战斗", evolve=True),
+    _entity_card("法术", evolve=True),
+])
+def test_entity_preview_project_eligible_cards(client, project, card):
+    r = client.post("/api/entity-preview", json=_entity_body(card, project=project))
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.headers["x-crop-offset"].count(",") == 1
+    assert Image.open(BytesIO(r.content)).width <= 64
+
+
+def test_entity_preview_project_rejects_normal_combat(client, project):
+    r = client.post("/api/entity-preview",
+                    json=_entity_body(_entity_card("战斗"), project=project))
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("state", [True, {"level": 0}, {"power": True}, {"art_scale": True}])
+def test_entity_preview_project_rejects_invalid_state(client, project, state):
+    r = client.post("/api/entity-preview",
+                    json={"project": project, "card": _entity_card(), "state": state})
+    assert r.status_code == 422
+
+
+def test_entity_preview_project_not_found_404(client):
+    r = client.post("/api/entity-preview", json=_entity_body(project="不存在"))
+    assert r.status_code == 404
+
+
+def test_entity_preview_project_ignores_request_base_dir(client, project, tmp_path):
+    outside = tmp_path / "outside.png"
+    Image.new("RGB", (32, 32), "red").save(outside)
+    baseline = client.post("/api/entity-preview", json=_entity_body(project=project))
+    card = _entity_card(_base_dir=str(tmp_path),
+                        artwork={"images": [{"path": outside.name}]})
+    r = client.post("/api/entity-preview", json=_entity_body(card, project=project))
+    assert r.status_code == 200
+    assert r.content == baseline.content
+
+
+def test_entity_preview_project_rejects_artwork_outside_images(client, project, tmp_path):
+    outside = tmp_path / "outside.png"
+    Image.new("RGB", (32, 32), "red").save(outside)
+    card = _entity_card(artwork={"images": [{"path": str(outside.resolve())}]})
+    r = client.post("/api/entity-preview", json=_entity_body(card, project=project))
+    assert r.status_code == 422
+
+
+def test_entity_preview_project_missing_image_fallback(client, project):
+    card = _entity_card(artwork={"images": [{"path": "不存在.png"}]})
+    baseline = client.post("/api/entity-preview", json=_entity_body(project=project))
+    r = client.post("/api/entity-preview", json=_entity_body(card, project=project))
+    assert r.status_code == 200
+    assert r.content == baseline.content
+
+
+def test_entity_preview_is_read_only(client, project, library_dir):
+    yaml_path = library_dir / project / "shikigami" / "shikigami.yaml"
+    before = yaml_path.read_bytes()
+    r = client.post("/api/entity-preview", json=_entity_body(project=project))
+    assert r.status_code == 200
+    assert yaml_path.read_bytes() == before
+
+
 # ---------- 页面路由 ----------
 
 def test_editor_page_at_root(client):

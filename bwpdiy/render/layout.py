@@ -32,7 +32,7 @@ def _normalize_size_fields(layouts: dict) -> None:
     groups: dict[str, dict[str, list]] = {}  # 元素名 -> 字段 -> [(类型, 冻结值)]
     for section in ("elements", "text_regions"):
         for card_type, type_layout in layouts.items():
-            if not isinstance(type_layout, dict):
+            if card_type in ("对局式神", "机制") or not isinstance(type_layout, dict):
                 continue
             for name, item in (type_layout.get(section) or {}).items():
                 if not isinstance(item, dict):
@@ -60,6 +60,8 @@ def _normalize_size_fields(layouts: dict) -> None:
                 # key=repr：手改出混合类型值（int 与 list 并存）时 sorted 直接比较会 TypeError
                 f"取值 {sorted(winners, key=repr)!r} → {chosen!r}", stacklevel=2)
             for card_type, type_layout in layouts.items():
+                if card_type in ("对局式神", "机制"):
+                    continue
                 item = (type_layout.get(group_name.split(".")[0]) or {}).get(
                     group_name.split(".", 1)[1])
                 if item is not None and key in item:
@@ -70,17 +72,17 @@ def _normalize_size_fields(layouts: dict) -> None:
 
 
 def load_layouts(assets_dir: Path) -> dict:
-    """加载完整布局表（6 卡牌类型 + 「机制」段）。assets_dir/layout.json 优先，
-    缺失回退包内默认；用户布局缺「机制」段时从包内默认补齐（机制段结构扁平，
-    不参与尺寸归一）。"""
+    """加载布局表。assets_dir/layout.json 优先，缺失回退包内默认；
+    用户文件缺「对局式神」「机制」独立段时从包内默认补齐。"""
     path = Path(assets_dir) / "layout.json"
     if not path.is_file():
         path = _DEFAULT
     layouts = json.loads(path.read_text(encoding="utf-8"))
-    if "机制" not in layouts and path != _DEFAULT:
+    if path != _DEFAULT and any(name not in layouts for name in ("对局式神", "机制")):
         default = json.loads(_DEFAULT.read_text(encoding="utf-8"))
-        if "机制" in default:
-            layouts["机制"] = default["机制"]
+        for name in ("对局式神", "机制"):
+            if name not in layouts and name in default:
+                layouts[name] = default[name]
     _normalize_size_fields(layouts)
     return layouts
 

@@ -663,6 +663,83 @@
       }
     }
   },
+  "对局式神": {
+    "elements": {
+      "level": {
+        "kind": "level_badge",
+        "pos": [
+          32,
+          88
+        ],
+        "base_size": 18,
+        "num_size": 14,
+        "num_offset": [
+          0,
+          0
+        ]
+      },
+      "power": {
+        "kind": "stat",
+        "field": "power",
+        "pos": [
+          10,
+          82
+        ],
+        "icon_size": 16,
+        "num_offset": [
+          0,
+          10
+        ],
+        "font_size": 14,
+        "stroke_width": 1
+      },
+      "health": {
+        "kind": "stat",
+        "field": "health",
+        "pos": [
+          54,
+          82
+        ],
+        "icon_size": 16,
+        "num_offset": [
+          0,
+          10
+        ],
+        "font_size": 14,
+        "stroke_width": 1
+      },
+      "combat_power": {
+        "kind": "stat",
+        "field": "combat_power",
+        "pos": [
+          10,
+          62
+        ],
+        "icon_size": 14,
+        "num_offset": [
+          0,
+          9
+        ],
+        "font_size": 12,
+        "stroke_width": 1
+      },
+      "shield": {
+        "kind": "stat",
+        "field": "shield",
+        "pos": [
+          54,
+          62
+        ],
+        "icon_size": 14,
+        "num_offset": [
+          0,
+          9
+        ],
+        "font_size": 12,
+        "stroke_width": 1
+      }
+    }
+  },
   "机制": {
     "name_size": 26,
     "text_size": 24,

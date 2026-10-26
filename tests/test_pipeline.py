@@ -359,7 +359,7 @@ def test_shared_artwork_ref_and_loading(assets_dir, sample_art):
 
 # ---------- 普通卡静态覆盖层缓存 ----------
 
-def _render_card_reference(card, assets_dir, crop):
+def _render_card_reference(card, assets_dir, crop, layout=None):
     """缓存改造前的逐层合成顺序，作为逐像素独立参考。"""
     from PIL import Image, ImageChops
 
@@ -384,8 +384,9 @@ def _render_card_reference(card, assets_dir, crop):
                       cover_base=orig_size)
     art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))
     canvas = Image.alpha_composite(art, frame)
-    type_layout = _to_canvas_coords(
-        get_type_layout(load_layouts(assets_dir), card_type), anchor_x)
+    type_layout = layout if layout is not None else get_type_layout(
+        load_layouts(assets_dir), card_type)
+    type_layout = _to_canvas_coords(type_layout, anchor_x)
     elements = type_layout["elements"]
     card = dict(card)
     if not card.get("footer"):
@@ -460,6 +461,27 @@ def test_static_layer_replay_matches_legacy_pixels(
     expected = _render_card_reference(card, assets_dir, crop)
     for _ in range(2):
         actual = render_card(card, assets_dir, crop=crop)
+        assert actual.size == expected.size
+        assert actual.tobytes() == expected.tobytes()
+
+
+@pytest.mark.parametrize("crop", [False, True])
+def test_static_text_replay_matches_legacy_on_transparent_target(
+        assets_dir, tmp_path, crop):
+    from PIL import Image
+
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+    import bwpdiy.render.pipeline as pipeline
+
+    Image.new("RGBA", (64, 64), (0, 0, 0, 0)).save(tmp_path / "blank.png")
+    card = make_card(tmp_path, "法术", name="透明文本", description="",
+                     artwork={"images": [{"path": "blank.png"}]})
+    layout = get_type_layout(load_layouts(assets_dir), "法术")
+    layout["elements"]["name"]["pos"] = [-90, 100]
+    pipeline._STATIC_OVERLAY_CACHE.clear()
+    expected = _render_card_reference(card, assets_dir, crop, layout)
+    for _ in range(2):
+        actual = render_card(card, assets_dir, layout=layout, crop=crop)
         assert actual.size == expected.size
         assert actual.tobytes() == expected.tobytes()
 

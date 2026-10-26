@@ -19,7 +19,7 @@ from collections import OrderedDict
 from pathlib import Path
 import threading
 
-from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from bwpdiy.render.artwork import (
     ARTWORK_MAX_PIXELS, artwork_ref, fit_artwork_cached, load_card_artwork)
@@ -132,7 +132,6 @@ def _static_overlay_key(assets_dir: Path, type_layout: dict, card: dict):
 
 class _RecordingDraw:
     def __init__(self, image: Image.Image, tape: list, mode: str | None):
-        self._image = image
         self._tape = tape
         self._draw = ImageDraw.Draw(image, mode)
 
@@ -141,25 +140,7 @@ class _RecordingDraw:
 
     def text(self, xy, text, *args, **kwargs):
         self._draw.text(xy, text, *args, **kwargs)
-        fill = kwargs.get("fill", args[0] if args else None)
-        try:
-            if isinstance(fill, (tuple, list)):
-                opaque = len(fill) == 3 or (len(fill) == 4 and fill[3] == 255)
-            else:
-                opaque = ImageColor.getcolor(fill, "RGBA")[3] == 255
-        except (TypeError, ValueError, AttributeError):
-            opaque = False
-        if not opaque or kwargs.get("stroke_width", 0):
-            self._tape.append(("text", xy, text, args, kwargs))
-            return
-        mask = Image.new("RGBA", self._image.size, (0, 0, 0, 0))
-        ImageDraw.Draw(mask).text(xy, text, *args, **kwargs)
-        alpha = mask.getchannel("A")
-        bbox = alpha.getbbox()
-        if bbox is None:
-            return
-        source = Image.new("RGBA", (bbox[2] - bbox[0], bbox[3] - bbox[1]), fill)
-        self._tape.append(("paste", source, bbox[:2], alpha.crop(bbox)))
+        self._tape.append(("text", xy, text, args, kwargs))
 
 
 class _RecordingCanvas:

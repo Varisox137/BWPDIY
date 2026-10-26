@@ -22,6 +22,14 @@ def make_card(sample_art, **kw):
     return card
 
 
+def make_in_bounds_layout():
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["elements"]["level"]["pos"] = [48, 72]
+    layout["elements"]["power"]["pos"] = [16, 72]
+    layout["elements"]["health"]["pos"] = [79, 72]
+    return layout
+
+
 def images_equal(left, right):
     return (left.size == right.size
             and ImageChops.difference(left.convert("RGB"), right.convert("RGB")).getbbox() is None)
@@ -94,12 +102,13 @@ def test_entity_native_size_and_zero_stats(assets_dir, sample_art, monkeypatch):
     monkeypatch.setattr(entity, "_render_digits",
                         lambda text, *args: digits.append(text) or original_digits(text, *args))
 
-    image = render_entity(card, state, assets_dir, crop=False)
+    image = render_entity(card, state, assets_dir,
+                          layout=make_in_bounds_layout(), crop=False)
 
     assert image.size == (96, 144)
     assert image.mode == "RGBA"
     assert "power" in badges and "health" in badges
-    assert digits == ["0", "0"]
+    assert digits == ["0", "0", "0", "0"]
 
 
 @pytest.mark.parametrize("value, expected", [
@@ -250,16 +259,29 @@ def test_entity_inherits_source_offset_and_rotation(assets_dir, sample_art, ref)
 
 def test_entity_crop_is_tight_and_reports_origin(assets_dir, sample_art):
     card = make_card(sample_art)
-    full = render_entity(card, {}, assets_dir, crop=False)
+    layout = make_in_bounds_layout()
+    full = render_entity(card, {}, assets_dir, layout=layout, crop=False)
     alpha = full.getchannel("A").point(lambda value: 255 if value > 10 else 0)
     bbox = alpha.getbbox()
     assert bbox is not None
     info = {}
-    cropped = render_entity(card, {}, assets_dir, crop=True, info=info)
+    cropped = render_entity(card, {}, assets_dir, layout=layout, crop=True, info=info)
     assert cropped.size == (bbox[2] - bbox[0], bbox[3] - bbox[1])
     assert info["crop_origin"] == bbox[:2]
     cropped_alpha = cropped.getchannel("A").point(lambda value: 255 if value > 10 else 0)
     assert cropped_alpha.getbbox() == (0, 0, cropped.width, cropped.height)
+
+
+def test_entity_crop_keeps_level_overflow(assets_dir, sample_art):
+    card = make_card(sample_art)
+    baseline = render_entity(card, {}, assets_dir)
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["elements"]["level"]["pos"] = [48, 160]
+    info = {}
+    cropped = render_entity(card, {}, assets_dir, layout=layout, info=info)
+    assert cropped.height > baseline.height
+    assert info["crop_origin"][1] == 1
+    assert cropped.getchannel("A").getbbox()[3] == cropped.height
 
 
 def test_entity_rejects_ineligible_source(assets_dir, sample_art):

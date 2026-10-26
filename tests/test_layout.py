@@ -44,7 +44,7 @@ def test_entity_layout_backfilled(tmp_path):
         "center": [48, 72], "width": 84, "height": 132,
         "frame_center": True, "offset_y": 0,
     }
-    assert entity["elements"]["level"]["pos"] == [48, 132]
+    assert entity["elements"]["level"]["pos"] == [48, 140]
     assert "机制" in layouts
     assert "text_regions" not in entity
 
@@ -341,7 +341,7 @@ def test_version_2_entity_layout_only_deep_fills_defaults(tmp_path):
     assert entity["elements"]["level"]["pos"] == [32, 88]
     assert entity["elements"]["level"]["num_offset"] == [0, 10]
     assert entity["elements"]["level"]["base_size"] == 27
-    assert entity["elements"]["power"]["pos"] == [15, 123]
+    assert entity["elements"]["power"]["pos"] == [15, 130]
 
 
 def test_three_default_entity_layouts_are_synchronized():
@@ -351,5 +351,5 @@ def test_three_default_entity_layouts_are_synchronized():
     shipped = layout.load_layouts(Path("assets"))["对局式神"]
     assert packaged == shipped == _DEFAULT_LAYOUT
     assert packaged["version"] == 2
-    assert packaged["elements"]["power"]["num_offset"] == [0, 6]
-    assert packaged["elements"]["combat_power"]["num_offset"] == [0, 5]
+    assert packaged["elements"]["power"]["num_offset"] == [-1, 1]
+    assert packaged["elements"]["combat_power"]["num_offset"] == [0, 0]

@@ -23,28 +23,28 @@ _DEFAULT_LAYOUT = {
     },
     "elements": {
         "level": {
-            "kind": "level_badge", "pos": [48, 132], "base_size": 27,
+            "kind": "level_badge", "pos": [48, 140], "base_size": 27,
             "num_size": 21, "num_offset": [0, 0],
         },
         "power": {
-            "kind": "stat", "field": "power", "pos": [15, 123],
-            "icon_size": 24, "num_offset": [0, 6], "font_size": 21,
-            "stroke_width": 1.5,
+            "kind": "stat", "field": "power", "pos": [15, 130],
+            "icon_size": 32, "num_offset": [-1, 1], "font_size": 24,
+            "stroke_width": 2,
         },
         "health": {
-            "kind": "stat", "field": "health", "pos": [81, 123],
-            "icon_size": 24, "num_offset": [0, 6], "font_size": 21,
-            "stroke_width": 1.5,
+            "kind": "stat", "field": "health", "pos": [84, 130],
+            "icon_size": 34, "num_offset": [1, 2], "font_size": 24,
+            "stroke_width": 2,
         },
         "combat_power": {
-            "kind": "stat", "field": "combat_power", "pos": [15, 93],
-            "icon_size": 21, "num_offset": [0, 5], "font_size": 18,
-            "stroke_width": 1.5,
+            "kind": "stat", "field": "combat_power", "pos": [13, 101],
+            "icon_size": 34, "num_offset": [0, 0], "font_size": 22,
+            "stroke_width": 2,
         },
         "shield": {
-            "kind": "stat", "field": "shield", "pos": [81, 93],
-            "icon_size": 21, "num_offset": [0, 5], "font_size": 18,
-            "stroke_width": 1.5,
+            "kind": "stat", "field": "shield", "pos": [83, 100],
+            "icon_size": 29, "num_offset": [0, 1], "font_size": 22,
+            "stroke_width": 2,
         },
     },
 }
@@ -221,6 +221,46 @@ def _render_stat(canvas: Image.Image, lib: AssetLibrary, elem: dict,
     return out
 
 
+def _entity_work_bounds(lib: AssetLibrary, elements: dict,
+                        state: dict) -> tuple[int, int, int, int]:
+    rects = [(0, 0, *ENTITY_SIZE)]
+
+    def add_centered(pos, size):
+        x, y = pos
+        width, height = size
+        rects.append((x - width / 2, y - height / 2,
+                      x + width / 2, y + height / 2))
+
+    level = elements.get("level")
+    if level is not None and level.get("enabled", True):
+        pos = level["pos"]
+        add_centered(pos, (level["base_size"], level["base_size"]))
+        nx, ny = level.get("num_offset", [0, 0])
+        add_centered((pos[0] + nx, pos[1] + ny),
+                     (level["num_size"], level["num_size"]))
+    for field in ("power", "health", "combat_power", "shield"):
+        elem = elements.get(field)
+        if elem is None or not elem.get("enabled", True):
+            continue
+        value = state[field]
+        if field in ("combat_power", "shield") and value == 0:
+            continue
+        pos = elem["pos"]
+        add_centered(pos, (elem["icon_size"], elem["icon_size"]))
+        digits = _render_digits(str(abs(value)), lib.font("name", elem["font_size"]),
+                                round(elem.get("stroke_width", 1)))
+        if digits is None:
+            continue
+        nx, ny = elem.get("num_offset", [0, 0])
+        x = round(pos[0] + nx - digits.width / 2)
+        y = round(pos[1] + ny - digits.height / 2)
+        rects.append((x, y, x + digits.width, y + digits.height))
+    return (math.floor(min(rect[0] for rect in rects)),
+            math.floor(min(rect[1] for rect in rects)),
+            math.ceil(max(rect[2] for rect in rects)),
+            math.ceil(max(rect[3] for rect in rects)))
+
+
 def _render_frame(art: Image.Image, origin: tuple[int, int]) -> Image.Image:
     canvas = Image.new("RGBA", ENTITY_SIZE, (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
@@ -271,16 +311,25 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
     origin = (round(center_x - width / 2), round(center_y - height / 2))
     canvas = _render_frame(art, origin)
     elements = entity_layout["elements"]
+    left, top, right, bottom = _entity_work_bounds(lib, elements, state)
+    frame = canvas
+    canvas = Image.new("RGBA", (right - left, bottom - top), (0, 0, 0, 0))
+    canvas.alpha_composite(frame, (-left, -top))
+
+    def shifted(elem):
+        return {**elem, "pos": [elem["pos"][0] - left, elem["pos"][1] - top]}
+
     if "level" in elements:
-        canvas = _render_level(canvas, lib, elements["level"], state)
+        canvas = _render_level(canvas, lib, shifted(elements["level"]), state)
     for field in ("power", "health", "combat_power", "shield"):
         if field in elements:
-            canvas = _render_stat(canvas, lib, elements[field], state)
+            canvas = _render_stat(canvas, lib, shifted(elements[field]), state)
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda value: 255 if value > 10 else 0).getbbox()
     if info is not None:
-        info["crop_origin"] = bbox[:2] if bbox else (0, 0)
+        info["crop_origin"] = ((left + bbox[0], top + bbox[1])
+                               if bbox else (0, 0))
     return canvas.crop(bbox) if bbox else canvas
 
 

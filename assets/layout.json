@@ -680,7 +680,7 @@
         "kind": "level_badge",
         "pos": [
           48,
-          132
+          140
         ],
         "base_size": 27,
         "num_size": 21,
@@ -694,60 +694,60 @@
         "field": "power",
         "pos": [
           15,
-          123
+          130
         ],
-        "icon_size": 24,
+        "icon_size": 32,
         "num_offset": [
-          0,
-          6
+          -1,
+          1
         ],
-        "font_size": 21,
-        "stroke_width": 1.5
+        "font_size": 24,
+        "stroke_width": 2
       },
       "health": {
         "kind": "stat",
         "field": "health",
         "pos": [
-          81,
-          123
+          84,
+          130
         ],
-        "icon_size": 24,
+        "icon_size": 34,
         "num_offset": [
-          0,
-          6
+          1,
+          2
         ],
-        "font_size": 21,
-        "stroke_width": 1.5
+        "font_size": 24,
+        "stroke_width": 2
       },
       "combat_power": {
         "kind": "stat",
         "field": "combat_power",
         "pos": [
-          15,
-          93
+          13,
+          101
         ],
-        "icon_size": 21,
+        "icon_size": 34,
         "num_offset": [
           0,
-          5
+          0
         ],
-        "font_size": 18,
-        "stroke_width": 1.5
+        "font_size": 22,
+        "stroke_width": 2
       },
       "shield": {
         "kind": "stat",
         "field": "shield",
         "pos": [
-          81,
-          93
+          83,
+          100
         ],
-        "icon_size": 21,
+        "icon_size": 29,
         "num_offset": [
           0,
-          5
+          1
         ],
-        "font_size": 18,
-        "stroke_width": 1.5
+        "font_size": 22,
+        "stroke_width": 2
       }
     }
   },

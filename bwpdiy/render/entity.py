@@ -13,6 +13,14 @@ from bwpdiy.render.badges import TYPE_FRAME_CODE, _paste_element, _render_digits
 from bwpdiy.render.pipeline import _normalize_frame
 
 ENTITY_SIZE = (96, 144)
+ENTITY_MAX_COORD = 4096
+ENTITY_MAX_ELEMENT_SIZE = 1024
+ENTITY_MAX_FONT_SIZE = 256
+ENTITY_MAX_STROKE_WIDTH = 32
+ENTITY_MAX_STAT_DIGITS = 12
+ENTITY_MAX_ART_WINDOW_SIDE = 8000
+ENTITY_MAX_WORK_SIDE = 4096
+ENTITY_MAX_WORK_PIXELS = 16_000_000
 LEVEL_COLORS = {"yellow", "cyan", "purple", "red", "blue", "brown"}
 
 _DEFAULT_LAYOUT = {
@@ -67,13 +75,21 @@ def _finite_number(value) -> bool:
         return False
 
 
+def _bounded_number(value, maximum: int, positive: bool = False) -> bool:
+    return (_finite_number(value) and abs(value) <= maximum
+            and (not positive or value > 0))
+
+
+def _bounded_pair(value) -> bool:
+    return (isinstance(value, (list, tuple)) and len(value) == 2
+            and all(_bounded_number(item, ENTITY_MAX_COORD) for item in value))
+
+
 def validate_entity_art_window(window: dict) -> None:
     if not isinstance(window, dict):
         raise ValueError("卡图窗必须是对象")
-    center = window.get("center")
-    if (not isinstance(center, (list, tuple)) or len(center) != 2
-            or not all(_finite_number(value) for value in center)):
-        raise ValueError("卡图窗 center 必须是两个有限数值")
+    if not _bounded_pair(window.get("center")):
+        raise ValueError("卡图窗 center 必须是两个有限且限幅的数值")
     width, height = window.get("width"), window.get("height")
     if not all(_finite_number(value) and value > 0 for value in (width, height)):
         raise ValueError("卡图窗宽高必须是有限正数")
@@ -82,10 +98,12 @@ def validate_entity_art_window(window: dict) -> None:
     inner_width, inner_height = max(1, round(width)), max(1, round(height))
     if inner_width * inner_height > ARTWORK_MAX_PIXELS:
         raise ValueError("卡图窗面积超像素上限")
+    if max(width, height) > ENTITY_MAX_ART_WINDOW_SIDE:
+        raise ValueError("卡图窗宽高超尺寸上限")
     if not isinstance(window.get("frame_center"), bool):
         raise ValueError("卡图窗 frame_center 必须是布尔值")
-    if not _finite_number(window.get("offset_y")):
-        raise ValueError("卡图窗 offset_y 必须是有限数值")
+    if not _bounded_number(window.get("offset_y"), ENTITY_MAX_COORD):
+        raise ValueError("卡图窗 offset_y 必须是有限且限幅的数值")
 
 
 @lru_cache(maxsize=16)
@@ -146,6 +164,10 @@ def validate_entity_state(state: dict) -> dict:
             raise ValueError(f"{field} 必须是整数")
     if normalized["power"] < 0 or normalized["health"] < 0:
         raise ValueError("power/health 必须是非负整数")
+    max_value = 10 ** ENTITY_MAX_STAT_DIGITS - 1
+    for field in ("power", "health", "combat_power", "shield"):
+        if abs(normalized[field]) > max_value:
+            raise ValueError(f"{field} 数值位数不得超过 {ENTITY_MAX_STAT_DIGITS} 位")
     if normalized["level"] not in (1, 2, 3):
         raise ValueError("level 必须是 1、2 或 3")
     color = normalized["level_color"]
@@ -197,8 +219,46 @@ def _stat_icon(lib: AssetLibrary, field: str, value: int) -> Image.Image:
     return lib.stat_badge(field)
 
 
+def _validate_entity_elements(elements: dict, state: dict) -> None:
+    if not isinstance(elements, dict):
+        raise ValueError("对局式神元素表必须是对象")
+    level = elements.get("level")
+    if level is not None:
+        if not isinstance(level, dict):
+            raise ValueError("等级标元素必须是对象")
+        if level.get("enabled", True):
+            if not _bounded_pair(level.get("pos")):
+                raise ValueError("等级标 pos 必须是两个有限且限幅的数值")
+            if not _bounded_pair(level.get("num_offset", [0, 0])):
+                raise ValueError("等级标 num_offset 必须是两个有限且限幅的数值")
+            for key in ("base_size", "num_size"):
+                if not _bounded_number(level.get(key), ENTITY_MAX_ELEMENT_SIZE, True):
+                    raise ValueError(f"等级标 {key} 必须是有限且限幅的正数")
+    for field in ("power", "health", "combat_power", "shield"):
+        elem = elements.get(field)
+        if elem is None:
+            continue
+        if not isinstance(elem, dict):
+            raise ValueError(f"{field} 元素必须是对象")
+        if not elem.get("enabled", True):
+            continue
+        if field in ("combat_power", "shield") and state[field] == 0:
+            continue
+        for key in ("pos", "num_offset"):
+            if not _bounded_pair(elem.get(key, [0, 0] if key == "num_offset" else None)):
+                raise ValueError(f"{field} {key} 必须是两个有限且限幅的数值")
+        if not _bounded_number(elem.get("icon_size"), ENTITY_MAX_ELEMENT_SIZE, True):
+            raise ValueError(f"{field} icon_size 必须是有限且限幅的正数")
+        font_size = elem.get("font_size")
+        if not _is_int(font_size) or not 0 < font_size <= ENTITY_MAX_FONT_SIZE:
+            raise ValueError(f"{field} font_size 必须是有限且限幅的正整数")
+        stroke_width = elem.get("stroke_width", 1)
+        if not _bounded_number(stroke_width, ENTITY_MAX_STROKE_WIDTH) or stroke_width < 0:
+            raise ValueError(f"{field} stroke_width 必须是有限且限幅的非负数")
+
+
 def _render_stat(canvas: Image.Image, lib: AssetLibrary, elem: dict,
-                 state: dict) -> Image.Image:
+                 state: dict, digits: Image.Image | None) -> Image.Image:
     if not elem.get("enabled", True):
         return canvas
     field = elem["field"]
@@ -208,8 +268,6 @@ def _render_stat(canvas: Image.Image, lib: AssetLibrary, elem: dict,
     pos = elem["pos"]
     out = _paste_element(canvas, _stat_icon(lib, field, value), pos,
                          (elem["icon_size"], elem["icon_size"]))
-    digits = _render_digits(str(abs(value)), lib.font("name", elem["font_size"]),
-                            round(elem.get("stroke_width", 1)))
     if digits is None:
         return out
     nx, ny = elem.get("num_offset", [0, 0])
@@ -222,14 +280,28 @@ def _render_stat(canvas: Image.Image, lib: AssetLibrary, elem: dict,
 
 
 def _entity_work_bounds(lib: AssetLibrary, elements: dict,
-                        state: dict) -> tuple[int, int, int, int]:
+                        state: dict) -> tuple[tuple[int, int, int, int], dict]:
+    _validate_entity_elements(elements, state)
     rects = [(0, 0, *ENTITY_SIZE)]
+    prepared_digits = {}
 
     def add_centered(pos, size):
         x, y = pos
         width, height = size
         rects.append((x - width / 2, y - height / 2,
                       x + width / 2, y + height / 2))
+
+    def checked_bounds():
+        bounds = (math.floor(min(rect[0] for rect in rects)),
+                  math.floor(min(rect[1] for rect in rects)),
+                  math.ceil(max(rect[2] for rect in rects)),
+                  math.ceil(max(rect[3] for rect in rects)))
+        width, height = bounds[2] - bounds[0], bounds[3] - bounds[1]
+        if width > ENTITY_MAX_WORK_SIDE or height > ENTITY_MAX_WORK_SIDE:
+            raise ValueError("对局式神工作画布宽高超尺寸上限")
+        if width * height > ENTITY_MAX_WORK_PIXELS:
+            raise ValueError("对局式神工作画布面积超像素上限")
+        return bounds
 
     level = elements.get("level")
     if level is not None and level.get("enabled", True):
@@ -242,23 +314,28 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         elem = elements.get(field)
         if elem is None or not elem.get("enabled", True):
             continue
+        if field in ("combat_power", "shield") and state[field] == 0:
+            continue
+        add_centered(elem["pos"], (elem["icon_size"], elem["icon_size"]))
+    checked_bounds()
+    for field in ("power", "health", "combat_power", "shield"):
+        elem = elements.get(field)
+        if elem is None or not elem.get("enabled", True):
+            continue
         value = state[field]
         if field in ("combat_power", "shield") and value == 0:
             continue
-        pos = elem["pos"]
-        add_centered(pos, (elem["icon_size"], elem["icon_size"]))
         digits = _render_digits(str(abs(value)), lib.font("name", elem["font_size"]),
                                 round(elem.get("stroke_width", 1)))
+        prepared_digits[field] = digits
         if digits is None:
             continue
+        pos = elem["pos"]
         nx, ny = elem.get("num_offset", [0, 0])
         x = round(pos[0] + nx - digits.width / 2)
         y = round(pos[1] + ny - digits.height / 2)
         rects.append((x, y, x + digits.width, y + digits.height))
-    return (math.floor(min(rect[0] for rect in rects)),
-            math.floor(min(rect[1] for rect in rects)),
-            math.ceil(max(rect[2] for rect in rects)),
-            math.ceil(max(rect[3] for rect in rects)))
+    return checked_bounds(), prepared_digits
 
 
 def _render_frame(art: Image.Image, origin: tuple[int, int]) -> Image.Image:
@@ -291,9 +368,14 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
         raise ValueError("该卡牌类型不支持对局式神渲染")
     state = _card_state(card, state)
     entity_layout = layout if layout is not None else _DEFAULT_LAYOUT
+    if not isinstance(entity_layout, dict):
+        raise ValueError("对局式神布局必须是对象")
     window = entity_layout.get("art_window", _DEFAULT_LAYOUT["art_window"])
     validate_entity_art_window(window)
+    elements = entity_layout.get("elements")
     lib = get_library(assets_dir)
+    (left, top, right, bottom), prepared_digits = _entity_work_bounds(
+        lib, elements, state)
     ref = artwork_ref(card)
     original, rotated = load_card_artwork(card, lib)
     width, height = window["width"], window["height"]
@@ -310,8 +392,6 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
     center_x, center_y = window["center"]
     origin = (round(center_x - width / 2), round(center_y - height / 2))
     canvas = _render_frame(art, origin)
-    elements = entity_layout["elements"]
-    left, top, right, bottom = _entity_work_bounds(lib, elements, state)
     frame = canvas
     canvas = Image.new("RGBA", (right - left, bottom - top), (0, 0, 0, 0))
     canvas.alpha_composite(frame, (-left, -top))
@@ -323,7 +403,8 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
         canvas = _render_level(canvas, lib, shifted(elements["level"]), state)
     for field in ("power", "health", "combat_power", "shield"):
         if field in elements:
-            canvas = _render_stat(canvas, lib, shifted(elements[field]), state)
+            canvas = _render_stat(canvas, lib, shifted(elements[field]), state,
+                                  prepared_digits.get(field))
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda value: 255 if value > 10 else 0).getbbox()

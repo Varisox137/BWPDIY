@@ -108,7 +108,7 @@ def test_entity_native_size_and_zero_stats(assets_dir, sample_art, monkeypatch):
     assert image.size == (96, 144)
     assert image.mode == "RGBA"
     assert "power" in badges and "health" in badges
-    assert digits == ["0", "0", "0", "0"]
+    assert digits == ["0", "0"]
 
 
 @pytest.mark.parametrize("value, expected", [
@@ -403,4 +403,132 @@ def test_entity_rejects_rounded_oversized_window_before_allocation(
         entity, "fit_artwork",
         lambda *args, **kwargs: pytest.fail("超限内窗不得进入卡图分配"))
     with pytest.raises(ValueError, match="卡图窗面积超像素上限"):
+        render_entity(make_card(sample_art), {}, assets_dir, layout=layout)
+
+
+def test_entity_crop_keeps_left_and_top_overflow(assets_dir, sample_art):
+    layout = make_in_bounds_layout()
+    layout["elements"]["level"]["pos"] = [-20, -20]
+    info = {}
+    cropped = render_entity(make_card(sample_art), {}, assets_dir,
+                            layout=layout, info=info)
+    assert info["crop_origin"][0] < 0
+    assert info["crop_origin"][1] < 0
+    alpha = cropped.getchannel("A").point(lambda value: 255 if value > 10 else 0)
+    assert alpha.getbbox() == (0, 0, cropped.width, cropped.height)
+
+
+def test_entity_work_canvas_keeps_stat_digit_offset_overflow(assets_dir, sample_art):
+    layout = make_in_bounds_layout()
+    layout["elements"]["level"]["enabled"] = False
+    layout["elements"]["health"]["enabled"] = False
+    layout["elements"]["power"].update(pos=[48, 72], num_offset=[0, 100])
+    full = render_entity(make_card(sample_art), {"power": 2}, assets_dir,
+                         layout=layout, crop=False)
+    assert full.height > 144
+    assert full.getchannel("A").getbbox()[3] == full.height
+
+
+def test_entity_disabled_and_zero_modifiers_do_not_expand_work_canvas(
+        assets_dir, sample_art):
+    layout = make_in_bounds_layout()
+    layout["elements"]["level"].update(pos=[1000, 1000], enabled=False)
+    layout["elements"]["combat_power"]["pos"] = [1000, 1000]
+    layout["elements"]["shield"]["pos"] = [1000, 1000]
+    full = render_entity(make_card(sample_art), {}, assets_dir,
+                         layout=layout, crop=False)
+    assert full.size == (96, 144)
+
+
+@pytest.mark.parametrize("field, value", [
+    ("power", 10 ** 12),
+    ("health", 10 ** 12),
+    ("combat_power", -(10 ** 12)),
+    ("shield", -(10 ** 12)),
+])
+def test_validate_entity_state_rejects_excess_digits(field, value):
+    with pytest.raises(ValueError, match="位数"):
+        validate_entity_state({field: value})
+
+
+@pytest.mark.parametrize("element, key, value", [
+    ("level", "pos", [math.nan, 0]),
+    ("level", "pos", [math.inf, 0]),
+    ("level", "pos", [True, 0]),
+    ("level", "pos", [5000, 0]),
+    ("level", "base_size", 0),
+    ("level", "base_size", 1025),
+    ("level", "num_size", math.inf),
+    ("level", "num_offset", [0, 5000]),
+    ("power", "icon_size", True),
+    ("power", "icon_size", 1025),
+    ("power", "font_size", 0),
+    ("power", "font_size", 257),
+    ("power", "font_size", 24.5),
+    ("power", "stroke_width", -1),
+    ("power", "stroke_width", 33),
+    ("power", "num_offset", [math.inf, 0]),
+])
+def test_entity_rejects_invalid_layout_before_allocation(
+        assets_dir, sample_art, monkeypatch, element, key, value):
+    import bwpdiy.render.entity as entity
+
+    layout = make_in_bounds_layout()
+    layout["elements"][element][key] = value
+    monkeypatch.setattr(
+        entity, "fit_artwork",
+        lambda *args, **kwargs: pytest.fail("非法布局不得进入卡图分配"))
+    monkeypatch.setattr(
+        entity, "_render_digits",
+        lambda *args, **kwargs: pytest.fail("非法布局不得进入数字图分配"))
+    with pytest.raises(ValueError):
+        render_entity(make_card(sample_art), {}, assets_dir, layout=layout)
+
+
+@pytest.mark.parametrize("key, value", [
+    ("center", [5000, 0]),
+    ("center", [math.nan, 0]),
+    ("offset_y", math.inf),
+    ("offset_y", True),
+])
+def test_entity_rejects_unbounded_art_window_coordinates_before_allocation(
+        assets_dir, sample_art, monkeypatch, key, value):
+    import bwpdiy.render.entity as entity
+
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["art_window"][key] = value
+    monkeypatch.setattr(
+        entity, "fit_artwork",
+        lambda *args, **kwargs: pytest.fail("非法内窗不得进入卡图分配"))
+    with pytest.raises(ValueError, match="卡图窗"):
+        render_entity(make_card(sample_art), {}, assets_dir, layout=layout)
+
+
+def test_entity_rejects_excessive_art_window_side_before_allocation(
+        assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["art_window"].update(width=10000, height=1, frame_center=False)
+    monkeypatch.setattr(
+        entity, "fit_artwork",
+        lambda *args, **kwargs: pytest.fail("超限内窗不得进入卡图分配"))
+    with pytest.raises(ValueError, match="卡图窗宽高超尺寸上限"):
+        render_entity(make_card(sample_art), {}, assets_dir, layout=layout)
+
+
+@pytest.mark.parametrize("pos, message", [
+    ([4000, 4000], "工作画布面积超像素上限"),
+    ([4096, 4096], "工作画布宽高超尺寸上限"),
+])
+def test_entity_rejects_excessive_work_canvas_before_allocation(
+        assets_dir, sample_art, monkeypatch, pos, message):
+    import bwpdiy.render.entity as entity
+
+    layout = make_in_bounds_layout()
+    layout["elements"]["level"]["pos"] = pos
+    monkeypatch.setattr(
+        entity, "fit_artwork",
+        lambda *args, **kwargs: pytest.fail("超限工作画布不得进入卡图分配"))
+    with pytest.raises(ValueError, match=message):
         render_entity(make_card(sample_art), {}, assets_dir, layout=layout)

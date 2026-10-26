@@ -7,6 +7,7 @@ fixture 用 tmp_path 的 library_dir + assets 拷贝，不碰真实 library/ 与
 """
 
 import shutil
+from copy import deepcopy
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -16,6 +17,7 @@ import yaml
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from bwpdiy.render.entity import _DEFAULT_LAYOUT
 from bwpdiy.web.app import create_app
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
@@ -404,6 +406,15 @@ def test_entity_preview_project_rejects_normal_combat(client, project):
     r = client.post("/api/entity-preview",
                     json=_entity_body(_entity_card("战斗"), project=project))
     assert r.status_code == 422
+
+
+def test_entity_preview_rejects_invalid_layout_422(client):
+    entity_layout = deepcopy(_DEFAULT_LAYOUT)
+    entity_layout["elements"]["power"]["icon_size"] = True
+    r = client.post("/api/entity-preview",
+                    json=_entity_body(layout=entity_layout))
+    assert r.status_code == 422
+    assert "icon_size" in r.json()["detail"]
 
 
 @pytest.mark.parametrize("state", [True, {"level": 0}, {"power": True}, {"art_scale": True}])

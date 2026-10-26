@@ -527,6 +527,271 @@ console.log("OK");
     _run_node(tmp_path, driver)
 
 
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_state_is_temporary(tmp_path):
+    """对局状态只继承合法基础值，修改不写卡牌数据、不置脏。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function entityEligible(card)",
+        "function makeEntityState(card)",
+        "function setEntityField(key, value)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+const LEVELS = [1, 2, 3];
+const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan', 'purple', 'red', 'blue', 'brown']);
+let entityState = null;
+let cDirty = false;
+let scheduled = 0;
+function scheduleEntityPreview() {{ scheduled++; }}
+{functions}
+assert(entityEligible({{type: '式神'}}));
+assert(entityEligible({{type: '形态'}}));
+assert(entityEligible({{type: '法术', evolve: true}}));
+assert(!entityEligible({{type: '战斗'}}));
+assert(!entityEligible(null));
+const source = {{type: '法术', evolve: true, 'power+': 3, 'health+': 4,
+                level: 2, level_color: 'cyan', power: -2, health: 5.5,
+                combat_power: 8, shield: 9, art_scale: 7}};
+const state = makeEntityState(source);
+entityState = state;
+assert.deepStrictEqual(state, {{level: 2, level_color: 'cyan', power: 0, health: 0,
+                                combat_power: 0, shield: 0, art_scale: 1}});
+assert.deepStrictEqual(makeEntityState({{type: '式神', level: 4, level_color: 'bad',
+                                         power: 3, health: 4}}),
+                       {{level: 1, level_color: 'yellow', power: 3, health: 4,
+                        combat_power: 0, shield: 0, art_scale: 1}});
+setEntityField('power', 4);
+assert(state.power === 4 && cDirty === false && scheduled === 1);
+assert(source.power === -2 && source['power+'] === 3);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_mode_enter_exit_and_mouse_isolation(tmp_path):
+    """进入/返回只切换临时状态，保留脏标记与撤回栈，且禁用卡图鼠标通道。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function entityEligible(card)",
+        "function makeEntityState(card)",
+        "function enterEntityMode()",
+        "function exitEntityMode()",
+        "function artMouseChannel(img)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+const LEVELS = [1, 2, 3];
+const LEVEL_COLOR_VALUES = new Set(['yellow']);
+let entityMode = false, entityState = null;
+let formData = {{type: '式神', name: '山风', power: 2, health: 3}};
+let curMech = null, cDirty = true, cPreviewSeq = 4, cPortraitSeq = 2;
+let cPreviewTimer = null;
+const undoStack = [{{name: '旧值'}}];
+const cPortraitImg = {{style: {{display: 'block'}}}};
+let builds = 0, entityPreviews = 0, normalPreviews = 0;
+function buildForm() {{ builds++; }}
+function entityPreview() {{ entityPreviews++; }}
+function cPreviewForm() {{ normalPreviews++; }}
+function cPreviewProject() {{ normalPreviews++; }}
+{functions}
+const original = JSON.stringify(formData);
+enterEntityMode();
+assert(entityMode && entityState.power === 2 && builds === 1 && entityPreviews === 1);
+assert(cDirty && undoStack.length === 1 && JSON.stringify(formData) === original);
+assert.strictEqual(artMouseChannel(cPortraitImg), null);
+assert.strictEqual(artMouseChannel({{}}), null);
+assert.strictEqual(cPortraitImg.style.display, 'none');
+exitEntityMode();
+assert(!entityMode && entityState === null && builds === 2 && normalPreviews === 1);
+assert(cPreviewSeq === 5 && cPortraitSeq === 4);
+assert(cDirty && undoStack.length === 1 && JSON.stringify(formData) === original);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_preview_and_export(tmp_path):
+    """实体预览复用序号防串图；导出使用同接口、当前状态与安全卡名。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "async function entityPreview()",
+        "async function exportEntity()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let entityMode = true;
+let entityState = {{level: 2, level_color: 'cyan', power: 4, health: 5,
+                    combat_power: -1, shield: 2, art_scale: 1.2}};
+let formData = {{type: '形态', name: '  烈:/山?  '}};
+let curProject = '项目', curCard = 'card-stem', cPreviewSeq = 7;
+const requests = [], handled = [], downloads = [];
+const cErrorEl = {{textContent: ''}};
+const cFormErrors = {{textContent: ''}};
+const document = {{getElementById: id => id === 'c-form-errors' ? cFormErrors : null,
+                   createElement: tag => ({{click() {{ downloads.push({{href: this.href,
+                                                                      download: this.download}}); }}}})}};
+const URL = {{createObjectURL: blob => 'blob:entity', revokeObjectURL: url => {{}}}};
+async function fetch(url, options) {{
+  requests.push({{url, options}});
+  return {{ok: true, blob: async () => ({{kind: 'png'}})}};
+}}
+async function cHandlePreviewResponse(response, seq) {{ handled.push(seq); }}
+async function parseErrorDetail(response) {{ return ['bad']; }}
+{functions}
+(async () => {{
+  await entityPreview();
+  assert.strictEqual(cPreviewSeq, 8);
+  assert.deepStrictEqual(handled, [8]);
+  assert.strictEqual(requests[0].url, '/api/entity-preview');
+  assert.deepStrictEqual(JSON.parse(requests[0].options.body),
+                         {{project: curProject, card: formData, state: entityState}});
+  await exportEntity();
+  assert.strictEqual(requests[1].url, '/api/entity-preview');
+  assert.deepStrictEqual(JSON.parse(requests[1].options.body),
+                         {{project: curProject, card: formData, state: entityState}});
+  assert.deepStrictEqual(downloads, [{{href: 'blob:entity', download: '烈山_对局.png'}}]);
+  assert.strictEqual(cFormErrors.textContent, '');
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_mode_blocks_queued_normal_preview(tmp_path):
+    """进入实体模式前已防抖排队的普通预览不得再发请求或覆盖实体图。"""
+    script = _script()
+    preview_form = _extract_js(script, "async function cPreviewForm(withPortrait = true)")
+    preview_project = _extract_js(script, "async function cPreviewProject()")
+    driver = f"""
+const assert = require('node:assert');
+let entityMode = true, formData = {{type: '式神'}};
+let curProject = '项目', curCard = 'stem', cPreviewSeq = 11, requests = 0;
+const cErrorEl = {{textContent: ''}};
+function validateCardJS() {{ return []; }}
+async function fetch() {{ requests++; return {{ok: true}}; }}
+async function cHandlePreviewResponse() {{}}
+function cPreviewPortrait() {{}}
+{preview_form}
+{preview_project}
+(async () => {{
+  await cPreviewForm();
+  await cPreviewProject();
+  assert.strictEqual(requests, 0);
+  assert.strictEqual(cPreviewSeq, 11);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_mode_exits_before_navigation(tmp_path):
+    """切卡、清空和离开卡牌 tab 都先退出实体模式，避免临时响应污染后续界面。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "async function selectCard(stem, force = false)",
+        "function clearCard()",
+        "function tryShowTab(name)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let entityMode = true, entityState = {{}}, exits = 0;
+function exitEntityMode() {{ if (entityMode) exits++; entityMode = false; entityState = null; }}
+let curCard = 'old', curProject = '项目', curMech = null, formData = {{name: '旧'}};
+let cardData = null, cDirty = false, mainShiki = null, neutralMode = false, selectSeq = 0;
+let cards = {{shikigami: [], cards: []}};
+const cStatusEl = {{textContent: ''}}, cErrorEl = {{textContent: ''}};
+const cPreviewImg = {{removeAttribute() {{}}}}, cPortraitImg = {{style: {{}}, removeAttribute() {{}}}};
+let cPreviewUrl = null, cPortraitUrl = null, cPreviewSeq = 0, cPreviewTimer = null;
+const elements = {{}};
+const document = {{getElementById: id => elements[id] || (elements[id] = {{
+  textContent: '', classList: {{contains: () => false}}
+}})}};
+const URL = {{revokeObjectURL() {{}}}};
+function confirmDiscard() {{ return true; }}
+function buildCardList() {{}}
+function listErr() {{}}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function resetUndo() {{ assert(!entityMode); }}
+function buildForm() {{}}
+function cPreviewProject() {{}}
+async function fetch(url, options) {{
+  assert(!entityMode);
+  return {{ok: true, json: async () => ({{type: '形态', name: '新'}})}};
+}}
+let cardLayoutMode = false, singleDirty = false, mDirty = false, dirty = false;
+function showTab(name) {{ assert(!entityMode); assert.strictEqual(name, 'layout'); }}
+{functions}
+(async () => {{
+  await selectCard('new');
+  assert.strictEqual(exits, 1);
+  entityMode = true; entityState = {{}};
+  clearCard();
+  assert.strictEqual(exits, 2);
+  entityMode = true; entityState = {{}};
+  tryShowTab('layout');
+  assert.strictEqual(exits, 3);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_form_contains_only_temporary_controls(tmp_path):
+    """实体表单仅提供对局控件，编辑时不触发普通表单脏标记。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function buildEntityForm()",
+        "function infoRow(div, label, val)",
+        "function selRowC(div, label, opts, val, set, map = null)",
+        "function numRowC(div, label, val, nonneg, set, extra = null)",
+        "function artRow(div, label, val, set, pval, pset, step = 1, min = null, ids = null)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+const LEVELS = [1, 2, 3];
+const LEVEL_COLORS = [['yellow', '黄'], ['cyan', '青']];
+let entityState = {{level: 2, level_color: 'cyan', power: 3, health: 4,
+                    combat_power: 0, shield: 0, art_scale: 1}};
+let entityMode = true, cDirty = false;
+const formData = {{type: '形态', name: '烈'}};
+function setEntityField(key, value) {{ entityState[key] = value; }}
+function exitEntityMode() {{ entityMode = false; }}
+function exportEntity() {{ exported = true; }}
+let exported = false;
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '',
+  appendChild(child) {{ this.children.push(child); }} }}; }}
+const form = element('div');
+const document = {{getElementById: id => id === 'c-form' ? form : null,
+                   createElement: element,
+                   createTextNode: text => ({{textContent: text}})}};
+{functions}
+buildEntityForm();
+const labels = [], buttons = [];
+function visit(node) {{
+  if (node.tag === 'label') labels.push(node.textContent.trim());
+  if (node.tag === 'button') buttons.push(node.textContent);
+  for (const child of node.children || []) visit(child);
+}}
+visit(form);
+assert.deepStrictEqual(labels, ['等级', '勾玉颜色', '对局缩放', '力量', '生命',
+                                '战力/乏力', '护甲/破甲']);
+assert.deepStrictEqual(buttons, ['返回', '导出对局式神']);
+assert(!labels.some(text => /描述|卡图|保存|撤回/.test(text)));
+const level = form.children[1].children[0];
+level.value = '3'; level.onchange();
+assert.strictEqual(entityState.level, 3);
+assert.strictEqual(cDirty, false);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
 def test_preview_duo_frame_override_empty_slots(client):
     """布局 tab 样卡开 duo_frame：无项目上下文不注入 _duo，渲染空槽位框（与关闭不同图）。"""
     from bwpdiy.render.layout import load_layouts, get_type_layout

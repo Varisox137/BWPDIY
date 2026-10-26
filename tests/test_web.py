@@ -1099,30 +1099,147 @@ async function parseErrorDetail() {{
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_mouse_preview_frames_coalesce_latest_and_stay_independent(tmp_path):
+    """鼠标编辑按通道合并到动画帧，执行时读取最新值且不取消其他通道。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "function scheduleMousePreview(channel)",
+        "function flushMousePreview(channel)",
+        "function afterMouseEdit(channel)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let formData = {{type: '式神', artwork: {{images: [{{offset_x: 0}}]}}}};
+let cDirty = false, notes = 0;
+const previews = [];
+const document = {{getElementById: () => null}};
+function noteEdit() {{ notes++; }}
+function showFormErrors() {{}}
+function validateCardJS() {{ return []; }}
+function cPreviewForm(withPortrait, withEntity) {{
+  previews.push({{channel: 'art', x: formData.artwork.images[0].offset_x, withPortrait, withEntity}});
+}}
+function entityPreview() {{ previews.push({{channel: 'entity', x: formData.artwork.images[0].offset_x}}); }}
+function cPreviewPortrait(withForm) {{ previews.push({{channel: 'portrait', withForm}}); }}
+let nextFrame = 0;
+const frames = new Map();
+function requestAnimationFrame(fn) {{ const id = ++nextFrame; frames.set(id, fn); return id; }}
+function cancelAnimationFrame(id) {{ frames.delete(id); }}
+function runFrame(id) {{ const fn = frames.get(id); frames.delete(id); fn(); }}
+{functions}
+for (let i = 1; i <= 20; i++) {{
+  formData.artwork.images[0].offset_x = i;
+  afterMouseEdit('art');
+}}
+assert.strictEqual(frames.size, 2);
+assert.strictEqual(previews.length, 0);
+assert(cDirty && notes === 20);
+runFrame(mousePreviewFrames.art);
+assert.deepStrictEqual(previews, [{{channel: 'art', x: 20, withPortrait: false, withEntity: false}}]);
+assert.strictEqual(frames.size, 1);
+runFrame(mousePreviewFrames.entity);
+assert.deepStrictEqual(previews[1], {{channel: 'entity', x: 20}});
+afterMouseEdit('portrait');
+scheduleMousePreview('art');
+scheduleMousePreview('entity');
+assert.strictEqual(frames.size, 3);
+const artFrame = mousePreviewFrames.art, entityFrame = mousePreviewFrames.entity;
+flushMousePreview('portrait');
+assert.strictEqual(frames.size, 2);
+assert(frames.has(artFrame) && frames.has(entityFrame));
+assert.deepStrictEqual(previews[2], {{channel: 'portrait', withForm: true}});
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_mouseup_flushes_only_the_active_drag_channels(tmp_path):
+    """实际拖拽结束时取消待执行帧并立即最终预览，无拖拽的 mouseup 不刷新。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "function scheduleMousePreview(channel)",
+        "function flushMousePreview(channel)",
+        "function afterMouseEdit(channel)",
+        "function bindArtMouse(img)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let formData = {{type: '式神'}}, cDirty = false;
+const previews = [];
+const document = {{getElementById: () => null}};
+function noteEdit() {{}}
+function showFormErrors() {{}}
+function validateCardJS() {{ return []; }}
+function cPreviewForm(withPortrait, withEntity) {{ previews.push(['art', withPortrait, withEntity]); }}
+function entityPreview() {{ previews.push(['entity']); }}
+function cPreviewPortrait(withForm) {{ previews.push(['portrait', withForm]); }}
+let nextFrame = 0;
+const frames = new Map();
+function requestAnimationFrame(fn) {{ const id = ++nextFrame; frames.set(id, fn); return id; }}
+function cancelAnimationFrame(id) {{ frames.delete(id); }}
+const windowListeners = {{}};
+const window = {{addEventListener: (name, fn) => {{
+  (windowListeners[name] ||= []).push(fn);
+}}}};
+function dispatchWindow(name, event) {{ for (const fn of windowListeners[name]) fn(event); }}
+function artMouseChannel(img) {{
+  return {{get: () => 0, set: () => afterMouseEdit(img.channel)}};
+}}
+function makeImage(channel) {{
+  const listeners = {{}};
+  return {{channel, listeners, naturalWidth: 100,
+    addEventListener: (name, fn) => {{ listeners[name] = fn; }},
+    getBoundingClientRect: () => ({{width: 100}})}};
+}}
+const artImg = makeImage('art'), cPortraitImg = makeImage('portrait');
+{functions}
+bindArtMouse(artImg);
+bindArtMouse(cPortraitImg);
+dispatchWindow('mouseup');
+assert.deepStrictEqual(previews, []);
+artImg.listeners.mousedown({{button: 0, clientX: 0, clientY: 0, preventDefault() {{}}}});
+dispatchWindow('mousemove', {{clientX: 5, clientY: 5}});
+assert.strictEqual(frames.size, 2);
+dispatchWindow('mouseup');
+assert.strictEqual(frames.size, 0);
+assert.deepStrictEqual(previews, [['art', false, false], ['entity']]);
+previews.length = 0;
+cPortraitImg.listeners.mousedown({{button: 0, clientX: 0, clientY: 0, preventDefault() {{}}}});
+dispatchWindow('mousemove', {{clientX: 5, clientY: 5}});
+assert.strictEqual(frames.size, 1);
+dispatchWindow('mouseup');
+assert.strictEqual(frames.size, 0);
+assert.deepStrictEqual(previews, [['portrait', true]]);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_card_portrait_entity_preview_scheduling_is_independent(tmp_path):
-    """三通道各有 timer，普通主卡刷新同时调度实体且不被其他通道取消。"""
+    """普通输入仍使用独立的 300ms 防抖，主卡刷新联动实体与头像。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function scheduleCardPreview()",
         "function scheduleEntityPreview()",
-        "function afterMouseEdit(channel)",
         "async function cPreviewProject()",
-        "async function cPreviewForm(withPortrait = true)",
+        "async function cPreviewForm(withPortrait = true, withEntity = true)",
     ))
     driver = f"""
 const assert = require('node:assert');
 let cPreviewTimer = null, cPortraitTimer = null, cEntityTimer = null;
 let cPreviewSeq = 0, formData = {{type: '式神'}}, curProject = '项目', curCard = 'stem';
-let cDirty = false, notes = 0, portraits = 0, entities = 0, handled = 0;
-const cErrorEl = {{textContent: ''}};
-const document = {{getElementById: () => null}};
+let portraits = 0, entities = 0, handled = 0;
 let nextTimer = 0;
-const timers = new Map();
-function setTimeout(fn) {{ const id = ++nextTimer; timers.set(id, fn); return id; }}
+const timers = new Map(), delays = [];
+function setTimeout(fn, delay) {{
+  const id = ++nextTimer; timers.set(id, fn); delays.push(delay); return id;
+}}
 function clearTimeout(id) {{ timers.delete(id); }}
-function noteEdit() {{ notes++; }}
 function enc(value) {{ return value; }}
-function showFormErrors() {{}}
 function validateCardJS() {{ return []; }}
 function entityPreview() {{ entities++; }}
 function cPreviewPortrait() {{ portraits++; }}
@@ -1130,10 +1247,11 @@ async function cHandlePreviewResponse() {{ handled++; }}
 async function fetch() {{ return {{ok: true}}; }}
 {functions}
 scheduleEntityPreview();
+scheduleEntityPreview();
 scheduleCardPreview();
-afterMouseEdit('portrait');
-assert.strictEqual(timers.size, 3);
-assert(cDirty && notes === 1);
+scheduleCardPreview();
+assert.strictEqual(timers.size, 2);
+assert.deepStrictEqual(delays, [300, 300, 300, 300]);
 (async () => {{
   await cPreviewForm(false);
   assert.strictEqual(entities, 1);

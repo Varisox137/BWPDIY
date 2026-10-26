@@ -4,7 +4,7 @@
 
 **Goal:** 在 1.7.0 中提供 96×144 常驻对局式神预览、按真实牌框透明窗修正卡图偏移、完整内窗布局，以及松开鼠标前平滑且精确的拖拽渲染。
 
-**Architecture:** 实体渲染继续独立于普通卡类型；布局增加版本化迁移。普通卡静态覆盖层和缩放中间图使用有界缓存，前端三预览通道分离并用 `requestAnimationFrame` 调度鼠标预览，不在浏览器复制合成算法。
+**Architecture:** 实体渲染继续独立于普通卡类型；布局增加版本化迁移。普通卡静态绘制命令/层序列和缩放中间图使用有界缓存，前端三预览通道分离并用 `requestAnimationFrame` 调度鼠标预览，不在浏览器复制合成算法。
 
 **Tech Stack:** Python 3.13、Pillow、FastAPI、vanilla JavaScript、pytest、Node `--check`、Edge + Playwright。
 
@@ -100,7 +100,7 @@ git commit -m "feat(对局式神): 调整96像素布局并按真实牌框透明�
 git push
 ```
 
-### Task 2: 静态覆盖层与缩放卡图有界缓存
+### Task 2: 静态绘制命令/层序列与缩放卡图有界缓存
 
 **Files:**
 - Modify: `bwpdiy/render/artwork.py`
@@ -110,7 +110,7 @@ git push
 
 **Interfaces:**
 - Produces: `fit_artwork_cached(img, target_size, offset_x=0, offset_y=0, scale=1.0, cover_base=None) -> Image.Image`，输入图像按只读处理。
-- Produces: 普通卡内部静态覆盖层缓存；公开 `render_card` 签名与输出不变。
+- Produces: 普通卡内部静态绘制命令/层序列缓存，按原顺序重放；公开 `render_card` 签名与输出不变。
 
 - [ ] **Step 1: 写缓存等价和复用失败测试**
 
@@ -141,7 +141,7 @@ Expected: FAIL，cached入口不存在且静态层仍重复绘制。
 
 `fit_artwork_cached` 使用源对象身份、尺寸、目标尺寸、scale、cover_base 为键，缓存值同时持有源图防 id 复用；只缓存 resize 结果，offset 每次重新 crop。使用 OrderedDict + RLock，缓存总像素≤64M，慢速 resize 在锁外完成，直接 `fit_artwork` 的可变输入语义不变。
 
-将 `render_card` 中牌框+全部元素拆成透明静态覆盖层。缓存键为资源路径、实际合并布局、剥离 `artwork/layout` 后的可序列化卡牌数据；内部 `_` 数据无法安全键控时跳过。每帧仍重新计算卡图轮廓并执行 `alpha_composite(art, overlay)`，最终描述/数值层级与裁剪不变。覆盖层最多8张，返回前不修改缓存图。
+将 `render_card` 中牌框之后的静态绘制记录为命令/层序列，不生成单一静态覆盖层。缓存键为资源路径、实际合并布局、剥离 `artwork/layout` 后的可序列化卡牌数据；`_duo` 或其他不可序列化内部数据无法安全键控时跳过。每帧仍重新计算卡图轮廓并叠加牌框，再将静态绘制命令按原顺序重放到当前画布，保持旧管线逐像素一致，最终描述/数值层级与裁剪不变。命令序列最多 8 条，重放前不修改缓存内容。
 
 - [ ] **Step 4: 运行缓存和普通卡回归**
 

@@ -676,6 +676,101 @@ async function fetch(url, options) {{
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_layout_preview_rechecks_seq_after_error_detail(tmp_path):
+    """慢错误响应过期后不得覆盖布局状态文字。"""
+    handler = _extract_js(_script(), "async function handleLayoutPreviewResponse(r, seq)")
+    driver = f"""
+const assert = require('node:assert');
+let previewSeq = 1, cardLayoutMode = false, singleDirty = false, dirty = false;
+const statusEl = {{textContent: '当前状态'}};
+let releaseDetail;
+const response = {{ok: false,
+  json: () => new Promise(resolve => {{ releaseDetail = resolve; }})}};
+{handler}
+(async () => {{
+  const pending = handleLayoutPreviewResponse(response, 1);
+  previewSeq++;
+  releaseDetail({{detail: '旧错误'}});
+  await pending;
+  assert.strictEqual(statusEl.textContent, '当前状态');
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_layout_preview_slow_success_rechecks_seq_and_defers_status(tmp_path):
+    """慢成功响应在 blob/onload 过期时均丢弃；有效图片加载后才更新状态文字。"""
+    handler = _extract_js(_script(), "async function handleLayoutPreviewResponse(r, seq)")
+    driver = f"""
+const assert = require('node:assert');
+let previewSeq = 1, cardLayoutMode = false, singleDirty = false, dirty = false;
+let entityLayoutMode = false;
+const statusEl = {{textContent: '当前状态'}};
+const currentImage = {{id: 'current'}};
+let previewImg = currentImage, previewOffset = [7, 8], draws = 0;
+const canvas = {{width: 20, height: 30, style: {{width: '20px', height: '30px'}}}};
+const images = [], created = [], revoked = [];
+class Image {{
+  constructor() {{ this.naturalWidth = 64; this.naturalHeight = 96; images.push(this); }}
+  set src(value) {{ this._src = value; }}
+  get src() {{ return this._src; }}
+}}
+const URL = {{createObjectURL: blob => {{ created.push(blob); return 'blob:' + created.length; }},
+             revokeObjectURL: url => revoked.push(url)}};
+function draw() {{ draws++; }}
+function successResponse(blob) {{
+  return {{ok: true, headers: {{get: () => '1,2'}}, blob: async () => blob}};
+}}
+{handler}
+(async () => {{
+  let releaseBlob;
+  const slow = {{ok: true, headers: {{get: () => '1,2'}},
+    blob: () => new Promise(resolve => {{ releaseBlob = resolve; }})}};
+  const pending = handleLayoutPreviewResponse(slow, 1);
+  previewSeq++;
+  releaseBlob({{id: 'stale-blob'}});
+  await pending;
+  assert.deepStrictEqual(created, []);
+  assert.strictEqual(statusEl.textContent, '当前状态');
+  assert.strictEqual(previewImg, currentImage);
+  assert.deepStrictEqual(previewOffset, [7, 8]);
+  assert.strictEqual(canvas.width, 20);
+
+  previewSeq = 2;
+  statusEl.textContent = '等待旧图片';
+  await handleLayoutPreviewResponse(successResponse({{id: 'stale-onload'}}), 2);
+  assert.strictEqual(statusEl.textContent, '等待旧图片');
+  assert.deepStrictEqual(created, [{{id: 'stale-onload'}}]);
+  previewSeq++;
+  statusEl.textContent = '新请求状态';
+  images[0].onload();
+  assert.strictEqual(statusEl.textContent, '新请求状态');
+  assert.strictEqual(previewImg, currentImage);
+  assert.deepStrictEqual(previewOffset, [7, 8]);
+  assert.strictEqual(canvas.width, 20);
+  assert.deepStrictEqual(revoked, ['blob:1']);
+  assert.strictEqual(draws, 0);
+
+  previewSeq = 3;
+  statusEl.textContent = '等待有效图片';
+  await handleLayoutPreviewResponse(successResponse({{id: 'current'}}), 3);
+  assert.strictEqual(statusEl.textContent, '等待有效图片');
+  images[1].onload();
+  assert.strictEqual(statusEl.textContent, '');
+  assert.strictEqual(previewImg, images[1]);
+  assert.deepStrictEqual(previewOffset, [1, 2]);
+  assert.strictEqual(canvas.width, 64);
+  assert.strictEqual(canvas.height, 96);
+  assert.strictEqual(draws, 1);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_entity_state_is_temporary(tmp_path):
     """对局状态只继承合法基础值，修改不写卡牌数据、不置脏。"""
     script = _script()
@@ -952,6 +1047,40 @@ function showTab(name) {{ assert(!entityMode); assert.strictEqual(name, 'layout'
   assert.strictEqual(exits, 3);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_tab_exit_waits_for_unsaved_confirmation(tmp_path):
+    """取消未保存确认时保留实体临时状态；确认离开后才退出实体模式。"""
+    script = _script()
+    function = _extract_js(script, "function tryShowTab(name)")
+    driver = f"""
+const assert = require('node:assert');
+let entityMode = true;
+const entityState = {{power: 4}};
+let entityStateRef = entityState;
+let cardLayoutMode = false, singleDirty = false, cDirty = true;
+let mDirty = false, dirty = false, allowLeave = false, shown = null;
+const elements = {{}};
+const document = {{getElementById: id => elements[id] || (elements[id] = {{
+  classList: {{contains: () => id === 'tab-cards'}}
+}})}};
+function confirm() {{ return allowLeave; }}
+function exitEntityMode() {{ entityMode = false; entityStateRef = null; }}
+function showTab(name) {{ shown = name; }}
+{function}
+tryShowTab('layout');
+assert(entityMode);
+assert.strictEqual(entityStateRef, entityState);
+assert.strictEqual(shown, null);
+allowLeave = true;
+tryShowTab('layout');
+assert(!entityMode);
+assert.strictEqual(entityStateRef, null);
+assert.strictEqual(shown, 'layout');
+console.log('OK');
 """
     _run_node(tmp_path, driver)
 

@@ -338,15 +338,15 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         override = (request or {}).get("card")
         if override is not None:
             # 编辑期实时预览：整体替换为表单数据（含未保存修改与 artwork offset/scale），
-            # 卡图路径仍受 _with_artwork_fallback 的 images/ 基准目录约束，越界由渲染层拒绝
+            # 卡图路径仍受 _with_artwork_fallback 的 images/ 基准目录约束
             if not isinstance(override, dict):
                 raise HTTPException(400, "card 必须是对象")
             card_data = copy.deepcopy(override)
-        card_data = _with_artwork_fallback(card_data, library_dir / project / "images")
         if card_data.get("type") == "协战" and card_data.get("duo_frame"):
             card_data["_duo"] = [_duo_slot(library_dir, project, card_data.get(f))
                                  for f in ("shikigami1", "shikigami2")]
         try:
+            card_data = _with_artwork_fallback(card_data, library_dir / project / "images")
             req_layout = (request or {}).get("layout")
             if req_layout is None and isinstance(card_data.get("layout"), dict):
                 # 单卡布局覆盖：卡面 layout 段按键合并覆盖该类型全局布局（导出同路）
@@ -649,6 +649,10 @@ def _with_artwork_fallback(card: dict, images_dir: Path) -> dict:
     art_path = Path(raw_path)
     if not art_path.is_absolute():
         art_path = images_dir / art_path
+    try:
+        art_path.resolve().relative_to(images_dir.resolve())
+    except ValueError:
+        raise ValueError(f"卡图路径越出基准目录: {raw_path}") from None
     if not art_path.is_file():
         ref = {k: ref[k] for k in ("offset_x", "offset_y", "scale", "rotate")
                if k in ref and isinstance(ref[k], (int, float))}

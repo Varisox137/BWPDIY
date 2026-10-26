@@ -330,7 +330,6 @@ function showTab(name) {
 function tryShowTab(name) {
   const cur = document.getElementById('tab-layout').classList.contains('active') ? 'layout' : 'cards';
   if (name === cur) return;
-  exitEntityMode();
   if (cardLayoutMode) {
     if ((singleDirty || cDirty) &&
         !confirm('单卡布局有未保存修改，离开将丢弃布局调整（卡牌内容修改保留），继续？')) return;
@@ -341,6 +340,7 @@ function tryShowTab(name) {
   } else if (cur === 'layout' && dirty) {
     if (!confirm('布局有未保存修改（切换栏目不会丢弃，但仍未保存），继续？')) return;
   }
+  exitEntityMode();
   showTab(name);
 }
 document.querySelectorAll('.navtab').forEach(b => b.onclick = () => tryShowTab(b.dataset.tab));
@@ -2542,16 +2542,19 @@ async function refreshEntityLayoutPreview() {
 async function handleLayoutPreviewResponse(r, seq) {
   if (seq !== previewSeq) return;  // 期间又有新调整，丢弃本次结果
   if (!r.ok) {
-    statusEl.textContent = '预览失败: ' + (await r.json()).detail;
+    const detail = (await r.json()).detail;
+    if (seq !== previewSeq) return;
+    statusEl.textContent = '预览失败: ' + detail;
     return;
   }
-  statusEl.textContent = (cardLayoutMode ? singleDirty : dirty) ? '● 未保存' : '';
   // 紧致裁剪图 + 裁剪原点（卡面空间）：画布按图尺寸，覆盖层/鼠标按原点换算
   const off = (r.headers.get('X-Crop-Offset') || '').split(',').map(Number);
   const blob = await r.blob();
+  if (seq !== previewSeq) return;
   const img = new Image();
   img.onload = () => {
     if (seq !== previewSeq) { URL.revokeObjectURL(img.src); return; }
+    statusEl.textContent = (cardLayoutMode ? singleDirty : dirty) ? '● 未保存' : '';
     previewOffset = (off.length === 2 && off.every(Number.isFinite)) ? off : [0, 0];
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const scale = entityLayoutMode ? 4 : 1;

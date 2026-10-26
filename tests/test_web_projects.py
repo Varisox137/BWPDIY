@@ -353,12 +353,17 @@ def test_preview_card_override(client, project, library_dir):
     assert r.content != base.content  # 覆盖生效（盘上 shikigami 是式神卡，覆盖为战斗卡）
 
 
-def test_preview_override_artwork_outside_images_422(client, project):
-    """覆盖 card 的 artwork 指向 images/ 外的真实文件：渲染层路径校验拒绝（不读本机任意文件）。"""
+@pytest.mark.parametrize("exists", [True, False])
+def test_preview_override_artwork_outside_images_422(client, project, tmp_path, exists):
+    """覆盖 card 的 artwork 越出 images/：无论外部文件是否存在都拒绝，不探测后回退。"""
+    outside = tmp_path / "outside.png"
+    if exists:
+        Image.new("RGB", (32, 32), "red").save(outside)
     override = _battle_card()
-    override["artwork"] = {"images": [{"path": str(SAMPLE_ART.resolve())}]}
+    override["artwork"] = {"images": [{"path": str(outside.resolve())}]}
     r = client.post(f"/api/projects/{project}/cards/shikigami/preview", json={"card": override})
-    assert r.status_code == 422 and "渲染失败" in r.json()["detail"]
+    assert r.status_code == 422
+    assert "渲染失败: 卡图路径越出基准目录" in r.json()["detail"]
 
 
 def test_preview_unrenderable_card_422(client, project, library_dir):
@@ -438,12 +443,15 @@ def test_entity_preview_project_ignores_request_base_dir(client, project, tmp_pa
     assert r.content == baseline.content
 
 
-def test_entity_preview_project_rejects_artwork_outside_images(client, project, tmp_path):
+@pytest.mark.parametrize("exists", [True, False])
+def test_entity_preview_project_rejects_artwork_outside_images(client, project, tmp_path, exists):
     outside = tmp_path / "outside.png"
-    Image.new("RGB", (32, 32), "red").save(outside)
+    if exists:
+        Image.new("RGB", (32, 32), "red").save(outside)
     card = _entity_card(artwork={"images": [{"path": str(outside.resolve())}]})
     r = client.post("/api/entity-preview", json=_entity_body(card, project=project))
     assert r.status_code == 422
+    assert "渲染失败: 卡图路径越出基准目录" in r.json()["detail"]
 
 
 def test_entity_preview_project_missing_image_fallback(client, project):

@@ -412,6 +412,21 @@ def test_entity_preview_project_not_found_404(client):
     assert r.status_code == 404
 
 
+@pytest.mark.parametrize("bad", ["../evil", "a\\b", "CON"])
+def test_entity_preview_invalid_project_name_422_without_fs(client, monkeypatch, bad):
+    directory_checks = []
+
+    def no_directory_access(path):
+        directory_checks.append(path)
+        return False
+
+    monkeypatch.setattr(Path, "is_dir", no_directory_access)
+    r = client.post("/api/entity-preview", json=_entity_body(project=bad))
+    assert r.status_code == 422
+    assert "项目名" in r.json()["detail"]
+    assert directory_checks == []
+
+
 def test_entity_preview_project_ignores_request_base_dir(client, project, tmp_path):
     outside = tmp_path / "outside.png"
     Image.new("RGB", (32, 32), "red").save(outside)

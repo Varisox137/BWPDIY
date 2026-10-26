@@ -253,8 +253,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         if project is not None:
             if not isinstance(project, str) or not project:
                 raise HTTPException(422, "project 必须是非空字符串")
-            if project not in list_projects(library_dir):
-                raise StoreError(f"项目不存在：{project}", code="not_found")
+            list_cards(library_dir, project)
         card = request.get("card")
         state = request.get("state")
         entity_layout = request.get("layout")

@@ -19,10 +19,11 @@
   #c-left { width: 250px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
   #c-left h4.cat { font-size: 15px; margin: 4px 0; }
   #c-left hr.cat-sep { border: none; border-top: 1px solid #c9c2b2; margin: 10px 0 6px; }
-  #c-mid { flex: 1; display: flex; flex-direction: column; align-items: center; background: #3a3a3a; padding-top: 8px; }
+  #c-mid { flex: 1; display: flex; flex-direction: column; align-items: center; background: #3a3a3a; padding-top: 8px; overflow-y: auto; }
   #c-right { width: 300px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
   #c-preview { margin-top: 10px; background: #222; max-width: 512px; max-height: 512px; }  /* 紧致原尺寸显示（卡图高 512 宽按内容、机制框原宽），不拉伸 */
-  #c-portrait { display: block; margin: 16px auto 0; background: #222; }
+  #c-subpreviews { display: none; flex-direction: row; justify-content: center; align-items: center; gap: 16px; margin: 16px 0 12px; }
+  #c-portrait, #c-entity { display: block; margin: 0; background: #222; }
   .item { padding: 3px 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 4px; }
   .item .meta { font-weight: normal; opacity: .7; }
   .item.active { background: #d9b96a; }
@@ -143,7 +144,10 @@
     </div>
     <div id="c-error"></div>
     <img id="c-preview" alt="">
-    <img id="c-portrait" alt="" style="display:none">
+    <div id="c-subpreviews">
+      <img id="c-portrait" alt="" style="display:none">
+      <img id="c-entity" alt="" style="display:none">
+    </div>
   </div>
   <div id="c-right">
     <div id="c-form">未选中卡牌</div>
@@ -340,7 +344,6 @@ function tryShowTab(name) {
   } else if (cur === 'layout' && dirty) {
     if (!confirm('布局有未保存修改（切换栏目不会丢弃，但仍未保存），继续？')) return;
   }
-  exitEntityMode();
   showTab(name);
 }
 document.querySelectorAll('.navtab').forEach(b => b.onclick = () => tryShowTab(b.dataset.tab));
@@ -568,7 +571,6 @@ function cardItem(c, isShiki) {
 }
 async function selectCard(stem, force = false) {
   if (!force && (stem === curCard || !confirmDiscard())) return;
-  exitEntityMode();
   if (curMech) exitMech();  // 选中卡牌与选中机制互斥（mDirty 守卫已在 confirmDiscard 完成）
   curCard = stem;
   const sg = cards.shikigami.find(e => (e.versions || []).some(v => v.stem === stem));
@@ -585,22 +587,30 @@ async function selectCard(stem, force = false) {
   if (!r.ok) { clearCard(); listErr(await parseErrorDetail(r)); return; }
   cardData = await r.json();
   formData = deepCopy(cardData);
+  entityState = entityEligible(formData) ? makeEntityState(formData) : null;
   cDirty = false;
   resetUndo();
   buildForm();
   cPreviewProject();
 }
 function clearCard() {
-  exitEntityMode();
   clearTimeout(cPreviewTimer);
+  clearTimeout(cPortraitTimer);
+  clearTimeout(cEntityTimer);
   cPreviewSeq++;
-  curCard = null; cardData = null; formData = null; cDirty = false;
+  cPortraitSeq++;
+  cEntitySeq++;
+  curCard = null; cardData = null; formData = null; entityState = null; cDirty = false;
   resetUndo();
   document.getElementById('c-form').textContent = '未选中卡牌';
   cPreviewImg.removeAttribute('src');
   cPortraitImg.style.display = 'none';
   cPortraitImg.removeAttribute('src');
+  cEntityImg.style.display = 'none';
+  cEntityImg.removeAttribute('src');
+  cSubpreviews.style.display = 'none';
   if (cPortraitUrl) { URL.revokeObjectURL(cPortraitUrl); cPortraitUrl = null; }
+  if (cEntityUrl) { URL.revokeObjectURL(cEntityUrl); cEntityUrl = null; }
   if (cPreviewUrl) { URL.revokeObjectURL(cPreviewUrl); cPreviewUrl = null; }
   cErrorEl.textContent = '';
 }
@@ -832,14 +842,21 @@ document.getElementById('c-del-card').onclick = async () => {
   await loadCards();
 };
 
-// ---- 中栏预览：防抖 + 序号防乱序；选中/保存后走项目卡预览（读盘），编辑期走项目卡预览+表单覆盖（实时卡图）----
+// ---- 中栏预览：主卡/头像/对局式神各有独立防抖、序号与 objectURL ----
+const cSubpreviews = document.getElementById('c-subpreviews');
+const cEntityImg = document.getElementById('c-entity');
+let cEntityTimer = null, cEntitySeq = 0, cEntityUrl = null;
+function syncSubpreviews() {
+  const visible = cPortraitImg.style.display !== 'none' || cEntityImg.style.display !== 'none';
+  cSubpreviews.style.display = visible ? 'flex' : 'none';
+}
 function scheduleCardPreview() {
   clearTimeout(cPreviewTimer);
   cPreviewTimer = setTimeout(cPreviewForm, 300);
 }
 function scheduleEntityPreview() {
-  clearTimeout(cPreviewTimer);
-  cPreviewTimer = setTimeout(entityPreview, 300);
+  clearTimeout(cEntityTimer);
+  cEntityTimer = setTimeout(entityPreview, 300);
 }
 async function cHandlePreviewResponse(r, seq) {
   if (seq !== cPreviewSeq) return;  // 期间又有新调整，丢弃本次结果
@@ -858,8 +875,26 @@ async function cHandlePreviewResponse(r, seq) {
   cPreviewImg.onload = () => { if (prev) URL.revokeObjectURL(prev); };  // 新图加载成功才释放旧图
   cPreviewImg.src = url;
 }
+async function cHandleEntityPreviewResponse(r, seq) {
+  if (seq !== cEntitySeq) return;
+  if (!r.ok) {
+    const detail = await parseErrorDetail(r);
+    if (seq !== cEntitySeq) return;
+    cErrorEl.textContent = '对局式神预览失败：' + detail.join('\n');
+    return;
+  }
+  const blob = await r.blob();
+  if (seq !== cEntitySeq) return;
+  const url = URL.createObjectURL(blob);
+  const prev = cEntityUrl;
+  cEntityUrl = url;
+  cEntityImg.onload = () => { if (prev) URL.revokeObjectURL(prev); };
+  cEntityImg.src = url;
+}
 async function cPreviewProject() {
-  if (entityMode || !curProject || !curCard) return;
+  if (!curProject || !curCard) return;
+  entityPreview();
+  cPreviewPortrait(false);
   const seq = ++cPreviewSeq;
   let r;
   try {
@@ -870,11 +905,12 @@ async function cPreviewProject() {
     return;
   }
   await cHandlePreviewResponse(r, seq);
-  cPreviewPortrait(false);
 }
 async function cPreviewForm(withPortrait = true) {
-  if (entityMode || !formData || !curProject || !curCard) return;
+  if (!formData || !curProject || !curCard) return;
   if (validateCardJS(formData).length) return;  // 表单校验未过：不刷预览（错误已在表单侧显示）
+  entityPreview();
+  if (withPortrait) cPreviewPortrait(true);  // 鼠标改卡图/头像四项时按通道跳过另一侧重渲
   const seq = ++cPreviewSeq;
   let r;
   try {
@@ -888,42 +924,51 @@ async function cPreviewForm(withPortrait = true) {
     return;
   }
   await cHandlePreviewResponse(r, seq);
-  if (withPortrait) cPreviewPortrait(true);  // 鼠标改卡图/头像四项时按通道跳过另一侧重渲
 }
 async function entityPreview() {
-  if (!entityMode || !formData || !curProject || !curCard) return;
-  const seq = ++cPreviewSeq;
+  const seq = ++cEntitySeq;
+  if (!formData || !curProject || !curCard || !entityEligible(formData)) {
+    cEntityImg.style.display = 'none';
+    cEntityImg.removeAttribute('src');
+    if (cEntityUrl) { URL.revokeObjectURL(cEntityUrl); cEntityUrl = null; }
+    syncSubpreviews();
+    return;
+  }
+  if (!entityState) entityState = makeEntityState(formData);
+  cEntityImg.style.display = 'block';
+  syncSubpreviews();
   let r;
   try {
     r = await fetch('/api/entity-preview', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({project: curProject, card: formData, state: entityState})});
   } catch (e) {
-    if (seq === cPreviewSeq) cErrorEl.textContent = '预览请求失败: ' + e;
+    if (seq === cEntitySeq) cErrorEl.textContent = '对局式神预览请求失败: ' + e;
     return;
   }
-  await cHandlePreviewResponse(r, seq);
+  await cHandleEntityPreviewResponse(r, seq);
 }
 document.getElementById('c-btn-refresh').onclick = () => {
   if (curMech) {  // 机制编辑态：有未保存修改时刷新表单覆盖预览，避免被已保存内容覆盖
     if (mDirty) scheduleMechPreview(); else mechPreview(false);
     return;
   }
-  if (entityMode) { entityPreview(); return; }
   if (cDirty) scheduleCardPreview();  // 有未保存修改时刷新编辑态预览，避免被已保存内容覆盖
   else cPreviewProject();
 };
 
-// ---- 式神头像预览（卡图下方，双式神框单槽位 2 倍渲染）：仅编辑式神卡时显示 ----
+// ---- 式神头像预览（双式神框单槽位 2 倍渲染）：仅编辑式神卡时显示 ----
 const cPortraitImg = document.getElementById('c-portrait');
-let cPortraitSeq = 0, cPortraitUrl = null;
+let cPortraitTimer = null, cPortraitSeq = 0, cPortraitUrl = null;
 async function cPreviewPortrait(withForm) {
   const seq = ++cPortraitSeq;
-  if (entityMode || !curProject || !curCard || !formData || formData.type !== '式神') {
+  if (!curProject || !curCard || !formData || formData.type !== '式神') {
     cPortraitImg.style.display = 'none';
+    syncSubpreviews();
     return;
   }
   cPortraitImg.style.display = 'block';
+  syncSubpreviews();
   let r;
   try {
     r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/portrait_preview`, {
@@ -931,8 +976,10 @@ async function cPreviewPortrait(withForm) {
       body: JSON.stringify(withForm ? {card: formData} : {})});
   } catch (e) { return; }  // 头像预览失败不抢主预览的错误显示
   if (seq !== cPortraitSeq) return;
-  if (!r.ok) { cPortraitImg.style.display = 'none'; return; }
-  const url = URL.createObjectURL(await r.blob());
+  if (!r.ok) { cPortraitImg.style.display = 'none'; syncSubpreviews(); return; }
+  const blob = await r.blob();
+  if (seq !== cPortraitSeq) return;
+  const url = URL.createObjectURL(blob);
   const prev = cPortraitUrl;
   cPortraitUrl = url;
   cPortraitImg.onload = () => { if (prev) URL.revokeObjectURL(prev); };
@@ -951,11 +998,13 @@ function afterMouseEdit(channel) {
   const d = document.getElementById('c-dirty');
   if (d) d.textContent = '● 未保存';
   showFormErrors(validateCardJS(formData));
-  clearTimeout(cPreviewTimer);
-  cPreviewTimer = setTimeout(() => {
-    if (channel === 'portrait') cPreviewPortrait(true);
-    else cPreviewForm(false);
-  }, 60);
+  if (channel === 'portrait') {
+    clearTimeout(cPortraitTimer);
+    cPortraitTimer = setTimeout(() => cPreviewPortrait(true), 60);
+  } else {
+    clearTimeout(cPreviewTimer);
+    cPreviewTimer = setTimeout(() => cPreviewForm(false), 60);
+  }
 }
 function ensureArtFirst() {
   // 物化 artwork.images[0] 编辑条目（path 可缺省 = <id 或卡名>.png，缺省图同样吃变换）
@@ -966,7 +1015,7 @@ function ensureArtFirst() {
   return first;
 }
 function artMouseChannel(img) {
-  if (!formData || curMech || entityMode) return null;
+  if (!formData || curMech) return null;
   const art = formData.artwork && Array.isArray(formData.artwork.images) ? formData.artwork.images[0] : null;
   const isPortrait = img === cPortraitImg;
   if (isPortrait && formData.type !== '式神') return null;
@@ -1125,7 +1174,6 @@ function confirmFallbackNaming() {  // 保存/上传卡图前：id 与版本日�
 }
 
 // ---- 对局式神：独立临时状态，不进入卡牌数据、脏标记或撤回栈 ----
-let entityMode = false;
 let entityState = null;
 function entityEligible(card) {
   return !!card && (card.type === '式神' || card.type === '形态' || card.evolve === true);
@@ -1141,33 +1189,8 @@ function setEntityField(key, value) {
   entityState[key] = value;
   scheduleEntityPreview();
 }
-function enterEntityMode() {
-  if (!formData || !entityEligible(formData)) return;
-  entityMode = true;
-  entityState = makeEntityState(formData);
-  cPortraitImg.style.display = 'none';
-  cPortraitSeq++;
-  buildForm();
-  entityPreview();
-}
-function exitEntityMode() {
-  if (!entityMode) return;
-  entityMode = false;
-  entityState = null;
-  clearTimeout(cPreviewTimer);
-  cPreviewSeq++;
-  cPortraitSeq++;
-  cPortraitImg.style.display = 'none';
-  if (formData) {
-    buildForm();
-    if (cDirty) cPreviewForm(); else cPreviewProject();
-  }
-}
-
-function buildEntityForm() {
-  const div = document.getElementById('c-form');
-  div.innerHTML = '';
-  infoRow(div, '类型', formData.type);
+function appendEntityForm(div) {
+  if (!entityState) entityState = makeEntityState(formData);
   selRowC(div, '等级', LEVELS, entityState.level,
     v => setEntityField('level', parseInt(v, 10)));
   selRowC(div, '勾玉颜色', LEVEL_COLORS.map(([v]) => v), entityState.level_color,
@@ -1180,17 +1203,10 @@ function buildEntityForm() {
   numRowC(div, '护甲/破甲', entityState.shield, false, v => setEntityField('shield', v));
   const row = document.createElement('div');
   row.style.marginTop = '10px';
-  const back = document.createElement('button');
-  back.textContent = '返回';
-  back.onclick = exitEntityMode;
   const exportBtn = document.createElement('button');
   exportBtn.textContent = '导出对局式神';
-  exportBtn.style.marginLeft = '6px';
   exportBtn.onclick = exportEntity;
-  row.appendChild(back); row.appendChild(exportBtn); div.appendChild(row);
-  const errs = document.createElement('div');
-  errs.id = 'c-form-errors';
-  div.appendChild(errs);
+  row.appendChild(exportBtn); div.appendChild(row);
 }
 
 // ---- 右栏卡牌表单：按类型动态显隐字段，即时校验 + 防抖预览 ----
@@ -1198,7 +1214,6 @@ function buildForm() {
   const div = document.getElementById('c-form');
   div.innerHTML = '';
   if (!formData) { div.textContent = '未选中卡牌'; return; }
-  if (entityMode) { buildEntityForm(); return; }
   const t = formData.type;
   // 类型创建时定死；id 可留空（上传卡图按 id 命名、留空回退卡名；改 id 不动已有卡图）；
   // 卡名直接编辑（name 字段，文件名 stem 不在 GUI 改）
@@ -1335,15 +1350,6 @@ function buildForm() {
     lrow.appendChild(lb);
     div.appendChild(lrow);
   }
-  if (entityEligible(formData)) {
-    const entityRow = document.createElement('div');
-    entityRow.style.marginTop = '10px';
-    const entityBtn = document.createElement('button');
-    entityBtn.textContent = '对局式神';
-    entityBtn.onclick = enterEntityMode;
-    entityRow.appendChild(entityBtn);
-    div.appendChild(entityRow);
-  }
   // 撤回：对鼠标操作与输入框编辑都生效（爆发合并快照，见 noteEdit）
   const urow = document.createElement('div');
   urow.style.marginTop = '10px';
@@ -1378,6 +1384,7 @@ function buildForm() {
   dirty.textContent = cDirty ? '● 未保存' : '';
   row.appendChild(dirty);
   div.appendChild(row);
+  if (entityEligible(formData)) appendEntityForm(div);
   const errs = document.createElement('div');
   errs.id = 'c-form-errors';
   div.appendChild(errs);
@@ -1756,7 +1763,8 @@ document.getElementById('export-ok').onclick = async () => {
 };
 
 async function exportEntity() {
-  if (!entityMode || !formData || !curProject || !curCard) return;
+  if (!formData || !curProject || !curCard || !entityEligible(formData)) return;
+  if (!entityState) entityState = makeEntityState(formData);
   const errEl = document.getElementById('c-form-errors');
   const base = String(formData.name || curCard).replace(/[<>:"/\\|?*]/g, '').trim() || 'card';
   let r;
@@ -2011,7 +2019,7 @@ const DISP = {
   // 布局元素名 / 文本区名 / 字体键
   level: '等级标', faction: '派系标', rarity: '稀有度', power: '力量', health: '生命',
   shield: '护甲', durability: '耐久', name: '卡名', footer: '脚注', desc: '描述',
-  duo_frame: '双式神框',
+  duo_frame: '双式神框', art_window: '卡图内窗',
   // 元素 kind
   stat: '数值', rarity_flank: '稀有度双标', level_badge: '等级标', text: '文本',
   // stat 字段
@@ -2113,6 +2121,10 @@ async function layoutBoot() {
 function typeLayout() {
   if (entityLayoutMode) return layouts['对局式神'];
   return cardLayoutMode ? singleLayout : layouts[curType];
+}
+function layoutRegions() {
+  const layout = typeLayout();
+  return entityLayoutMode ? {art_window: layout.art_window} : (layout.text_regions || {});
 }
 function markDirty() { if (cardLayoutMode) singleDirty = true; else dirty = true; }
 // 快照记录：仅在无未保存修改时覆写，保证快照恒为本轮编辑前的已保存状态
@@ -2464,7 +2476,9 @@ function buildLists() {
   for (const n of ['level', 'duo_frame', 'name', 'rarity']) {
     if (tl.elements[n]) items.push({kind: 'element', name: n});
   }
-  if ((tl.text_regions || {}).desc) items.push({kind: 'region', name: 'desc'});
+  const regions = layoutRegions();
+  if (regions.desc) items.push({kind: 'region', name: 'desc'});
+  if (regions.art_window) items.push({kind: 'region', name: 'art_window'});
   const stats = Object.entries(tl.elements)
     .filter(([, e]) => e.kind === 'stat')
     .sort((a, b) => a[1].pos[0] - b[1].pos[0]);
@@ -2597,13 +2611,13 @@ function draw() {
       handle(centers[1], active ? '#ff4' : '#4f4', 4);
     }
   }
-  for (const [name, r] of Object.entries(tl.text_regions || {})) {
+  for (const [name, r] of Object.entries(layoutRegions())) {
     const active = sel && sel.name === name;
     ctx.strokeStyle = active ? '#ff4' : '#4f4';
     ctx.strokeRect(r.center[0] - r.width / 2, r.center[1] - r.height / 2, r.width, r.height);
-    // 文本框中心：稍大的绿点（6px）；居中锚点（center + center_offset）：
-    // 稍小的橙点（4px）后画、压在绿点之上；锚点恒橙色（选中不变黄，避免与中心点糊成一片）
     handle(r.center, active ? '#ff4' : '#4f4', 6);
+    if (name === 'art_window') continue;
+    // 文本框居中锚点（center + center_offset）：稍小的橙点后画、压在绿点之上
     const off = r.center_offset || [0, 0];
     handle([r.center[0] + off[0], r.center[1] + off[1]], '#f80', 4);
   }
@@ -2674,7 +2688,12 @@ function pick(mx, my) {
     }
     if (near(...e.pos)) return { sel: {kind: 'element', name}, set: (x, y) => { e.pos = [x, y]; } };
   }
-  for (const [name, r] of Object.entries(tl.text_regions || {})) {
+  for (const [name, r] of Object.entries(layoutRegions())) {
+    if (name === 'art_window') {
+      if (near(...r.center)) return {sel: {kind: 'region', name},
+        set: (x, y) => { r.center = [x, y]; }};
+      continue;
+    }
     const off = r.center_offset || [0, 0];
     // 居中锚点仅在偏移非零时可拖（与中心重合时让位给中心拖拽）
     if ((off[0] || off[1]) && near(r.center[0] + off[0], r.center[1] + off[1]))
@@ -2796,7 +2815,17 @@ function buildProps() {
       selRow(div, '字体', FONTS, e.font || 'name', v => e.font = v, disp);
     }
   } else {
-    const r = tl.text_regions[sel.name];
+    const r = layoutRegions()[sel.name];
+    if (sel.name === 'art_window') {
+      div.appendChild(title('卡图内窗'));
+      numRow(div, '中心 x', r.center[0], v => { r.center[0] = v; draw(); });
+      numRow(div, '中心 y', r.center[1], v => { r.center[1] = v; draw(); });
+      numRow(div, '宽度', r.width, v => { r.width = v; draw(); });
+      numRow(div, '高度', r.height, v => { r.height = v; draw(); });
+      checkRow(div, '框体居中', r.frame_center, v => { r.frame_center = v; draw(); });
+      numRow(div, '纵向偏移', r.offset_y, v => { r.offset_y = v; draw(); });
+      return;
+    }
     div.appendChild(title(`${disp(sel.name)} 文本区`));
     numRow(div, '中心 x', r.center[0], v => { r.center[0] = v; draw(); });
     numRow(div, '中心 y', r.center[1], v => { r.center[1] = v; draw(); });

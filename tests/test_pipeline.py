@@ -359,6 +359,111 @@ def test_shared_artwork_ref_and_loading(assets_dir, sample_art):
 
 # ---------- 普通卡静态覆盖层缓存 ----------
 
+def _render_card_reference(card, assets_dir, crop):
+    """缓存改造前的逐层合成顺序，作为逐像素独立参考。"""
+    from PIL import Image, ImageChops
+
+    from bwpdiy.render.artwork import artwork_ref, fit_artwork, load_card_artwork
+    from bwpdiy.render.assets import get_library
+    from bwpdiy.render.badges import TYPE_FRAME_CODE, render_element, stat_rendered
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+    from bwpdiy.render.pipeline import (
+        CARD_SIZE, FRAME_KEYWORD_FILL, FRAME_TEXT_FILL, OBSTACLE_ALPHA,
+        _art_clip_contour, _normalize_frame, _to_canvas_coords, draw_region)
+
+    card_type = card["type"]
+    code = TYPE_FRAME_CODE[card_type]
+    variant = "norm" if card_type == "协战" else card.get("frame_variant", "norm")
+    lib = get_library(assets_dir)
+    finfo = {}
+    frame = _normalize_frame(lib.frame(code, variant), finfo)
+    anchor_x = finfo["anchor"][0]
+    ref = artwork_ref(card)
+    orig_size, art = load_card_artwork(card, lib)
+    art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"],
+                      cover_base=orig_size)
+    art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))
+    canvas = Image.alpha_composite(art, frame)
+    type_layout = _to_canvas_coords(
+        get_type_layout(load_layouts(assets_dir), card_type), anchor_x)
+    elements = type_layout["elements"]
+    card = dict(card)
+    if not card.get("footer"):
+        if card_type == "协战":
+            s1, s2 = card.get("shikigami1"), card.get("shikigami2")
+            card["footer"] = f"{s1}×{s2}-协战" if s1 and s2 else "协战"
+        else:
+            shikigami = card.get("shikigami") or (card["name"] if card_type == "式神" else None)
+            card["footer"] = f"{shikigami}-{card_type}" if shikigami else card_type
+            if card.get("special_type"):
+                card["footer"] += f"/{card['special_type']}"
+    name_width = 0
+    name_elem = elements.get("name")
+    if name_elem and name_elem.get("kind") == "text":
+        name_font = lib.font(name_elem.get("font", "name"), name_elem["font_size"])
+        name_width = name_font.getlength(card["name"])
+    ctx = {"name_width": name_width}
+    static = ("text", "rarity_flank")
+    for elem_name, elem in elements.items():
+        if elem["kind"] in static:
+            canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
+    stat_elems = []
+    for elem_name, elem in elements.items():
+        if elem["kind"] in static:
+            continue
+        if elem["kind"] == "stat":
+            stat_elems.append((elem_name, elem))
+            canvas = render_element(canvas, lib, elem_name, elem, card, ctx,
+                                    stat_part="icon")
+        else:
+            canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
+    regions = type_layout["text_regions"]
+    if card.get("description") and "desc" in regions:
+        rendered_stats = [e for _, e in stat_elems
+                          if e.get("enabled", True) and stat_rendered(e, card)]
+        obstacle_mask = None
+        if rendered_stats:
+            layer = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
+            for i, elem in enumerate(rendered_stats):
+                layer = render_element(layer, lib, f"stat_{i}", elem, card, ctx,
+                                       composite=True)
+            obstacle_mask = layer.getchannel("A").point(
+                lambda value: 255 if value >= OBSTACLE_ALPHA else 0)
+        desc_fill = FRAME_TEXT_FILL.get(variant, FRAME_TEXT_FILL["norm"])["desc"]
+        kw_fill = FRAME_KEYWORD_FILL.get(variant, FRAME_KEYWORD_FILL["norm"])
+        canvas = draw_region(canvas, lib, card["description"], regions["desc"],
+                             obstacle_mask=obstacle_mask, fill=desc_fill,
+                             keyword_fill=kw_fill, icon_variant=variant)
+    for elem_name, elem in stat_elems:
+        canvas = render_element(canvas, lib, elem_name, elem, card, ctx,
+                                stat_part="number")
+    if not crop:
+        return canvas
+    bbox = canvas.getchannel("A").point(lambda value: 255 if value > 10 else 0).getbbox()
+    return canvas.crop(bbox) if bbox else canvas
+
+
+@pytest.mark.parametrize("card_type", ["式神", "战斗", "法术", "形态", "幻境", "协战"])
+@pytest.mark.parametrize("crop", [False, True])
+def test_static_layer_replay_matches_legacy_pixels(
+        assets_dir, sample_art, card_type, crop):
+    import bwpdiy.render.pipeline as pipeline
+
+    pipeline._STATIC_OVERLAY_CACHE.clear()
+    card = make_card(sample_art.parent, card_type, **{
+        "level": 2, "rarity": "SR", "faction": "红莲", "power": 3, "health": 4,
+        "power+": 1, "health+": 1, "shield+": -1, "durability": 5,
+        "evolve": True, "description": "旧算法[[关键字]]逐像素对照。#hl",
+        "artwork": {"images": [{"path": "sample_art.png", "rotate": 17,
+                                "offset_x": 9, "offset_y": -7, "scale": 1.1}]},
+    })
+    expected = _render_card_reference(card, assets_dir, crop)
+    for _ in range(2):
+        actual = render_card(card, assets_dir, crop=crop)
+        assert actual.size == expected.size
+        assert actual.tobytes() == expected.tobytes()
+
+
 def _cached_card(sample_art, **kw):
     return make_card(sample_art.parent, "战斗", level=1, rarity="R",
                      **{"power+": 2, "shield+": 1}, **kw)

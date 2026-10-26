@@ -19,7 +19,7 @@ from collections import OrderedDict
 from pathlib import Path
 import threading
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageColor, ImageDraw, ImageFilter
 
 from bwpdiy.render.artwork import (
     ARTWORK_MAX_PIXELS, artwork_ref, fit_artwork_cached, load_card_artwork)
@@ -130,10 +130,62 @@ def _static_overlay_key(assets_dir: Path, type_layout: dict, card: dict):
     return str(Path(assets_dir).resolve()), layout_key, card_key
 
 
-def _render_static_overlay(frame: Image.Image, type_layout: dict, card: dict,
-                           lib, variant: str) -> Image.Image:
-    canvas = Image.alpha_composite(
-        Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0)), frame)
+class _RecordingDraw:
+    def __init__(self, image: Image.Image, tape: list, mode: str | None):
+        self._image = image
+        self._tape = tape
+        self._draw = ImageDraw.Draw(image, mode)
+
+    def __getattr__(self, name):
+        return getattr(self._draw, name)
+
+    def text(self, xy, text, *args, **kwargs):
+        self._draw.text(xy, text, *args, **kwargs)
+        fill = kwargs.get("fill", args[0] if args else None)
+        try:
+            if isinstance(fill, (tuple, list)):
+                opaque = len(fill) == 3 or (len(fill) == 4 and fill[3] == 255)
+            else:
+                opaque = ImageColor.getcolor(fill, "RGBA")[3] == 255
+        except (TypeError, ValueError, AttributeError):
+            opaque = False
+        if not opaque or kwargs.get("stroke_width", 0):
+            self._tape.append(("text", xy, text, args, kwargs))
+            return
+        mask = Image.new("RGBA", self._image.size, (0, 0, 0, 0))
+        ImageDraw.Draw(mask).text(xy, text, *args, **kwargs)
+        alpha = mask.getchannel("A")
+        bbox = alpha.getbbox()
+        if bbox is None:
+            return
+        source = Image.new("RGBA", (bbox[2] - bbox[0], bbox[3] - bbox[1]), fill)
+        self._tape.append(("paste", source, bbox[:2], alpha.crop(bbox)))
+
+
+class _RecordingCanvas:
+    def __init__(self, image: Image.Image, tape: list):
+        self._image = image
+        self._tape = tape
+
+    def __getattr__(self, name):
+        return getattr(self._image, name)
+
+    def copy(self):
+        return _RecordingCanvas(self._image.copy(), self._tape)
+
+    def getdraw(self, mode=None):
+        return _RecordingDraw(self._image, self._tape, mode)
+
+    def paste(self, im, box=None, mask=None):
+        self._image.paste(im, box, mask)
+        self._tape.append(("paste", im, box, mask))
+
+    def alpha_composite(self, im, dest=(0, 0), source=(0, 0)):
+        self._image.alpha_composite(im, dest, source)
+        self._tape.append(("alpha_composite", im, dest, source))
+
+
+def _draw_static(canvas, type_layout: dict, card: dict, lib, variant: str):
     elements = type_layout["elements"]
     # 先测卡名宽度（rarity_flank 外移量依据；name 点元素缺失按 0）
     name_width = 0
@@ -186,23 +238,47 @@ def _render_static_overlay(frame: Image.Image, type_layout: dict, card: dict,
     return canvas
 
 
-def _get_static_overlay(assets_dir: Path, frame: Image.Image, type_layout: dict,
-                        card: dict, lib, variant: str) -> Image.Image:
+def _build_static_layers(type_layout: dict, card: dict, lib, variant: str) -> list:
+    tape = []
+    canvas = _RecordingCanvas(Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0)), tape)
+    _draw_static(canvas, type_layout, card, lib, variant)
+    return tape
+
+
+def _replay_static_layers(canvas: Image.Image, layers: list) -> Image.Image:
+    for command in layers:
+        kind = command[0]
+        if kind == "paste":
+            _, source, box, mask = command
+            canvas.paste(source, box, mask)
+        elif kind == "alpha_composite":
+            _, source, dest, source_box = command
+            canvas.alpha_composite(source, dest, source_box)
+        else:
+            _, xy, text, args, kwargs = command
+            ImageDraw.Draw(canvas).text(xy, text, *args, **kwargs)
+    return canvas
+
+
+def _get_static_layers(assets_dir: Path, type_layout: dict, card: dict,
+                       lib, variant: str) -> list | None:
     key = _static_overlay_key(assets_dir, type_layout, card)
-    if key is not None and STATIC_OVERLAY_CACHE_MAX_ENTRIES > 0:
+    if key is None:
+        return None
+    if STATIC_OVERLAY_CACHE_MAX_ENTRIES > 0:
         with _STATIC_OVERLAY_LOCK:
-            overlay = _STATIC_OVERLAY_CACHE.get(key)
-            if overlay is not None:
+            layers = _STATIC_OVERLAY_CACHE.get(key)
+            if layers is not None:
                 _STATIC_OVERLAY_CACHE.move_to_end(key)
-                return overlay
-    overlay = _render_static_overlay(frame, type_layout, card, lib, variant)
-    if key is not None and STATIC_OVERLAY_CACHE_MAX_ENTRIES > 0:
+                return layers
+    layers = _build_static_layers(type_layout, card, lib, variant)
+    if STATIC_OVERLAY_CACHE_MAX_ENTRIES > 0:
         with _STATIC_OVERLAY_LOCK:
-            _STATIC_OVERLAY_CACHE[key] = overlay
+            _STATIC_OVERLAY_CACHE[key] = layers
             _STATIC_OVERLAY_CACHE.move_to_end(key)
             while len(_STATIC_OVERLAY_CACHE) > STATIC_OVERLAY_CACHE_MAX_ENTRIES:
                 _STATIC_OVERLAY_CACHE.popitem(last=False)
-    return overlay
+    return layers
 
 
 def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
@@ -252,8 +328,12 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
                              ref["scale"], cover_base=orig_size)
     # 卡图按轮廓预裁剪（框实心区内缩 2px），框缘半透明带下无卡图、不洇色
     art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))
-    overlay = _get_static_overlay(assets_dir, frame, type_layout, card, lib, variant)
-    canvas = Image.alpha_composite(art, overlay)  # 静态覆盖层在卡图之上
+    canvas = Image.alpha_composite(art, frame)  # 牌框在上：卡图区透明，无需蒙版
+    layers = _get_static_layers(assets_dir, type_layout, card, lib, variant)
+    if layers is None:
+        canvas = _draw_static(canvas, type_layout, card, lib, variant)
+    else:
+        canvas = _replay_static_layers(canvas, layers)
     # 导出：按整卡 tightest alpha bbox 裁剪后原尺寸直接返回（无 512 画布留白）
     if not crop:
         return canvas

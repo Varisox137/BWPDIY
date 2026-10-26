@@ -606,10 +606,15 @@ async function selectCard(stem, force = false) {
   cPreviewProject();
 }
 function clearCard() {
+  selectSeq++;
   clearTimeout(cPreviewTimer);
   clearTimeout(cPortraitTimer);
   clearTimeout(cEntityTimer);
   cPreviewTimer = cPortraitTimer = cEntityTimer = null;
+  for (const channel of ['art', 'entity', 'portrait']) {
+    if (mousePreviewFrames[channel]) cancelAnimationFrame(mousePreviewFrames[channel]);
+    mousePreviewFrames[channel] = 0;
+  }
   cPreviewSeq++;
   cPortraitSeq++;
   cEntitySeq++;

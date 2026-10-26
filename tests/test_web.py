@@ -1377,6 +1377,131 @@ async function fetch(url) {{
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_clear_card_invalidates_pending_select_json(tmp_path):
+    """慢 A 的 JSON 在清卡后完成时不得复活表单或对局实体状态。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function entityEligible(card)",
+        "function makeEntityState(card)",
+        "async function selectCard(stem, force = false)",
+        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "function clearCard()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+const LEVELS = [1, 2, 3];
+const LEVEL_COLOR_VALUES = new Set(['yellow']);
+let curCard = null, curProject = '项目', curMech = null, formData = null, cardData = null;
+let entityState = null, cDirty = false, mainShiki = null, neutralMode = false, selectSeq = 0;
+let cards = {{shikigami: [], cards: []}}, builds = 0, previews = 0;
+const cStatusEl = {{textContent: ''}}, cErrorEl = {{textContent: ''}};
+const cPreviewErrors = {{main: '', entity: ''}};
+let cPreviewErrorChannel = null;
+let cPreviewTimer = null, cPortraitTimer = null, cEntityTimer = null;
+let cPreviewSeq = 0, cPortraitSeq = 0, cEntitySeq = 0;
+let cPreviewUrl = null, cPortraitUrl = null, cEntityUrl = null;
+const cPreviewImg = {{removeAttribute() {{}}}};
+const cPortraitImg = {{style: {{}}, removeAttribute() {{}}}};
+const cEntityImg = {{style: {{}}, removeAttribute() {{}}}};
+const cSubpreviews = {{style: {{}}}};
+const document = {{getElementById: () => ({{textContent: ''}})}};
+const URL = {{revokeObjectURL() {{}}}};
+function confirmDiscard() {{ return true; }}
+function buildCardList() {{}}
+function listErr() {{}}
+function enc(value) {{ return value; }}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function clearTimeout() {{}}
+function cancelAnimationFrame() {{}}
+function resetUndo() {{}}
+function buildForm() {{ builds++; }}
+function cPreviewProject() {{ previews++; }}
+let resolveA;
+async function fetch() {{
+  return {{ok: true, json: () => new Promise(resolve => {{ resolveA = resolve; }})}};
+}}
+{functions}
+(async () => {{
+  const a = selectCard('A');
+  while (!resolveA) await Promise.resolve();
+  clearCard();
+  resolveA({{type: '形态', name: 'A', power: 9, health: 9}});
+  await a;
+  assert.strictEqual(curCard, null);
+  assert.strictEqual(cardData, null);
+  assert.strictEqual(formData, null);
+  assert.strictEqual(entityState, null);
+  assert.strictEqual(builds, 0);
+  assert.strictEqual(previews, 0);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_clear_card_cancels_mouse_preview_frames(tmp_path):
+    """清卡取消三通道旧帧并归零，随后各通道仍能独立合并和调度。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "function scheduleMousePreview(channel)",
+        "function flushMousePreview(channel)",
+        "function clearCard()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let selectSeq = 0, curCard = 'old', cardData = {{}}, formData = {{}}, entityState = {{}};
+let cDirty = true;
+let cPreviewTimer = null, cPortraitTimer = null, cEntityTimer = null;
+let cPreviewSeq = 0, cPortraitSeq = 0, cEntitySeq = 0;
+let cPreviewUrl = null, cPortraitUrl = null, cEntityUrl = null;
+const cPreviewImg = {{removeAttribute() {{}}}};
+const cPortraitImg = {{style: {{}}, removeAttribute() {{}}}};
+const cEntityImg = {{style: {{}}, removeAttribute() {{}}}};
+const cSubpreviews = {{style: {{}}}};
+const cErrorEl = {{textContent: ''}};
+const cPreviewErrors = {{main: '', entity: ''}};
+let cPreviewErrorChannel = null;
+const document = {{getElementById: () => ({{textContent: ''}})}};
+const URL = {{revokeObjectURL() {{}}}};
+function clearTimeout() {{}}
+function resetUndo() {{}}
+const previews = [];
+function cPreviewForm() {{ previews.push('art'); }}
+function entityPreview() {{ previews.push('entity'); }}
+function cPreviewPortrait() {{ previews.push('portrait'); }}
+let nextFrame = 0;
+const frames = new Map(), cancelled = [];
+function requestAnimationFrame(fn) {{ const id = ++nextFrame; frames.set(id, fn); return id; }}
+function cancelAnimationFrame(id) {{ cancelled.push(id); frames.delete(id); }}
+{functions}
+scheduleMousePreview('art');
+scheduleMousePreview('art');
+scheduleMousePreview('entity');
+scheduleMousePreview('portrait');
+assert.strictEqual(frames.size, 3);
+clearCard();
+assert.deepStrictEqual(cancelled, [1, 2, 3]);
+assert.strictEqual(frames.size, 0);
+assert.deepStrictEqual(mousePreviewFrames, {{art: 0, entity: 0, portrait: 0}});
+assert.deepStrictEqual(previews, []);
+scheduleMousePreview('art');
+scheduleMousePreview('art');
+scheduleMousePreview('entity');
+scheduleMousePreview('portrait');
+assert.strictEqual(frames.size, 3);
+for (const id of [...frames.keys()]) {{
+  const fn = frames.get(id); frames.delete(id); fn();
+}}
+assert.deepStrictEqual(previews.sort(), ['art', 'entity', 'portrait']);
+assert.deepStrictEqual(mousePreviewFrames, {{art: 0, entity: 0, portrait: 0}});
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_preview_urls_released_on_replace_and_clear_without_onload(tmp_path):
     """三通道连续两次换图均立即释放旧 URL，清卡释放最后一张，不依赖 onload。"""
     script = _script()
@@ -1388,7 +1513,9 @@ def test_preview_urls_released_on_replace_and_clear_without_onload(tmp_path):
     ))
     driver = f"""
 const assert = require('node:assert');
-let cPreviewSeq = 1, cEntitySeq = 1, cPortraitSeq = 0;
+let cPreviewSeq = 1, cEntitySeq = 1, cPortraitSeq = 0, selectSeq = 0;
+const mousePreviewFrames = {{art: 0, entity: 0, portrait: 0}};
+function cancelAnimationFrame() {{}}
 let cPreviewTimer = null, cEntityTimer = null, cPortraitTimer = null;
 let cPreviewUrl = 'main-old', cEntityUrl = 'entity-old', cPortraitUrl = 'portrait-old';
 let curCard = 'stem', curProject = '项目', curMech = null, cardData = {{}}, formData = {{type: '式神'}};
@@ -1517,6 +1644,8 @@ const cEntityImg = {{style: {{}}, removeAttribute() {{ removed.push('entity'); }
 const cSubpreviews = {{style: {{display: 'flex'}}}};
 let cPreviewUrl = 'blob:main', cPortraitUrl = 'blob:portrait', cEntityUrl = 'blob:entity';
 let cPreviewSeq = 1, cPortraitSeq = 2, cEntitySeq = 3;
+const mousePreviewFrames = {{art: 0, entity: 0, portrait: 0}};
+function cancelAnimationFrame() {{}}
 let cPreviewTimer = 11, cPortraitTimer = 12, cEntityTimer = 13;
 const cancelled = [], revoked = [];
 function clearTimeout(id) {{ cancelled.push(id); }}

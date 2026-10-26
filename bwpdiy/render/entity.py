@@ -79,6 +79,9 @@ def validate_entity_art_window(window: dict) -> None:
         raise ValueError("卡图窗宽高必须是有限正数")
     if width * height > ARTWORK_MAX_PIXELS:
         raise ValueError("卡图窗面积超像素上限")
+    inner_width, inner_height = max(1, round(width)), max(1, round(height))
+    if inner_width * inner_height > ARTWORK_MAX_PIXELS:
+        raise ValueError("卡图窗面积超像素上限")
     if not isinstance(window.get("frame_center"), bool):
         raise ValueError("卡图窗 frame_center 必须是布尔值")
     if not _finite_number(window.get("offset_y")):

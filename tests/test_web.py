@@ -123,6 +123,8 @@ def test_put_layout_entity_section(client, assets_dir):
                     "frame_center": True, "offset_y": 0}},
     {"art_window": {"center": [48, 72], "width": 8001, "height": 8000,
                     "frame_center": True, "offset_y": 0}},
+    {"art_window": {"center": [48, 72], "width": 8000.50001, "height": 7999.5,
+                    "frame_center": True, "offset_y": 0}},
     {"art_window": {"center": [48, 72], "width": 84, "height": 132,
                     "frame_center": 1, "offset_y": 0}},
     {"art_window": {"center": [48, 72], "width": 84, "height": 132,

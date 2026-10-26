@@ -304,6 +304,27 @@ def test_legacy_custom_entity_numbers_scale_once(tmp_path):
     assert layout.load_layouts(tmp_path) == migrated
 
 
+@pytest.mark.parametrize("element_name, offset_y, expected", [
+    ("power", 10, 6),
+    ("health", 10, 6),
+    ("combat_power", 9, 5),
+    ("shield", 9, 5),
+    ("level", 10, 15),
+    ("level", 9, 13.5),
+    ("combat_power", 10, 15),
+    ("shield", 10, 15),
+    ("power", 9, 13.5),
+    ("health", 9, 13.5),
+])
+def test_legacy_num_offset_special_cases_depend_on_element_name(
+        tmp_path, element_name, offset_y, expected):
+    _write_entity_layout(tmp_path, {
+        "elements": {element_name: {"num_offset": [0, offset_y]}},
+    })
+    entity = layout.load_layouts(tmp_path)["对局式神"]
+    assert entity["elements"][element_name]["num_offset"] == [0, expected]
+
+
 def test_version_2_entity_layout_only_deep_fills_defaults(tmp_path):
     current = {
         "version": 2,

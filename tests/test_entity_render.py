@@ -368,3 +368,17 @@ def test_entity_rejects_oversized_art_window(assets_dir, sample_art):
     layout["art_window"].update(width=8001, height=8000)
     with pytest.raises(ValueError, match="卡图窗"):
         render_entity(make_card(sample_art), {}, assets_dir, layout=layout)
+
+
+def test_entity_rejects_rounded_oversized_window_before_allocation(
+        assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["art_window"].update(
+        width=8000.50001, height=7999.5, frame_center=False)
+    monkeypatch.setattr(
+        entity, "fit_artwork",
+        lambda *args, **kwargs: pytest.fail("超限内窗不得进入卡图分配"))
+    with pytest.raises(ValueError, match="卡图窗面积超像素上限"):
+        render_entity(make_card(sample_art), {}, assets_dir, layout=layout)

@@ -71,15 +71,19 @@ def _normalize_size_fields(layouts: dict) -> None:
                         item[key] = chosen
 
 
-def _scale_legacy_entity(value, key=None):
+def _scale_legacy_entity(value, key=None, element_name=None):
     if isinstance(value, dict):
-        return {name: _scale_legacy_entity(item, name) for name, item in value.items()}
+        return {
+            name: _scale_legacy_entity(
+                item, name, name if key == "elements" else element_name)
+            for name, item in value.items()
+        }
     if isinstance(value, list):
-        scaled = [_scale_legacy_entity(item) for item in value]
+        scaled = [_scale_legacy_entity(item, element_name=element_name) for item in value]
         if key == "num_offset" and len(value) == 2 and not isinstance(value[1], bool):
-            if value[1] == 10:
+            if element_name in ("power", "health") and value[1] == 10:
                 scaled[1] = 6
-            elif value[1] == 9:
+            elif element_name in ("combat_power", "shield") and value[1] == 9:
                 scaled[1] = 5
         return scaled
     if isinstance(value, bool) or not isinstance(value, (int, float)):

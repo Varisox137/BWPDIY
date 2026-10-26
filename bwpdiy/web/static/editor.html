@@ -2537,10 +2537,13 @@ function buildLists() {
   const regions = layoutRegions();
   if (regions.desc) items.push({kind: 'region', name: 'desc'});
   if (regions.art_window) items.push({kind: 'region', name: 'art_window'});
-  const stats = Object.entries(tl.elements)
-    .filter(([, e]) => e.kind === 'stat')
-    .sort((a, b) => a[1].pos[0] - b[1].pos[0]);
-  for (const [n] of stats) items.push({kind: 'element', name: n});
+  const stats = entityLayoutMode
+    ? ['power', 'health', 'combat_power', 'shield'].filter(n => tl.elements[n])
+    : Object.entries(tl.elements)
+      .filter(([, e]) => e.kind === 'stat')
+      .sort((a, b) => a[1].pos[0] - b[1].pos[0])
+      .map(([n]) => n);
+  for (const n of stats) items.push({kind: 'element', name: n});
   if (tl.elements.footer) items.push({kind: 'element', name: 'footer'});
   const listed = new Set(items.map(i => i.name));
   for (const n of Object.keys(tl.elements)) {  // 兜底：未列到的元素附加在后
@@ -2548,7 +2551,9 @@ function buildLists() {
   }
   for (const it of items) {
     const d = document.createElement('div');
-    d.textContent = disp(it.name); d.className = 'item'; d.dataset.key = it.name;
+    d.textContent = entityLayoutMode
+      ? ({level: '等级', combat_power: '战力'}[it.name] || disp(it.name)) : disp(it.name);
+    d.className = 'item'; d.dataset.key = it.name;
     d.onclick = () => { sel = it; refreshSel(); };
     ed.appendChild(d);
   }
@@ -2601,7 +2606,7 @@ async function refreshEntityLayoutPreview() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         card: {type: '式神', name: '布局样卡'},
-        state: {level: 2, power: 2, health: 5, combat_power: 1, shield: -1},
+        state: {level: 2, level_color: 'cyan', power: 2, health: 5, combat_power: 1, shield: -1},
         layout: typeLayout(),
       }),
     });
@@ -2629,7 +2634,7 @@ async function handleLayoutPreviewResponse(r, seq) {
     statusEl.textContent = (cardLayoutMode ? singleDirty : dirty) ? '● 未保存' : '';
     previewOffset = (off.length === 2 && off.every(Number.isFinite)) ? off : [0, 0];
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-    const scale = entityLayoutMode ? 4 : 1;
+    const scale = entityLayoutMode ? 3 : 1;
     canvas.style.width = scale === 1 ? '' : `${img.naturalWidth * scale}px`;
     canvas.style.height = scale === 1 ? '' : `${img.naturalHeight * scale}px`;
     previewImg = img; draw(); URL.revokeObjectURL(img.src);

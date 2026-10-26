@@ -649,6 +649,45 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_layout_list_fixed_order(tmp_path):
+    """对局式神元素按业务顺序排列，不受字典插入顺序和 x 坐标影响。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function buildLists()",
+        "function layoutRegions()",
+        "function disp(k)",
+    ))
+    disp_map = script[script.index("const DISP ="):script.index("function disp(k)")]
+    driver = f"""
+const assert = require('node:assert');
+let entityLayoutMode = true, mechLayoutMode = false;
+const stat = (x) => ({{kind: 'stat', pos: [x, 100]}});
+const layouts = {{'对局式神': {{
+  elements: {{
+    shield: stat(0), health: stat(40), combat_power: stat(10),
+    power: stat(30), level: {{kind: 'level_badge', pos: [50, 100]}},
+  }},
+  art_window: {{center: [48, 72], width: 84, height: 132}},
+}}}};
+function typeLayout() {{ return layouts['对局式神']; }}
+{disp_map}
+function element(tag) {{ return {{tag, children: [], style: {{}}, dataset: {{}}, textContent: '',
+  appendChild(child) {{ this.children.push(child); }} }}; }}
+const elems = element('div');
+const document = {{getElementById: () => elems, createElement: element}};
+let sel = null;
+function refreshSel() {{}}
+{functions}
+buildLists();
+const items = elems.children;
+assert.deepStrictEqual(items.map(x => x.textContent),
+  ['等级', '卡图内窗', '力量', '生命', '战力', '护甲']);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_entity_art_window_pick_drag_draw_and_props(tmp_path):
     """卡图内窗复用区域绿框/拖拽，并提供五项专用实时布局控件。"""
     script = _script()
@@ -735,7 +774,7 @@ let previewSeq = 0, dirty = false, singleDirty = false;
 let previewImg = null, previewOffset = [0, 0];
 const layouts = {{'对局式神': {{elements: {{}}}}}};
 const canvas = {{width: 0, height: 0, style: {{}},
-  getBoundingClientRect: () => ({{left: 10, top: 20, width: 384, height: 576}})}};
+  getBoundingClientRect: () => ({{left: 10, top: 20, width: 288, height: 432}})}};
 const statusEl = {{textContent: ''}};
 const requests = [];
 function typeLayout() {{ return layouts['对局式神']; }}
@@ -757,14 +796,14 @@ async function fetch(url, options) {{
   assert.strictEqual(requests[0].url, '/api/entity-preview');
   assert.deepStrictEqual(JSON.parse(requests[0].options.body), {{
     card: {{type: '式神', name: '布局样卡'}},
-    state: {{level: 2, power: 2, health: 5, combat_power: 1, shield: -1}},
+    state: {{level: 2, level_color: 'cyan', power: 2, health: 5, combat_power: 1, shield: -1}},
     layout: layouts['对局式神'],
   }});
   assert.strictEqual(canvas.width, 96);
   assert.strictEqual(canvas.height, 144);
-  assert.strictEqual(canvas.style.width, '384px');
-  assert.strictEqual(canvas.style.height, '576px');
-  assert.deepStrictEqual(mousePos({{clientX: 202, clientY: 308}}), [48, 72]);
+  assert.strictEqual(canvas.style.width, '288px');
+  assert.strictEqual(canvas.style.height, '432px');
+  assert.deepStrictEqual(mousePos({{clientX: 154, clientY: 236}}), [48, 72]);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """

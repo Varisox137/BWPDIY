@@ -1,6 +1,7 @@
 import pytest
 from PIL import Image
 
+import bwpdiy.render.artwork as artwork
 from bwpdiy.render.artwork import fit_artwork, rotate_artwork
 
 
@@ -139,3 +140,96 @@ def test_rotate_preserves_content_scale():
                                    cover_base=(400, 200)))
     assert abs(w_plain - 256) <= 4
     assert abs(w_rot - 362) <= 12
+
+
+# ---------- 缩放中间图缓存 ----------
+
+def test_fit_artwork_cached_reuses_resize(sample_art, monkeypatch):
+    artwork._FIT_CACHE.clear()
+    with Image.open(sample_art) as opened:
+        source = opened.convert("RGBA")
+    expected_a = fit_artwork(source, (512, 512), 0, 0, 1)
+    expected_b = fit_artwork(source, (512, 512), 20, 0, 1)
+    original = Image.Image.resize
+    calls = []
+
+    def counted(self, size, resample=None, *args, **kwargs):
+        calls.append(size)
+        return original(self, size, resample, *args, **kwargs)
+
+    monkeypatch.setattr(Image.Image, "resize", counted)
+    a = artwork.fit_artwork_cached(source, (512, 512), 0, 0, 1)
+    first_calls = len(calls)
+    b = artwork.fit_artwork_cached(source, (512, 512), 20, 0, 1)
+    assert a.tobytes() == expected_a.tobytes()
+    assert b.tobytes() == expected_b.tobytes()
+    assert first_calls > 0
+    assert len(calls) == first_calls
+
+
+def test_fit_artwork_cached_key_includes_source_scale_and_cover_base(monkeypatch):
+    artwork._FIT_CACHE.clear()
+    red = Image.new("RGBA", (2, 2), (255, 0, 0, 255))
+    blue = Image.new("RGBA", (2, 2), (0, 0, 255, 255))
+    original = Image.Image.resize
+    calls = []
+
+    def counted(self, size, resample=None, *args, **kwargs):
+        calls.append((self, size))
+        return original(self, size, resample, *args, **kwargs)
+
+    monkeypatch.setattr(Image.Image, "resize", counted)
+    for operation in (
+            lambda: artwork.fit_artwork_cached(red, (4, 4)),
+            lambda: artwork.fit_artwork_cached(blue, (4, 4)),
+            lambda: artwork.fit_artwork_cached(red, (4, 4), scale=2),
+            lambda: artwork.fit_artwork_cached(red, (4, 4), cover_base=(1, 1))):
+        previous_calls = len(calls)
+        result = operation()
+        assert len(calls) > previous_calls
+        assert result.size == (4, 4)
+    assert artwork.fit_artwork_cached(red, (4, 4)).getpixel((0, 0)) == (255, 0, 0, 255)
+    assert artwork.fit_artwork_cached(blue, (4, 4)).getpixel((0, 0)) == (0, 0, 255, 255)
+
+
+def test_fit_artwork_cached_holds_source_and_bounds_total_pixels(monkeypatch):
+    artwork._FIT_CACHE.clear()
+    monkeypatch.setattr(artwork, "ARTWORK_CACHE_MAX_PIXELS", 4)
+    sources = [Image.new("RGBA", (1, 1), (i, 0, 0, 255)) for i in range(3)]
+    for source in sources:
+        artwork.fit_artwork_cached(source, (2, 2))
+    assert 0 < len(artwork._FIT_CACHE) <= 1
+    assert sum(resized.width * resized.height
+               for source, resized in artwork._FIT_CACHE.values()) <= 4
+    cached_source = next(iter(artwork._FIT_CACHE.values()))[0]
+    assert cached_source is sources[-1]
+
+
+def test_fit_artwork_cached_resize_runs_outside_lock(monkeypatch):
+    import threading
+
+    artwork._FIT_CACHE.clear()
+
+    class RecordingLock:
+        def __init__(self):
+            self.lock = threading.RLock()
+            self.held = False
+
+        def __enter__(self):
+            self.lock.acquire()
+            self.held = True
+
+        def __exit__(self, *args):
+            self.held = False
+            self.lock.release()
+
+    lock = RecordingLock()
+    monkeypatch.setattr(artwork, "_FIT_LOCK", lock)
+    original = Image.Image.resize
+
+    def checked(self, *args, **kwargs):
+        assert not lock.held
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Image.Image, "resize", checked)
+    artwork.fit_artwork_cached(make_art(2, 2), (4, 4))

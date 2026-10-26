@@ -355,3 +355,163 @@ def test_shared_artwork_ref_and_loading(assets_dir, sample_art):
     card["artwork"]["images"][0]["path"] = "../outside.png"
     with pytest.raises(ValueError, match="越出基准目录"):
         load_card_artwork(card, get_library(assets_dir))
+
+
+# ---------- 普通卡静态覆盖层缓存 ----------
+
+def _cached_card(sample_art, **kw):
+    return make_card(sample_art.parent, "战斗", level=1, rarity="R",
+                     **{"power+": 2, "shield+": 1}, **kw)
+
+
+def _uncached_render(monkeypatch, card, assets_dir, **kw):
+    import bwpdiy.render.pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "STATIC_OVERLAY_CACHE_MAX_ENTRIES", 0)
+    return render_card(card, assets_dir, **kw)
+
+
+def test_static_overlay_reused_when_only_artwork_offset_changes(
+        assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.badges as badges
+    import bwpdiy.render.pipeline as pipeline
+
+    card = _cached_card(sample_art)
+    moved = dict(card, artwork={"images": [{"path": "sample_art.png", "offset_x": 20}]})
+    expected = _uncached_render(monkeypatch, card, assets_dir, crop=False)
+    expected_moved = _uncached_render(monkeypatch, moved, assets_dir, crop=False)
+    monkeypatch.setattr(pipeline, "STATIC_OVERLAY_CACHE_MAX_ENTRIES", 8)
+    pipeline._STATIC_OVERLAY_CACHE.clear()
+    original = badges._render_digits
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(args[0])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(badges, "_render_digits", counted)
+    actual = render_card(card, assets_dir, crop=False)
+    first_calls = len(calls)
+    actual_moved = render_card(moved, assets_dir, crop=False)
+    assert first_calls > 0
+    assert len(calls) == first_calls
+    assert actual.tobytes() == expected.tobytes()
+    assert actual_moved.tobytes() == expected_moved.tobytes()
+
+
+@pytest.mark.parametrize("changes", [
+    {"description": "修改后的描述。"},
+    {"power+": 7},
+    {"frame_variant": "black"},
+])
+def test_static_overlay_invalidated_by_card_content(
+        assets_dir, sample_art, monkeypatch, changes):
+    import bwpdiy.render.pipeline as pipeline
+
+    pipeline._STATIC_OVERLAY_CACHE.clear()
+    original = pipeline.render_element
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(args[2])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "render_element", counted)
+    card = _cached_card(sample_art)
+    render_card(card, assets_dir)
+    first_calls = len(calls)
+    render_card(dict(card, **changes), assets_dir)
+    assert first_calls > 0
+    assert len(calls) > first_calls
+
+
+def test_static_overlay_invalidated_by_actual_layout(assets_dir, sample_art, monkeypatch):
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+    import bwpdiy.render.pipeline as pipeline
+
+    pipeline._STATIC_OVERLAY_CACHE.clear()
+    original = pipeline.render_element
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(args[2])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "render_element", counted)
+    card = _cached_card(sample_art)
+    layout = get_type_layout(load_layouts(assets_dir), "战斗")
+    render_card(card, assets_dir, layout=layout)
+    first_calls = len(calls)
+    layout["elements"]["name"]["font_size"] += 1
+    render_card(card, assets_dir, layout=layout)
+    assert len(calls) > first_calls
+
+
+@pytest.mark.parametrize("internal", [
+    {"_duo": [None, None]},
+    {"_duo": object()},
+    {"_preview": object()},
+])
+def test_static_overlay_bypasses_duo_and_unserializable_data(
+        assets_dir, sample_art, monkeypatch, internal):
+    import bwpdiy.render.badges as badges
+    import bwpdiy.render.pipeline as pipeline
+
+    pipeline._STATIC_OVERLAY_CACHE.clear()
+    original = badges._render_digits
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(args[0])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(badges, "_render_digits", counted)
+    card = _cached_card(sample_art, **internal)
+    expected = render_card(_cached_card(sample_art), assets_dir, crop=False)
+    cached_entries = len(pipeline._STATIC_OVERLAY_CACHE)
+    assert render_card(card, assets_dir, crop=False).tobytes() == expected.tobytes()
+    first_calls = len(calls)
+    assert render_card(card, assets_dir, crop=False).tobytes() == expected.tobytes()
+    assert len(calls) > first_calls
+    assert len(pipeline._STATIC_OVERLAY_CACHE) == cached_entries
+
+
+def test_static_overlay_cache_is_bounded(assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "STATIC_OVERLAY_CACHE_MAX_ENTRIES", 2)
+    pipeline._STATIC_OVERLAY_CACHE.clear()
+    for i in range(3):
+        render_card(_cached_card(sample_art, name=f"测试卡{i}"), assets_dir)
+    assert len(pipeline._STATIC_OVERLAY_CACHE) == 2
+
+
+def test_static_overlay_drawing_runs_outside_lock(assets_dir, sample_art, monkeypatch):
+    import threading
+    import bwpdiy.render.pipeline as pipeline
+
+    pipeline._STATIC_OVERLAY_CACHE.clear()
+
+    class RecordingLock:
+        def __init__(self):
+            self.lock = threading.RLock()
+            self.held = False
+
+        def __enter__(self):
+            self.lock.acquire()
+            self.held = True
+
+        def __exit__(self, *args):
+            self.held = False
+            self.lock.release()
+
+    lock = RecordingLock()
+    monkeypatch.setattr(pipeline, "_STATIC_OVERLAY_LOCK", lock)
+    original = pipeline.render_element
+
+    def checked(*args, **kwargs):
+        assert not lock.held
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline, "render_element", checked)
+    render_card(_cached_card(sample_art), assets_dir)

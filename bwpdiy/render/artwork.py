@@ -1,6 +1,8 @@
 """卡图（artwork）变换。"""
 
+from collections import OrderedDict
 from pathlib import Path
+import threading
 from typing import TYPE_CHECKING
 
 from PIL import Image
@@ -45,6 +47,34 @@ def rotate_artwork(img: Image.Image, rotate: float) -> Image.Image:
     return img
 
 
+ARTWORK_CACHE_MAX_PIXELS = 64_000_000
+_FIT_CACHE = OrderedDict()
+_FIT_LOCK = threading.RLock()
+
+
+def _resize_size(img: Image.Image, target_size: tuple[int, int], scale: float,
+                 cover_base: tuple[int, int] | None) -> tuple[int, int]:
+    tw, th = target_size
+    bw, bh = cover_base or img.size
+    w, h = img.size
+    cover = max(tw / bw, th / bh) * scale
+    size = max(round(w * cover), 1), max(round(h * cover), 1)
+    if size[0] * size[1] > ARTWORK_MAX_PIXELS:
+        raise ValueError(f"卡图缩放后过大: {size[0]}×{size[1]} 超像素上限")
+    return size
+
+
+def _crop_artwork(resized: Image.Image, target_size: tuple[int, int],
+                  offset_x: float, offset_y: float) -> Image.Image:
+    tw, th = target_size
+    nw, nh = resized.size
+    # RGBA 下 crop 越界区域填透明（RGB 会填不透明黑），故先转 RGBA；
+    # offset 为图像位置：图像右/下移 = 取景窗左/上移
+    left = round((nw - tw) / 2 - offset_x)
+    top = round((nh - th) / 2 - offset_y)
+    return resized.crop((left, top, left + tw, top + th))
+
+
 def fit_artwork(img: Image.Image, target_size: tuple[int, int],
                 offset_x: float = 0, offset_y: float = 0,
                 scale: float = 1.0,
@@ -57,16 +87,32 @@ def fit_artwork(img: Image.Image, target_size: tuple[int, int],
     cover_base：cover 系数的基准尺寸（缺省=img.size）。旋转扩画布的场景传旋转前
     原图尺寸，保证内容视觉尺度不随旋转角漂移（缩放/裁剪仍作用于 img 本身）。
     """
-    tw, th = target_size
-    bw, bh = cover_base or img.size
-    w, h = img.size
-    cover = max(tw / bw, th / bh) * scale
-    nw, nh = max(round(w * cover), 1), max(round(h * cover), 1)
-    if nw * nh > ARTWORK_MAX_PIXELS:
-        raise ValueError(f"卡图缩放后过大: {nw}×{nh} 超像素上限")
-    resized = img.convert("RGBA").resize((nw, nh), Image.Resampling.LANCZOS)
-    # RGBA 下 crop 越界区域填透明（RGB 会填不透明黑），故先转 RGBA；
-    # offset 为图像位置：图像右/下移 = 取景窗左/上移
-    left = round((nw - tw) / 2 - offset_x)
-    top = round((nh - th) / 2 - offset_y)
-    return resized.crop((left, top, left + tw, top + th))
+    size = _resize_size(img, target_size, scale, cover_base)
+    resized = img.convert("RGBA").resize(size, Image.Resampling.LANCZOS)
+    return _crop_artwork(resized, target_size, offset_x, offset_y)
+
+
+def fit_artwork_cached(img: Image.Image, target_size: tuple[int, int],
+                       offset_x: float = 0, offset_y: float = 0,
+                       scale: float = 1.0,
+                       cover_base: tuple[int, int] | None = None) -> Image.Image:
+    """按只读源图复用缩放中间图；offset 对应的裁剪每次重新执行。"""
+    size = _resize_size(img, target_size, scale, cover_base)
+    key = (id(img), img.size, tuple(target_size), scale,
+           tuple(cover_base) if cover_base is not None else None)
+    with _FIT_LOCK:
+        cached = _FIT_CACHE.get(key)
+        if cached is not None:
+            _FIT_CACHE.move_to_end(key)
+            resized = cached[1]
+        else:
+            resized = None
+    if resized is None:
+        resized = img.convert("RGBA").resize(size, Image.Resampling.LANCZOS)
+        with _FIT_LOCK:
+            _FIT_CACHE[key] = (img, resized)
+            _FIT_CACHE.move_to_end(key)
+            while (sum(item[1].width * item[1].height for item in _FIT_CACHE.values())
+                   > ARTWORK_CACHE_MAX_PIXELS):
+                _FIT_CACHE.popitem(last=False)
+    return _crop_artwork(resized, target_size, offset_x, offset_y)

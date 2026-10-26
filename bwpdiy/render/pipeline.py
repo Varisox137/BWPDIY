@@ -14,12 +14,15 @@ stat 数值层（符号+数字，压在描述文本之上）→
 """
 
 import copy
+import json
+from collections import OrderedDict
 from pathlib import Path
+import threading
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 from bwpdiy.render.artwork import (
-    ARTWORK_MAX_PIXELS, artwork_ref, fit_artwork, load_card_artwork)
+    ARTWORK_MAX_PIXELS, artwork_ref, fit_artwork_cached, load_card_artwork)
 
 __all__ = ["ARTWORK_MAX_PIXELS", "TYPE_FRAME_CODE", "render_card"]
 from bwpdiy.render.assets import get_library
@@ -108,55 +111,30 @@ def _art_clip_contour(frame: Image.Image) -> Image.Image:
     return shape
 
 
-def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
-                crop: bool = True, info: dict | None = None) -> Image.Image:
-    """渲染单张完整卡面。
+STATIC_OVERLAY_CACHE_MAX_ENTRIES = 8
+_STATIC_OVERLAY_CACHE = OrderedDict()
+_STATIC_OVERLAY_LOCK = threading.RLock()
 
-    crop=True（默认，导出/预览）：按整卡 tightest alpha bbox 裁剪后原尺寸
-    直接返回（RGBA，高 512 顶格、宽按内容，无 512 画布留白）；传入 info dict
-    时回填 crop_origin（卡面空间坐标，与布局坐标同系）与 anchor_x（卡面空间
-    x 原点在本框品 512 画布中的位置），供布局页覆盖层换算。
-    布局坐标为卡面空间：x 原点 = 归一化牌框左缘（随框品宽度动态计算，
-    元素与牌框胶着、换框品不跑位；探出框左缘的元素 x 为负），y 原点 = 画布顶。
-    crop=False：跳过导出裁剪，返回 512 全画布合成结果（管线内部分层断言用）。
-    缺资源/缺字段抛明确异常（FileNotFoundError/KeyError/ValueError），调用方兜底。
-    """
-    card_type = card["type"]
-    if card_type not in TYPE_FRAME_CODE:
-        raise ValueError(f"未知卡牌类型: {card_type}")
-    code = TYPE_FRAME_CODE[card_type]
-    variant = card.get("frame_variant", "norm")
-    if card_type == "协战":
-        variant = "norm"  # 协战框仅 norm 一种框品
-    lib = get_library(assets_dir)
 
-    finfo: dict = {}
-    frame = _normalize_frame(lib.frame(code, variant), finfo)
-    anchor_x = finfo["anchor"][0]  # 卡面空间 x 原点（本框品归一化牌框左缘）
-    ref = artwork_ref(card)
-    orig_size, art = load_card_artwork(card, lib)
-    art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"],
-                      cover_base=orig_size)
-    # 卡图按轮廓预裁剪（框实心区内缩 2px），框缘半透明带下无卡图、不洇色
-    art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))
-    canvas = Image.alpha_composite(art, frame)  # 牌框在上：卡图区透明，无需蒙版
+def _static_overlay_key(assets_dir: Path, type_layout: dict, card: dict):
+    if "_duo" in card:
+        return None
+    static_card = {k: v for k, v in card.items() if k not in ("artwork", "layout")}
+    try:
+        layout_key = json.dumps(type_layout, sort_keys=True, ensure_ascii=False,
+                                separators=(",", ":"), allow_nan=False)
+        card_key = json.dumps(static_card, sort_keys=True, ensure_ascii=False,
+                              separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError):
+        return None
+    return str(Path(assets_dir).resolve()), layout_key, card_key
 
-    type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
-    # 布局坐标卡面空间 → 512 画布（锚点随框品：元素与牌框左缘胶着，换框品不跑位）
-    type_layout = _to_canvas_coords(type_layout, anchor_x)
+
+def _render_static_overlay(frame: Image.Image, type_layout: dict, card: dict,
+                           lib, variant: str) -> Image.Image:
+    canvas = Image.alpha_composite(
+        Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0)), frame)
     elements = type_layout["elements"]
-    card = dict(card)
-    # 脚注兜底：式神名-类型[/子类型]；协战为 式神1×式神2-协战（缺任一式神只标 协战）；
-    # 中立牌（无所属式神）只标 类型[/子类型]（式神卡自身无所属式神字段，回退卡名）
-    if not card.get("footer"):
-        if card_type == "协战":
-            s1, s2 = card.get("shikigami1"), card.get("shikigami2")
-            card["footer"] = f"{s1}×{s2}-协战" if s1 and s2 else "协战"
-        else:
-            shikigami = card.get("shikigami") or (card["name"] if card_type == "式神" else None)
-            card["footer"] = f"{shikigami}-{card_type}" if shikigami else card_type
-            if card.get("special_type"):
-                card["footer"] += f"/{card['special_type']}"
     # 先测卡名宽度（rarity_flank 外移量依据；name 点元素缺失按 0）
     name_width = 0
     name_elem = elements.get("name")
@@ -205,6 +183,77 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     for elem_name, elem in stat_elems:
         canvas = render_element(canvas, lib, elem_name, elem, card, ctx,
                                 stat_part="number")
+    return canvas
+
+
+def _get_static_overlay(assets_dir: Path, frame: Image.Image, type_layout: dict,
+                        card: dict, lib, variant: str) -> Image.Image:
+    key = _static_overlay_key(assets_dir, type_layout, card)
+    if key is not None and STATIC_OVERLAY_CACHE_MAX_ENTRIES > 0:
+        with _STATIC_OVERLAY_LOCK:
+            overlay = _STATIC_OVERLAY_CACHE.get(key)
+            if overlay is not None:
+                _STATIC_OVERLAY_CACHE.move_to_end(key)
+                return overlay
+    overlay = _render_static_overlay(frame, type_layout, card, lib, variant)
+    if key is not None and STATIC_OVERLAY_CACHE_MAX_ENTRIES > 0:
+        with _STATIC_OVERLAY_LOCK:
+            _STATIC_OVERLAY_CACHE[key] = overlay
+            _STATIC_OVERLAY_CACHE.move_to_end(key)
+            while len(_STATIC_OVERLAY_CACHE) > STATIC_OVERLAY_CACHE_MAX_ENTRIES:
+                _STATIC_OVERLAY_CACHE.popitem(last=False)
+    return overlay
+
+
+def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
+                crop: bool = True, info: dict | None = None) -> Image.Image:
+    """渲染单张完整卡面。
+
+    crop=True（默认，导出/预览）：按整卡 tightest alpha bbox 裁剪后原尺寸
+    直接返回（RGBA，高 512 顶格、宽按内容，无 512 画布留白）；传入 info dict
+    时回填 crop_origin（卡面空间坐标，与布局坐标同系）与 anchor_x（卡面空间
+    x 原点在本框品 512 画布中的位置），供布局页覆盖层换算。
+    布局坐标为卡面空间：x 原点 = 归一化牌框左缘（随框品宽度动态计算，
+    元素与牌框胶着、换框品不跑位；探出框左缘的元素 x 为负），y 原点 = 画布顶。
+    crop=False：跳过导出裁剪，返回 512 全画布合成结果（管线内部分层断言用）。
+    缺资源/缺字段抛明确异常（FileNotFoundError/KeyError/ValueError），调用方兜底。
+    """
+    card_type = card["type"]
+    if card_type not in TYPE_FRAME_CODE:
+        raise ValueError(f"未知卡牌类型: {card_type}")
+    code = TYPE_FRAME_CODE[card_type]
+    variant = card.get("frame_variant", "norm")
+    if card_type == "协战":
+        variant = "norm"  # 协战框仅 norm 一种框品
+    lib = get_library(assets_dir)
+
+    finfo: dict = {}
+    frame = _normalize_frame(lib.frame(code, variant), finfo)
+    anchor_x = finfo["anchor"][0]  # 卡面空间 x 原点（本框品归一化牌框左缘）
+    type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
+    # 布局坐标卡面空间 → 512 画布（锚点随框品：元素与牌框左缘胶着，换框品不跑位）
+    type_layout = _to_canvas_coords(type_layout, anchor_x)
+    card = dict(card)
+    # 脚注兜底：式神名-类型[/子类型]；协战为 式神1×式神2-协战（缺任一式神只标 协战）；
+    # 中立牌（无所属式神）只标 类型[/子类型]（式神卡自身无所属式神字段，回退卡名）
+    if not card.get("footer"):
+        if card_type == "协战":
+            s1, s2 = card.get("shikigami1"), card.get("shikigami2")
+            card["footer"] = f"{s1}×{s2}-协战" if s1 and s2 else "协战"
+        else:
+            shikigami = card.get("shikigami") or (card["name"] if card_type == "式神" else None)
+            card["footer"] = f"{shikigami}-{card_type}" if shikigami else card_type
+            if card.get("special_type"):
+                card["footer"] += f"/{card['special_type']}"
+
+    ref = artwork_ref(card)
+    orig_size, art = load_card_artwork(card, lib)
+    art = fit_artwork_cached(art, CARD_SIZE, ref["offset_x"], ref["offset_y"],
+                             ref["scale"], cover_base=orig_size)
+    # 卡图按轮廓预裁剪（框实心区内缩 2px），框缘半透明带下无卡图、不洇色
+    art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))
+    overlay = _get_static_overlay(assets_dir, frame, type_layout, card, lib, variant)
+    canvas = Image.alpha_composite(art, overlay)  # 静态覆盖层在卡图之上
     # 导出：按整卡 tightest alpha bbox 裁剪后原尺寸直接返回（无 512 画布留白）
     if not crop:
         return canvas

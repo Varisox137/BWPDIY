@@ -1,9 +1,40 @@
 """卡图（artwork）变换。"""
 
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 from PIL import Image
+
+if TYPE_CHECKING:
+    from bwpdiy.render.assets import AssetLibrary
 
 # 卡图像素上限（防解压炸弹：用户供图全量解码后才缩放/旋转）
 ARTWORK_MAX_PIXELS = 64_000_000  # 8000×8000
+
+
+def artwork_ref(card: dict) -> dict:
+    images = card.get("artwork", {}).get("images") or [{}]
+    ref = dict(images[0])
+    ref.setdefault("path", f"{card.get('id', card['name'])}.png")
+    for key, default in (("offset_x", 0), ("offset_y", 0),
+                         ("scale", 1.0), ("rotate", 0)):
+        ref.setdefault(key, default)
+    return ref
+
+
+def load_card_artwork(card: dict,
+                      library: "AssetLibrary") -> tuple[tuple[int, int], Image.Image]:
+    ref = artwork_ref(card)
+    base_dir = Path(card.get("_base_dir", "."))
+    path = Path(ref["path"])
+    path = path if path.is_absolute() else base_dir / path
+    try:
+        path.resolve().relative_to(base_dir.resolve())
+    except ValueError:
+        raise ValueError(f"卡图路径越出基准目录: {ref['path']}") from None
+    if not path.is_file():
+        raise FileNotFoundError(f"卡图缺失: {path}")
+    return library.artwork(path, ref["rotate"])
 
 
 def rotate_artwork(img: Image.Image, rotate: float) -> Image.Image:

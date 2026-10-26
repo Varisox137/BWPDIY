@@ -18,7 +18,8 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
-from bwpdiy.render.artwork import ARTWORK_MAX_PIXELS, fit_artwork
+from bwpdiy.render.artwork import (
+    ARTWORK_MAX_PIXELS, artwork_ref, fit_artwork, load_card_artwork)
 
 __all__ = ["ARTWORK_MAX_PIXELS", "TYPE_FRAME_CODE", "render_card"]
 from bwpdiy.render.assets import get_library
@@ -107,17 +108,6 @@ def _art_clip_contour(frame: Image.Image) -> Image.Image:
     return shape
 
 
-def _artwork_ref(card: dict) -> dict:
-    images = card.get("artwork", {}).get("images") or [{}]
-    ref = dict(images[0])
-    ref.setdefault("path", f"{card.get('id', card['name'])}.png")
-    ref.setdefault("offset_x", 0)
-    ref.setdefault("offset_y", 0)
-    ref.setdefault("scale", 1.0)
-    ref.setdefault("rotate", 0)
-    return ref
-
-
 def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
                 crop: bool = True, info: dict | None = None) -> Image.Image:
     """渲染单张完整卡面。
@@ -143,22 +133,8 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     finfo: dict = {}
     frame = _normalize_frame(lib.frame(code, variant), finfo)
     anchor_x = finfo["anchor"][0]  # 卡面空间 x 原点（本框品归一化牌框左缘）
-    ref = _artwork_ref(card)
-    art_path = Path(ref["path"])
-    base_dir = Path(card.get("_base_dir", "."))
-    if not art_path.is_absolute():
-        art_path = base_dir / art_path
-    # 卡图必须位于基准目录内：拒绝目录外绝对路径与 .. 越界
-    # （预览接口可被远程触发时，防本机任意图片被读取外泄）
-    try:
-        art_path.resolve().relative_to(base_dir.resolve())
-    except ValueError:
-        raise ValueError(f"卡图路径越出基准目录: {ref['path']}") from None
-    if not art_path.is_file():
-        raise FileNotFoundError(f"卡图缺失: {art_path}")
-    # 加载即缓存（键含 mtime 与旋转角）：绕中心旋转并扩展画布，缩放/偏移对缓存图进行；
-    # cover 基准为旋转前原图尺寸，旋转不改变内容视觉尺度
-    orig_size, art = lib.artwork(art_path, ref["rotate"])
+    ref = artwork_ref(card)
+    orig_size, art = load_card_artwork(card, lib)
     art = fit_artwork(art, CARD_SIZE, ref["offset_x"], ref["offset_y"], ref["scale"],
                       cover_base=orig_size)
     # 卡图按轮廓预裁剪（框实心区内缩 2px），框缘半透明带下无卡图、不洇色

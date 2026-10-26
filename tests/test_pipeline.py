@@ -333,3 +333,25 @@ def test_to_canvas_coords_translation():
     # 原数据未被修改
     assert tl["elements"]["name"]["pos"] == [132, 337]
     assert tl["text_regions"]["desc"]["center"] == [132, 430]
+
+
+def test_shared_artwork_ref_and_loading(assets_dir, sample_art):
+    """共享卡图入口保留缺省值、路径约束与旋转前 cover 基准尺寸。"""
+    from bwpdiy.render.artwork import artwork_ref, load_card_artwork
+    from bwpdiy.render.assets import get_library
+
+    card = {"name": "sample_art", "_base_dir": str(sample_art.parent)}
+    assert artwork_ref(card) == {
+        "path": "sample_art.png", "offset_x": 0, "offset_y": 0,
+        "scale": 1.0, "rotate": 0,
+    }
+    assert "artwork" not in card
+
+    card["artwork"] = {"images": [{"path": sample_art.name, "rotate": 37}]}
+    original, rotated = load_card_artwork(card, get_library(assets_dir))
+    assert original == (1024, 1024)
+    assert rotated.size != original
+
+    card["artwork"]["images"][0]["path"] = "../outside.png"
+    with pytest.raises(ValueError, match="越出基准目录"):
+        load_card_artwork(card, get_library(assets_dir))

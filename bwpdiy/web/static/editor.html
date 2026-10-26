@@ -844,11 +844,14 @@ function scheduleEntityPreview() {
 async function cHandlePreviewResponse(r, seq) {
   if (seq !== cPreviewSeq) return;  // 期间又有新调整，丢弃本次结果
   if (!r.ok) {
-    cErrorEl.textContent = '预览失败：' + (await parseErrorDetail(r)).join('\n');
+    const detail = await parseErrorDetail(r);
+    if (seq !== cPreviewSeq) return;
+    cErrorEl.textContent = '预览失败：' + detail.join('\n');
     return;
   }
   cErrorEl.textContent = '';
   const blob = await r.blob();
+  if (seq !== cPreviewSeq) return;
   const url = URL.createObjectURL(blob);
   const prev = cPreviewUrl;
   cPreviewUrl = url;

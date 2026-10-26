@@ -661,6 +661,73 @@ async function parseErrorDetail(response) {{ return ['bad']; }}
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_preview_response_rechecks_seq_after_blob(tmp_path):
+    """Blob 等待期间退出/清空后，旧成功响应不得回写图片、URL 或错误区。"""
+    script = _script()
+    handler = _extract_js(script, "async function cHandlePreviewResponse(r, seq)")
+    driver = f"""
+const assert = require('node:assert');
+let cPreviewSeq = 1, cPreviewUrl = 'blob:current';
+const cPreviewImg = {{src: 'blob:current', onload: null}};
+const cErrorEl = {{textContent: '初始'}};
+const created = [];
+const URL = {{createObjectURL: blob => {{ created.push(blob); return 'blob:stale'; }},
+             revokeObjectURL() {{}}}};
+let releaseBlob;
+const response = {{ok: true, blob: () => new Promise(resolve => {{ releaseBlob = resolve; }})}};
+{handler}
+(async () => {{
+  const pending = cHandlePreviewResponse(response, 1);
+  cPreviewSeq++;  // 首次检查通过后退出/切卡/清空
+  cErrorEl.textContent = '当前界面';
+  releaseBlob({{png: 'stale'}});
+  await pending;
+  assert.strictEqual(cPreviewImg.src, 'blob:current');
+  assert.strictEqual(cPreviewImg.onload, null);
+  assert.strictEqual(cPreviewUrl, 'blob:current');
+  assert.strictEqual(cErrorEl.textContent, '当前界面');
+  assert.deepStrictEqual(created, []);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_preview_response_rechecks_seq_after_error_detail(tmp_path):
+    """错误解析等待期间退出/清空后，旧错误响应不得回写共用预览界面。"""
+    script = _script()
+    handler = _extract_js(script, "async function cHandlePreviewResponse(r, seq)")
+    driver = f"""
+const assert = require('node:assert');
+let cPreviewSeq = 2, cPreviewUrl = 'blob:current';
+const cPreviewImg = {{src: 'blob:current', onload: null}};
+const cErrorEl = {{textContent: '当前界面'}};
+const created = [];
+const URL = {{createObjectURL: blob => {{ created.push(blob); return 'blob:stale'; }},
+             revokeObjectURL() {{}}}};
+let releaseDetail;
+async function parseErrorDetail() {{
+  return new Promise(resolve => {{ releaseDetail = resolve; }});
+}}
+{handler}
+(async () => {{
+  const pending = cHandlePreviewResponse({{ok: false}}, 2);
+  cPreviewSeq++;  // 首次检查通过后退出/切卡/清空
+  releaseDetail(['旧错误']);
+  await pending;
+  assert.strictEqual(cPreviewImg.src, 'blob:current');
+  assert.strictEqual(cPreviewImg.onload, null);
+  assert.strictEqual(cPreviewUrl, 'blob:current');
+  assert.strictEqual(cErrorEl.textContent, '当前界面');
+  assert.deepStrictEqual(created, []);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_entity_mode_blocks_queued_normal_preview(tmp_path):
     """进入实体模式前已防抖排队的普通预览不得再发请求或覆盖实体图。"""
     script = _script()

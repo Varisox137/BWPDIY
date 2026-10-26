@@ -10,12 +10,12 @@
 
 ## Global Constraints
 
-- 设计事实来源：`docs/superpowers/specs/2026-10-25-battle-entity-design.md`；版本保持 1.6.3，不打包发布。
+- 设计事实来源：`docs/superpowers/specs/2026-10-25-battle-entity-design.md`；版本保持 1.7.0，不打包发布。
 - 来源资格仅为 `type in {"式神", "形态"}` 或 `evolve is True`；不新增 CARD_TYPES、不修改项目存储和版本模型。
 - 框体原生 64×96；`power/health` 非负且 0 显示；`combat_power/shield` 按正负切图标、0 隐藏，负数画绝对值。
 - 卡图只继承 `offset_x/offset_y/rotate`；`state.art_scale` 独立替换来源 scale，以原画尺寸作 cover 基准，默认 1.0。
 - `render` 不得 import `store/web`；卡图路径必须留在服务端指定 `_base_dir` 内，保留像素上限。
-- 出厂布局变化必须在 changelog 1.6.3 首条加粗提示；每次 commit 后 push，全量测试由主上下文亲跑。
+- 出厂布局变化必须在 changelog 1.7.0 首条加粗提示；每次 commit 后 push，全量测试由主上下文亲跑。
 
 ---
 
@@ -302,7 +302,7 @@ Expected: FAIL，尚无 `entityLayoutMode` 和实体布局入口。
 
 - [ ] **Step 4: 更新文档和更新说明**
 
-changelog 1.6.3 首条加入：
+changelog 1.7.0 首条加入：
 
 ```python
 "<b>本次更新更改了全局布局配置，用户可能需要重新手动调整本地配置。</b>",

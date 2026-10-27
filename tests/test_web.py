@@ -960,7 +960,7 @@ def test_entity_state_is_temporary(tmp_path):
     ))
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3];
+const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan', 'purple', 'red', 'blue', 'brown']);
 let entityState = null;
 let cDirty = false;
@@ -983,6 +983,7 @@ assert.deepStrictEqual(makeEntityState({{type: '式神', level: 4, level_color: 
                                          power: 3, health: 4}}),
                        {{level: 1, level_color: 'yellow', power: 3, health: 4,
                         combat_power: 0, shield: 0, art_scale: 1}});
+assert.strictEqual(makeEntityState({{type: '式神', level: 0}}).level, 0);
 setEntityField('power', 4);
 assert(state.power === 4 && cDirty === false && scheduled === 1);
 assert(source.power === -2 && source['power+'] === 3);
@@ -1016,7 +1017,8 @@ const cPortraitImg = {{style: {{display: 'none'}}, removeAttribute() {{}}}};
 const cEntityImg = {{style: {{display: 'none'}}, removeAttribute() {{}}}};
 let formData = {{type: '式神'}}, entityState = {{power: 2}};
 let curProject = '项目', curCard = 'stem', curMech = null;
-let cPortraitSeq = 0, cPortraitUrl = null, cEntitySeq = 0, cEntityUrl = null;
+let cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
+let cEntitySeq = 0, cEntityAppliedSeq = 0, cEntityUrl = null;
 const cErrorEl = {{textContent: ''}};
 const URL = {{createObjectURL: () => 'blob:new', revokeObjectURL() {{}}}};
 async function fetch() {{ return {{ok: true, blob: async () => ({{kind: 'png'}})}}; }}
@@ -1063,7 +1065,7 @@ let entityState = {{level: 2, level_color: 'cyan', power: 4, health: 5,
                     combat_power: -1, shield: 2, art_scale: 1.2}};
 let formData = {{type: '形态', name: '  烈:/山?  '}};
 let curProject = '项目', curCard = 'card-stem', curMech = null;
-let cPreviewSeq = 7, cEntitySeq = 3, cEntityUrl = 'blob:old-entity';
+let cPreviewSeq = 7, cEntitySeq = 3, cEntityAppliedSeq = 0, cEntityUrl = 'blob:old-entity';
 const cPreviewImg = {{src: 'blob:main', onload: null}};
 const cEntityImg = {{src: 'blob:old-entity', style: {{display: 'block'}}, onload: null,
                     removeAttribute() {{}}}};
@@ -1095,8 +1097,8 @@ async function parseErrorDetail(response) {{ return ['bad']; }}
   assert.deepStrictEqual(JSON.parse(requests[0].options.body),
                          {{project: curProject, card: formData, state: entityState}});
   const stale = cHandleEntityPreviewResponse({{ok: true,
-    blob: () => new Promise(resolve => {{ globalThis.releaseBlob = resolve; }})}}, 4);
-  cEntitySeq++;
+    blob: () => new Promise(resolve => {{ globalThis.releaseBlob = resolve; }})}}, 5);
+  cEntitySeq++; cEntityAppliedSeq = cEntitySeq;
   globalThis.releaseBlob({{kind: 'stale'}});
   await stale;
   assert.strictEqual(cEntityImg.src, 'blob:new-entity');
@@ -1114,13 +1116,119 @@ async function parseErrorDetail(response) {{ return ['bad']; }}
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_preview_applies_latest_completed_response_during_continuous_edits(tmp_path):
+    """连续编辑时显示最新已完成画面，仅逆序旧响应不得覆盖更新画面。"""
+    script = _script()
+    handler = _extract_js(script, "async function cHandlePreviewResponse(r, seq)")
+    driver = f"""
+const assert = require('node:assert');
+let cPreviewSeq = 2, cPreviewAppliedSeq = 0, cPreviewUrl = 'blob:old';
+const cPreviewImg = {{src: 'blob:old'}};
+function setPreviewError() {{}}
+const URL = {{createObjectURL: blob => blob, revokeObjectURL() {{}}}};
+function success(url) {{ return {{ok: true, blob: async () => url}}; }}
+{handler}
+(async () => {{
+  await cHandlePreviewResponse(success('blob:first'), 1);
+  assert.strictEqual(cPreviewImg.src, 'blob:first');
+  await cHandlePreviewResponse(success('blob:second'), 2);
+  assert.strictEqual(cPreviewImg.src, 'blob:second');
+  await cHandlePreviewResponse(success('blob:out-of-order'), 1);
+  assert.strictEqual(cPreviewImg.src, 'blob:second');
+  assert.strictEqual(cPreviewUrl, 'blob:second');
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_preview_success_clears_older_error_after_blob(tmp_path):
+    """旧错误解析先完成时，新成功图落盘后仍须清除该错误。"""
+    script = _script()
+    handler = _extract_js(script, "async function cHandlePreviewResponse(r, seq)")
+    driver = f"""
+const assert = require('node:assert');
+let cPreviewSeq = 2, cPreviewAppliedSeq = 0, cPreviewUrl = null;
+const cPreviewImg = {{src: ''}}, cErrorEl = {{textContent: ''}};
+function setPreviewError(channel, text) {{ cErrorEl.textContent = text; }}
+const URL = {{createObjectURL: blob => blob, revokeObjectURL() {{}}}};
+let releaseError, releaseBlob;
+function parseErrorDetail() {{ return new Promise(resolve => {{ releaseError = resolve; }}); }}
+{handler}
+(async () => {{
+  const oldError = cHandlePreviewResponse({{ok: false}}, 1);
+  const newSuccess = cHandlePreviewResponse({{ok: true,
+    blob: () => new Promise(resolve => {{ releaseBlob = resolve; }})}}, 2);
+  releaseError(['旧错误']);
+  await oldError;
+  assert(cErrorEl.textContent.includes('旧错误'));
+  releaseBlob('blob:new');
+  await newSuccess;
+  assert.strictEqual(cPreviewImg.src, 'blob:new');
+  assert.strictEqual(cErrorEl.textContent, '');
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_ineligible_subpreview_invalidates_pending_blob(tmp_path):
+    """类型变为不支持实体/头像时，等待中的旧 blob 不得重新回写。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function entityEligible(card)",
+        "async function cHandleEntityPreviewResponse(r, seq)",
+        "async function entityPreview()",
+        "async function cPreviewPortrait(withForm)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let cEntitySeq = 0, cEntityAppliedSeq = 0, cEntityUrl = null;
+let cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
+let formData = {{type: '式神'}}, entityState = {{}}, curProject = '项目', curCard = 'stem';
+const cEntityImg = {{src: '', style: {{}}, removeAttribute() {{ this.src = ''; }}}};
+const cPortraitImg = {{src: '', style: {{}}, removeAttribute() {{ this.src = ''; }}}};
+const created = [], revoked = [];
+const URL = {{createObjectURL: blob => {{ created.push(blob); return blob; }},
+             revokeObjectURL: url => revoked.push(url)}};
+function setPreviewError() {{}}
+function syncSubpreviews() {{}}
+function enc(value) {{ return value; }}
+let releaseEntity, releasePortrait;
+async function fetch() {{ return {{ok: true,
+  blob: () => new Promise(resolve => {{ releasePortrait = resolve; }})}}; }}
+{functions}
+(async () => {{
+  const oldEntity = cHandleEntityPreviewResponse({{ok: true,
+    blob: () => new Promise(resolve => {{ releaseEntity = resolve; }})}}, 1);
+  const oldPortrait = cPreviewPortrait(true);
+  while (!releasePortrait) await Promise.resolve();
+  formData = {{type: '战斗'}};
+  await entityPreview();
+  await cPreviewPortrait(true);
+  releaseEntity('blob:old-entity'); releasePortrait('blob:old-portrait');
+  await oldEntity; await oldPortrait;
+  assert.strictEqual(cEntityImg.src, '');
+  assert.strictEqual(cPortraitImg.src, '');
+  assert.strictEqual(cEntityUrl, null);
+  assert.strictEqual(cPortraitUrl, null);
+  assert.deepStrictEqual(created, []);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_preview_response_rechecks_seq_after_blob(tmp_path):
     """Blob 等待期间退出/清空后，旧成功响应不得回写图片、URL 或错误区。"""
     script = _script()
     handler = _extract_js(script, "async function cHandlePreviewResponse(r, seq)")
     driver = f"""
 const assert = require('node:assert');
-let cPreviewSeq = 1, cPreviewUrl = 'blob:current';
+let cPreviewSeq = 1, cPreviewAppliedSeq = 0, cPreviewUrl = 'blob:current';
 const cPreviewImg = {{src: 'blob:current', onload: null}};
 const cErrorEl = {{textContent: '初始'}};
 function setPreviewError() {{}}
@@ -1132,7 +1240,7 @@ const response = {{ok: true, blob: () => new Promise(resolve => {{ releaseBlob =
 {handler}
 (async () => {{
   const pending = cHandlePreviewResponse(response, 1);
-  cPreviewSeq++;  // 首次检查通过后退出/切卡/清空
+  cPreviewSeq++; cPreviewAppliedSeq = cPreviewSeq;  // 首次检查通过后退出/切卡/清空
   cErrorEl.textContent = '当前界面';
   releaseBlob({{png: 'stale'}});
   await pending;
@@ -1154,7 +1262,7 @@ def test_preview_response_rechecks_seq_after_error_detail(tmp_path):
     handler = _extract_js(script, "async function cHandlePreviewResponse(r, seq)")
     driver = f"""
 const assert = require('node:assert');
-let cPreviewSeq = 2, cPreviewUrl = 'blob:current';
+let cPreviewSeq = 2, cPreviewAppliedSeq = 0, cPreviewUrl = 'blob:current';
 const cPreviewImg = {{src: 'blob:current', onload: null}};
 const cErrorEl = {{textContent: '当前界面'}};
 const created = [];
@@ -1167,7 +1275,7 @@ async function parseErrorDetail() {{
 {handler}
 (async () => {{
   const pending = cHandlePreviewResponse({{ok: false}}, 2);
-  cPreviewSeq++;  // 首次检查通过后退出/切卡/清空
+  cPreviewSeq++; cPreviewAppliedSeq = cPreviewSeq;  // 首次检查通过后退出/切卡/清空
   releaseDetail(['旧错误']);
   await pending;
   assert.strictEqual(cPreviewImg.src, 'blob:current');
@@ -1418,10 +1526,12 @@ def test_select_card_rechecks_seq_after_json(tmp_path):
     ))
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3];
+const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow']);
 let curCard = null, curProject = '项目', curMech = null, formData = null, cardData = null;
 let entityState = null, cDirty = false, mainShiki = null, neutralMode = false, selectSeq = 0;
+let cPreviewSeq = 0, cEntitySeq = 0, cPortraitSeq = 0;
+let cPreviewAppliedSeq = 0, cEntityAppliedSeq = 0, cPortraitAppliedSeq = 0;
 let cards = {{shikigami: [], cards: []}}, builds = 0, previews = 0;
 const cStatusEl = {{textContent: ''}};
 function confirmDiscard() {{ return true; }}
@@ -1472,7 +1582,7 @@ def test_clear_card_invalidates_pending_select_json(tmp_path):
     ))
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3];
+const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow']);
 let curCard = null, curProject = '项目', curMech = null, formData = null, cardData = null;
 let entityState = null, cDirty = false, mainShiki = null, neutralMode = false, selectSeq = 0;
@@ -1482,6 +1592,7 @@ const cPreviewErrors = {{main: '', entity: ''}};
 let cPreviewErrorChannel = null;
 let cPreviewTimer = null, cPortraitTimer = null, cEntityTimer = null;
 let cPreviewSeq = 0, cPortraitSeq = 0, cEntitySeq = 0;
+let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0, cEntityAppliedSeq = 0;
 let cPreviewUrl = null, cPortraitUrl = null, cEntityUrl = null;
 const cPreviewImg = {{removeAttribute() {{}}}};
 const cPortraitImg = {{style: {{}}, removeAttribute() {{}}}};
@@ -1538,6 +1649,7 @@ let selectSeq = 0, curCard = 'old', cardData = {{}}, formData = {{}}, entityStat
 let cDirty = true;
 let cPreviewTimer = null, cPortraitTimer = null, cEntityTimer = null;
 let cPreviewSeq = 0, cPortraitSeq = 0, cEntitySeq = 0;
+let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0, cEntityAppliedSeq = 0;
 let cPreviewUrl = null, cPortraitUrl = null, cEntityUrl = null;
 const cPreviewImg = {{removeAttribute() {{}}}};
 const cPortraitImg = {{style: {{}}, removeAttribute() {{}}}};
@@ -1597,6 +1709,7 @@ def test_preview_urls_released_on_replace_and_clear_without_onload(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 let cPreviewSeq = 1, cEntitySeq = 1, cPortraitSeq = 0, selectSeq = 0;
+let cPreviewAppliedSeq = 0, cEntityAppliedSeq = 0, cPortraitAppliedSeq = 0;
 const mousePreviewFrames = {{art: 0, entity: 0, portrait: 0}};
 function cancelAnimationFrame() {{}}
 let cPreviewTimer = null, cEntityTimer = null, cPortraitTimer = null;
@@ -1664,7 +1777,8 @@ function setPreviewError(channel, text) {
 """)
     driver = f"""
 const assert = require('node:assert');
-let cPreviewSeq = 0, cEntitySeq = 0, cPreviewUrl = null, cEntityUrl = null;
+let cPreviewSeq = 0, cEntitySeq = 0, cPreviewAppliedSeq = 0, cEntityAppliedSeq = 0;
+let cPreviewUrl = null, cEntityUrl = null;
 const cPreviewImg = {{src: '', onload: null}}, cEntityImg = {{src: '', onload: null}};
 const cErrorEl = {{textContent: ''}};
 const cPreviewErrors = {{main: '', entity: ''}};
@@ -1711,7 +1825,7 @@ def test_select_card_initializes_entity_and_clear_cancels_all_channels(tmp_path)
     ))
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3];
+const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan']);
 let entityState = {{power: 99}};
 let curCard = 'old', curProject = '项目', curMech = null, formData = {{name: '旧'}};
@@ -1727,6 +1841,7 @@ const cEntityImg = {{style: {{}}, removeAttribute() {{ removed.push('entity'); }
 const cSubpreviews = {{style: {{display: 'flex'}}}};
 let cPreviewUrl = 'blob:main', cPortraitUrl = 'blob:portrait', cEntityUrl = 'blob:entity';
 let cPreviewSeq = 1, cPortraitSeq = 2, cEntitySeq = 3;
+let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0, cEntityAppliedSeq = 0;
 const mousePreviewFrames = {{art: 0, entity: 0, portrait: 0}};
 function cancelAnimationFrame() {{}}
 let cPreviewTimer = 11, cPortraitTimer = 12, cEntityTimer = 13;
@@ -1757,9 +1872,9 @@ async function fetch() {{ return {{ok: true, json: async () => ({{type: '形态'
   assert.strictEqual(cPortraitTimer, null);
   assert.strictEqual(cEntityTimer, null);
   assert.deepStrictEqual(revoked, ['blob:portrait', 'blob:entity', 'blob:main']);
-  assert.strictEqual(cPreviewSeq, 2);
-  assert.strictEqual(cPortraitSeq, 3);
-  assert.strictEqual(cEntitySeq, 4);
+  assert.strictEqual(cPreviewSeq, 3);
+  assert.strictEqual(cPortraitSeq, 4);
+  assert.strictEqual(cEntitySeq, 5);
   assert.strictEqual(cPreviewUrl, null);
   assert.strictEqual(cPortraitUrl, null);
   assert.strictEqual(cEntityUrl, null);
@@ -1800,7 +1915,7 @@ def test_entity_controls_append_to_normal_form_without_dirtying(tmp_path):
     build_form = _extract_js(script, "function buildForm()")
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3];
+const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLORS = [['yellow', '黄'], ['cyan', '青']];
 let entityState = {{level: 2, level_color: 'cyan', power: 3, health: 4,
                     combat_power: 0, shield: 0, art_scale: 1}};

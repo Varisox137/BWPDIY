@@ -417,7 +417,7 @@ def test_entity_preview_rejects_invalid_layout_422(client):
     assert "icon_size" in r.json()["detail"]
 
 
-@pytest.mark.parametrize("state", [True, {"level": 0}, {"power": True}, {"art_scale": True}])
+@pytest.mark.parametrize("state", [True, {"level": 4}, {"power": True}, {"art_scale": True}])
 def test_entity_preview_project_rejects_invalid_state(client, project, state):
     r = client.post("/api/entity-preview",
                     json={"project": project, "card": _entity_card(), "state": state})

@@ -71,7 +71,7 @@ def test_validate_entity_state_defaults_and_discards_unknown_keys():
     ("power", -1), ("health", -1),
     ("power", 1.5), ("health", "2"),
     ("combat_power", 1.5), ("shield", "2"),
-    ("level", 0), ("level", 4), ("level", 1.0),
+    ("level", 4), ("level", 1.0),
     ("level_color", "orange"), ("level_color", None),
     ("art_scale", 0), ("art_scale", -1),
     ("art_scale", math.nan), ("art_scale", math.inf),
@@ -282,6 +282,22 @@ def test_entity_crop_keeps_level_overflow(assets_dir, sample_art):
     assert cropped.height > baseline.height
     assert info["crop_origin"][1] == 1
     assert cropped.getchannel("A").getbbox()[3] == cropped.height
+
+
+def test_entity_level_zero_skips_badge(assets_dir, sample_art, monkeypatch):
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    without_level = deepcopy(layout)
+    del without_level["elements"]["level"]
+    lib = get_library(assets_dir)
+    monkeypatch.setattr(lib, "level_base",
+                        lambda: pytest.fail("等级 0 不得读取等级底座"))
+    monkeypatch.setattr(lib, "level_num",
+                        lambda *args: pytest.fail("等级 0 不得读取勾玉"))
+    actual = render_entity(make_card(sample_art, level=0), {}, assets_dir, layout=layout)
+    expected = render_entity(make_card(sample_art), {"level": 0}, assets_dir,
+                             layout=without_level)
+    assert images_equal(actual, expected)
+    assert validate_entity_state({"level": 0})["level"] == 0
 
 
 def test_entity_rejects_ineligible_source(assets_dir, sample_art):

@@ -168,8 +168,8 @@ def validate_entity_state(state: dict) -> dict:
     for field in ("power", "health", "combat_power", "shield"):
         if abs(normalized[field]) > max_value:
             raise ValueError(f"{field} 数值位数不得超过 {ENTITY_MAX_STAT_DIGITS} 位")
-    if normalized["level"] not in (1, 2, 3):
-        raise ValueError("level 必须是 1、2 或 3")
+    if normalized["level"] not in (0, 1, 2, 3):
+        raise ValueError("level 必须是 0、1、2 或 3")
     color = normalized["level_color"]
     if not isinstance(color, str) or color not in LEVEL_COLORS:
         raise ValueError("level_color 非法")
@@ -190,7 +190,7 @@ def _card_state(card: dict, state: dict) -> dict:
     normalized = validate_entity_state(state)
     level = card.get("level")
     if "level" not in state:
-        normalized["level"] = level if _is_int(level) and level in (1, 2, 3) else 1
+        normalized["level"] = level if _is_int(level) and level in (0, 1, 2, 3) else 1
     color = card.get("level_color")
     if "level_color" not in state:
         normalized["level_color"] = (
@@ -200,7 +200,7 @@ def _card_state(card: dict, state: dict) -> dict:
 
 def _render_level(canvas: Image.Image, lib: AssetLibrary, elem: dict,
                   state: dict) -> Image.Image:
-    if not elem.get("enabled", True):
+    if state["level"] == 0 or not elem.get("enabled", True):
         return canvas
     pos = elem["pos"]
     out = _paste_element(canvas, lib.level_base(), pos,
@@ -304,7 +304,7 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         return bounds
 
     level = elements.get("level")
-    if level is not None and level.get("enabled", True):
+    if state["level"] != 0 and level is not None and level.get("enabled", True):
         pos = level["pos"]
         add_centered(pos, (level["base_size"], level["base_size"]))
         nx, ny = level.get("num_offset", [0, 0])

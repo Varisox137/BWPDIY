@@ -248,7 +248,7 @@
 const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
 const FACTIONS = ["红莲", "苍叶", "青岚", "紫岩", "无相"];
 const RARITIES = ["N", "R", "SR", "SSR"];
-const LEVELS = [1, 2, 3];
+const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
 // stat 字段口径与 store/schema.py 对齐：式神/形态 power+health、幻境 durability 非负；
 // 战斗 power+/shield+、觉醒法术 power+/health+ 可负；协战无 stat
 const STATS_BY_TYPE = {
@@ -452,7 +452,8 @@ function setPreviewError(channel, text) {
 }
 const cPreviewImg = document.getElementById('c-preview');
 let cPreviewTimer = null;
-let cPreviewSeq = 0;   // 预览请求序号：旧响应到达时丢弃，避免乱序覆盖新图
+let cPreviewSeq = 0;   // 请求序号持续增长；已处理序号只拦截逆序旧响应，避免连续编辑时无中间画面
+let cPreviewAppliedSeq = 0;
 let cPreviewUrl = null;  // 当前预览 objectURL：换图时释放上一张，防内存累积
 let selectSeq = 0;     // 选卡请求序号：快速连点时慢响应不得覆盖新卡表单
 
@@ -582,6 +583,9 @@ function cardItem(c, isShiki) {
 async function selectCard(stem, force = false) {
   if (!force && (stem === curCard || !confirmDiscard())) return;
   if (curMech) exitMech();  // 选中卡牌与选中机制互斥（mDirty 守卫已在 confirmDiscard 完成）
+  cPreviewSeq++; cPreviewAppliedSeq = cPreviewSeq;
+  cEntitySeq++; cEntityAppliedSeq = cEntitySeq;
+  cPortraitSeq++; cPortraitAppliedSeq = cPortraitSeq;
   curCard = stem;
   const sg = cards.shikigami.find(e => (e.versions || []).some(v => v.stem === stem));
   if (sg) mainShiki = sg.name;
@@ -615,9 +619,9 @@ function clearCard() {
     if (mousePreviewFrames[channel]) cancelAnimationFrame(mousePreviewFrames[channel]);
     mousePreviewFrames[channel] = 0;
   }
-  cPreviewSeq++;
-  cPortraitSeq++;
-  cEntitySeq++;
+  cPreviewSeq++; cPreviewAppliedSeq = cPreviewSeq;
+  cPortraitSeq++; cPortraitAppliedSeq = cPortraitSeq;
+  cEntitySeq++; cEntityAppliedSeq = cEntitySeq;
   curCard = null; cardData = null; formData = null; entityState = null; cDirty = false;
   resetUndo();
   document.getElementById('c-form').textContent = '未选中卡牌';
@@ -864,7 +868,7 @@ document.getElementById('c-del-card').onclick = async () => {
 // ---- 中栏预览：主卡/头像/对局式神各有独立防抖、序号与 objectURL ----
 const cSubpreviews = document.getElementById('c-subpreviews');
 const cEntityImg = document.getElementById('c-entity');
-let cEntityTimer = null, cEntitySeq = 0, cEntityUrl = null;
+let cEntityTimer = null, cEntitySeq = 0, cEntityAppliedSeq = 0, cEntityUrl = null;
 function syncSubpreviews() {
   const visible = cPortraitImg.style.display !== 'none' || cEntityImg.style.display !== 'none';
   cSubpreviews.style.display = visible ? 'flex' : 'none';
@@ -884,16 +888,18 @@ function scheduleEntityPreview() {
   }, 300);
 }
 async function cHandlePreviewResponse(r, seq) {
-  if (seq !== cPreviewSeq) return;  // 期间又有新调整，丢弃本次结果
+  if (seq <= cPreviewAppliedSeq) return;  // 只拦截逆序旧响应；连续编辑时仍显示最新已完成画面
   if (!r.ok) {
     const detail = await parseErrorDetail(r);
-    if (seq !== cPreviewSeq) return;
+    if (seq <= cPreviewAppliedSeq) return;
+    cPreviewAppliedSeq = seq;
     setPreviewError('main', '预览失败：' + detail.join('\n'));
     return;
   }
-  setPreviewError('main', '');
   const blob = await r.blob();
-  if (seq !== cPreviewSeq) return;
+  if (seq <= cPreviewAppliedSeq) return;
+  cPreviewAppliedSeq = seq;
+  setPreviewError('main', '');
   const url = URL.createObjectURL(blob);
   const prev = cPreviewUrl;
   cPreviewUrl = url;
@@ -901,16 +907,18 @@ async function cHandlePreviewResponse(r, seq) {
   if (prev) URL.revokeObjectURL(prev);
 }
 async function cHandleEntityPreviewResponse(r, seq) {
-  if (seq !== cEntitySeq) return;
+  if (seq <= cEntityAppliedSeq) return;
   if (!r.ok) {
     const detail = await parseErrorDetail(r);
-    if (seq !== cEntitySeq) return;
+    if (seq <= cEntityAppliedSeq) return;
+    cEntityAppliedSeq = seq;
     setPreviewError('entity', '对局式神预览失败：' + detail.join('\n'));
     return;
   }
-  setPreviewError('entity', '');
   const blob = await r.blob();
-  if (seq !== cEntitySeq) return;
+  if (seq <= cEntityAppliedSeq) return;
+  cEntityAppliedSeq = seq;
+  setPreviewError('entity', '');
   const url = URL.createObjectURL(blob);
   const prev = cEntityUrl;
   cEntityUrl = url;
@@ -954,6 +962,7 @@ async function cPreviewForm(withPortrait = true, withEntity = true) {
 async function entityPreview() {
   const seq = ++cEntitySeq;
   if (!formData || !curProject || !curCard || !entityEligible(formData)) {
+    cEntityAppliedSeq = seq;
     cEntityImg.style.display = 'none';
     cEntityImg.removeAttribute('src');
     if (cEntityUrl) { URL.revokeObjectURL(cEntityUrl); cEntityUrl = null; }
@@ -985,10 +994,11 @@ document.getElementById('c-btn-refresh').onclick = () => {
 
 // ---- 式神头像预览（双式神框单槽位 2 倍渲染）：仅编辑式神卡时显示 ----
 const cPortraitImg = document.getElementById('c-portrait');
-let cPortraitTimer = null, cPortraitSeq = 0, cPortraitUrl = null;
+let cPortraitTimer = null, cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
 async function cPreviewPortrait(withForm) {
   const seq = ++cPortraitSeq;
   if (!curProject || !curCard || !formData || formData.type !== '式神') {
+    cPortraitAppliedSeq = seq;
     cPortraitImg.style.display = 'none';
     syncSubpreviews();
     return;
@@ -1001,10 +1011,14 @@ async function cPreviewPortrait(withForm) {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(withForm ? {card: formData} : {})});
   } catch (e) { return; }  // 头像预览失败不抢主预览的错误显示
-  if (seq !== cPortraitSeq) return;
-  if (!r.ok) { cPortraitImg.style.display = 'none'; syncSubpreviews(); return; }
+  if (seq <= cPortraitAppliedSeq) return;
+  if (!r.ok) {
+    cPortraitAppliedSeq = seq;
+    cPortraitImg.style.display = 'none'; syncSubpreviews(); return;
+  }
   const blob = await r.blob();
-  if (seq !== cPortraitSeq) return;
+  if (seq <= cPortraitAppliedSeq) return;
+  cPortraitAppliedSeq = seq;
   const url = URL.createObjectURL(blob);
   const prev = cPortraitUrl;
   cPortraitUrl = url;
@@ -1237,7 +1251,7 @@ function entityEligible(card) {
   return !!card && (card.type === '式神' || card.type === '形态' || card.evolve === true);
 }
 function makeEntityState(card) {
-  const level = Number.isInteger(card.level) && LEVELS.includes(card.level) ? card.level : 1;
+  const level = Number.isInteger(card.level) && ENTITY_LEVELS.includes(card.level) ? card.level : 1;
   const color = LEVEL_COLOR_VALUES.has(card.level_color) ? card.level_color : 'yellow';
   const nonneg = key => Number.isInteger(card[key]) && card[key] >= 0 ? card[key] : 0;
   return {level, level_color: color, power: nonneg('power'), health: nonneg('health'),
@@ -1249,7 +1263,7 @@ function setEntityField(key, value) {
 }
 function appendEntityForm(div) {
   if (!entityState) entityState = makeEntityState(formData);
-  selRowC(div, '等级', LEVELS, entityState.level,
+  selRowC(div, '等级', ENTITY_LEVELS, entityState.level,
     v => setEntityField('level', parseInt(v, 10)));
   selRowC(div, '勾玉颜色', LEVEL_COLORS.map(([v]) => v), entityState.level_color,
     v => setEntityField('level_color', v), v => LEVEL_COLORS.find(([val]) => val === v)[1]);

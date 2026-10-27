@@ -36,6 +36,7 @@ def fakes(monkeypatch):
     monkeypatch.setattr(atexit, "register", lambda fn: None)
     import bwpdiy.__main__ as m
     monkeypatch.setattr(m, "_probe_running", lambda host, port: None)  # 不打真实网络
+    monkeypatch.setattr(m, "_port_owner_pid", lambda port: None)
     return calls
 
 
@@ -46,12 +47,22 @@ def _run(monkeypatch, argv):
 
 def test_browser_autopen_default(fakes, monkeypatch):
     _run(monkeypatch, [])
-    assert fakes["uvicorn"] == ("127.0.0.1", 8630)
+    assert fakes["uvicorn"] == ("127.0.0.1", 8631)
     assert len(fakes["timers"]) == 1
     interval, func, args = fakes["timers"][0]
     assert 0 < interval <= 2  # 延迟约 1 秒，等服务就绪
     func(*args)
-    assert fakes["browser"] == ["http://127.0.0.1:8630/"]
+    assert fakes["browser"] == ["http://127.0.0.1:8631/"]
+
+
+def test_frozen_default_port(fakes, monkeypatch):
+    from pathlib import Path
+    from bwpdiy import resources
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(Path.cwd()), raising=False)
+    monkeypatch.setattr(resources, "default_library_dir", lambda: Path("library"))
+    _run(monkeypatch, [])
+    assert fakes["uvicorn"] == ("127.0.0.1", 8630)
 
 
 def test_browser_autopen_custom_host_port(fakes, monkeypatch):
@@ -65,40 +76,52 @@ def test_browser_autopen_custom_host_port(fakes, monkeypatch):
 
 def test_no_browser(fakes, monkeypatch):
     _run(monkeypatch, ["--no-browser"])
-    assert fakes["uvicorn"] == ("127.0.0.1", 8630)
+    assert fakes["uvicorn"] == ("127.0.0.1", 8631)
     assert fakes["timers"] == []
     assert fakes["browser"] == []
 
 
 # ---------- 启动实例探测 ----------
 
-def test_probe_same_version_reuses_instance(fakes, monkeypatch, capsys):
-    """同版本已在运行：不起新服务，直接开浏览器复用，暂停等按键后返回 0。"""
+def test_occupied_port_requires_confirmation_then_starts(fakes, monkeypatch, capsys):
+    """占用时回车确认才关闭对应 PID；同版本也不再直接复用。"""
     import bwpdiy.__main__ as m
     from bwpdiy import __version__
-    paused = []
+    killed = []
+    monkeypatch.setattr(m, "_port_owner_pid", lambda port: 1234)
     monkeypatch.setattr(m, "_probe_running", lambda host, port: __version__)
-    monkeypatch.setattr(m, "_pause_exit", lambda: paused.append(1))
+    monkeypatch.setattr(m, "_confirm_replace_owner", lambda port, running, pid: True)
+    monkeypatch.setattr(m, "_kill_and_wait", lambda pid, port: killed.append(pid) or True)
     monkeypatch.setattr(sys, "argv", ["bwpdiy"])
     assert main() == 0
-    assert fakes["uvicorn"] is None
-    assert fakes["browser"] == ["http://127.0.0.1:8630/"]
-    out = capsys.readouterr().out
-    assert "已在运行" in out and f"BWPDIY v{__version__}" in out  # 启动先打印版本
-    assert paused == [1]
+    assert killed == [1234]
+    assert fakes["uvicorn"] == ("127.0.0.1", 8631)
+    assert f"BWPDIY v{__version__}" in capsys.readouterr().out
 
 
-def test_probe_old_version_refuses_start(fakes, monkeypatch, capsys):
-    """异版本占用端口：拒绝启动并提示先保存再关闭旧程序，暂停等按键后返回 1。"""
+def test_occupied_port_non_tty_refuses_kill(fakes, monkeypatch, capsys):
+    """非交互环境只告警退出，不关闭占用进程。"""
     import bwpdiy.__main__ as m
-    paused = []
+    monkeypatch.setattr(m, "_port_owner_pid", lambda port: 1234)
     monkeypatch.setattr(m, "_probe_running", lambda host, port: "0.5.0")
-    monkeypatch.setattr(m, "_pause_exit", lambda: paused.append(1))
+    monkeypatch.setattr(m, "_pause_exit", lambda: None)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     monkeypatch.setattr(sys, "argv", ["bwpdiy"])
     assert main() == 1
     assert fakes["uvicorn"] is None and fakes["browser"] == []
-    assert "旧版本" in capsys.readouterr().err
-    assert paused == [1]
+    err = capsys.readouterr().err
+    assert "1234" in err and "非交互" in err and "BWPDIY v0.5.0" in err
+
+
+def test_confirm_replace_owner_only_empty_enter(monkeypatch):
+    import bwpdiy.__main__ as m
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    answers = iter(["取消", ""])
+    monkeypatch.setattr("builtins.input", lambda prompt: next(answers))
+    assert not m._confirm_replace_owner(8631, "?", 1234)
+    assert m._confirm_replace_owner(8631, "?", 1234)
 
 
 def test_pause_exit_skipped_when_not_tty(monkeypatch):
@@ -132,10 +155,10 @@ def test_no_idle_stop_disables_watchdog(fakes, monkeypatch):
     assert seen == [0, 7200.0]
 
 
-def test_unreleased_changes_are_consolidated_into_1_7_0():
+def test_unreleased_changes_are_consolidated_into_1_7_1():
     from bwpdiy import __version__
     from bwpdiy.changelog import CHANGELOG
 
-    assert __version__ == "1.7.0"
-    assert "1.7.0" in CHANGELOG
+    assert __version__ == "1.7.1"
+    assert "1.7.1" in CHANGELOG
     assert "1.6.3" not in CHANGELOG

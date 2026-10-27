@@ -951,7 +951,7 @@ function successResponse(blob) {{
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_entity_state_is_temporary(tmp_path):
-    """对局状态只继承合法基础值，修改不写卡牌数据、不置脏。"""
+    """小卡默认取基础值，法术觉醒叠加永久数值；临时修改不写卡牌、不置脏。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function entityEligible(card)",
@@ -962,6 +962,7 @@ def test_entity_state_is_temporary(tmp_path):
 const assert = require('node:assert');
 const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan', 'purple', 'red', 'blue', 'brown']);
+const cards = {{shikigami: [{{name: '基础式神', power: 3, health: 4}}], cards: []}};
 let entityState = null;
 let cDirty = false;
 let scheduled = 0;
@@ -972,21 +973,31 @@ assert(entityEligible({{type: '形态'}}));
 assert(entityEligible({{type: '法术', evolve: true}}));
 assert(!entityEligible({{type: '战斗'}}));
 assert(!entityEligible(null));
-const source = {{type: '法术', evolve: true, 'power+': 3, 'health+': 4,
+const source = {{type: '法术', evolve: true, shikigami: '基础式神', 'power+': 2, 'health+': -1,
                 level: 2, level_color: 'cyan', power: -2, health: 5.5,
                 combat_power: 8, shield: 9, art_scale: 7}};
 const state = makeEntityState(source);
 entityState = state;
-assert.deepStrictEqual(state, {{level: 2, level_color: 'cyan', power: 0, health: 0,
+assert.deepStrictEqual(state, {{level: 2, level_color: 'cyan', power: 5, health: 3,
                                 combat_power: 0, shield: 0, art_scale: 1}});
 assert.deepStrictEqual(makeEntityState({{type: '式神', level: 4, level_color: 'bad',
                                          power: 3, health: 4}}),
                        {{level: 1, level_color: 'yellow', power: 3, health: 4,
                         combat_power: 0, shield: 0, art_scale: 1}});
+assert.deepStrictEqual(makeEntityState({{type: '形态', shikigami: '基础式神', power: 2, health: 5}}).power, 2);
+const awakenedForm = makeEntityState({{type: '形态', evolve: true, shikigami: '基础式神',
+                                       power: 9, health: 9}});
+assert.deepStrictEqual([awakenedForm.power, awakenedForm.health], [3, 4]);
+const awakenedCombat = makeEntityState({{type: '战斗', evolve: true, shikigami: '基础式神',
+                                         'power+': 9, 'shield+': 9}});
+assert.deepStrictEqual([awakenedCombat.power, awakenedCombat.health], [3, 4]);
+const negative = makeEntityState({{type: '法术', evolve: true, shikigami: '基础式神',
+                                   'power+': -9, 'health+': -9}});
+assert.deepStrictEqual([negative.power, negative.health], [0, 0]);
 assert.strictEqual(makeEntityState({{type: '式神', level: 0}}).level, 0);
 setEntityField('power', 4);
 assert(state.power === 4 && cDirty === false && scheduled === 1);
-assert(source.power === -2 && source['power+'] === 3);
+assert(source.power === -2 && source['power+'] === 2);
 console.log('OK');
 """
     _run_node(tmp_path, driver)
@@ -1295,6 +1306,8 @@ def test_mouse_preview_frames_coalesce_latest_and_stay_independent(tmp_path):
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
         "function scheduleMousePreview(channel)",
         "function flushMousePreview(channel)",
         "function afterMouseEdit(channel)",
@@ -1347,11 +1360,62 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_mouse_preview_drops_backlog_and_finishes_at_latest_position(tmp_path):
+    """在途渲染期间合并连续操作，不排队回放轨迹，完成后补发最新状态。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
+        "function scheduleMousePreview(channel)",
+        "function flushMousePreview(channel)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let x = 0;
+const positions = [], pending = [];
+function cPreviewForm() {{
+  positions.push(x);
+  return new Promise(resolve => pending.push(resolve));
+}}
+function entityPreview() {{}}
+function cPreviewPortrait() {{}}
+function requestAnimationFrame() {{ throw new Error('本测试直接刷新'); }}
+function cancelAnimationFrame() {{}}
+{functions}
+async function settle() {{
+  pending.shift()();
+  await new Promise(resolve => setImmediate(resolve));
+}}
+(async () => {{
+  x = 1; flushMousePreview('art');
+  assert.deepStrictEqual(positions, [1]);
+  for (x = 2; x <= 100; x++) flushMousePreview('art');
+  assert.deepStrictEqual(positions, [1]);
+  assert.strictEqual(pending.length, 1);
+  await settle();
+  assert.deepStrictEqual(positions, [1, 101]);
+  x = 101; flushMousePreview('art');
+  x = 102; flushMousePreview('art');
+  await settle();
+  assert.deepStrictEqual(positions, [1, 101, 102]);
+  await settle();
+  assert.deepStrictEqual(positions, [1, 101, 102]);
+  assert.strictEqual(mousePreviewBusy.art, false);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_mouseup_flushes_only_the_active_drag_channels(tmp_path):
     """实际拖拽结束时取消待执行帧并立即最终预览，无拖拽的 mouseup 不刷新。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
         "function scheduleMousePreview(channel)",
         "function flushMousePreview(channel)",
         "function afterMouseEdit(channel)",
@@ -1423,6 +1487,8 @@ def test_mouse_edit_coalesces_pending_normal_preview_without_losing_channels(tmp
         "function scheduleCardPreview()",
         "function scheduleEntityPreview()",
         "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
         "function scheduleMousePreview(channel)",
         "function flushMousePreview(channel)",
         "function afterMouseEdit(channel)",
@@ -1639,6 +1705,8 @@ def test_clear_card_cancels_mouse_preview_frames(tmp_path):
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
         "function scheduleMousePreview(channel)",
         "function flushMousePreview(channel)",
         "function clearCard()",

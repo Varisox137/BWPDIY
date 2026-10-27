@@ -31,6 +31,7 @@ from PIL import Image, ImageChops
 from bwpdiy.render.artwork import fit_artwork
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.badges import FACTION_COLOR, _paste_element
+from bwpdiy.render.size import resolve_target_size
 
 
 def _load_art_cropped(lib: AssetLibrary, path: Path, rotate) -> Image.Image:
@@ -129,20 +130,35 @@ def _size(elem: dict, key: str, default: int, scale: float = 1) -> int:
     return min(max(n, 1), 4096)
 
 
-def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
-                    faction: str | None, scale: int = 2,
-                    faction_style: int | None = None,
-                    with_frame: bool = True) -> Image.Image:
-    """式神头像预览/导出：单槽位合成（底图→头像菱形裁剪→斜方框→派系标），按布局 ×scale。
-
-    取协战 duo_frame 布局参数（back_size/frame_size/faction_size/frame_offset/
-    faction_offset）放大 scale 倍；art_ref 缺/缺图只画底图（+框+派系标）。
-    with_frame=False 时不画斜方框与派系标（仅底图+菱形裁剪头像，导出裸头像用）。
-    返回以底图中心为中心的正方形小画布（不做非对称 tightest 裁剪，菱形居中显示）。
-    """
+def _portrait_side(elem: dict, scale: float, with_frame: bool) -> int:
     back_size = _size(elem, "back_size", _DEFAULT_BACK_SIZE, scale)
     frame_size = _size(elem, "frame_size", _DEFAULT_FRAME_SIZE, scale)
     faction_size = _size(elem, "faction_size", _DEFAULT_FACTION_SIZE, scale)
+    frame_off = elem.get("frame_offset") or [0, 0]
+    faction_off = elem.get("faction_offset") or _DEFAULT_FACTION_OFFSET
+    ext = back_size // 2
+    if with_frame:
+        ext = max(ext,
+                  frame_size // 2 + max(abs(round(frame_off[0] * scale)),
+                                        abs(round(frame_off[1] * scale))),
+                  faction_size // 2 + max(abs(round(faction_off[0] * scale)),
+                                          abs(round(faction_off[1] * scale))))
+    return min(ext, 2048) * 2 + 16
+
+
+def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
+                    faction: str | None, scale: float = 2,
+                    faction_style: int | None = None,
+                    with_frame: bool = True, width: int | None = None,
+                    height: int | None = None) -> Image.Image:
+    """单槽位头像合成；width/height 按当前 scale 的默认方形尺寸原生重绘。"""
+    default_side = _portrait_side(elem, scale, with_frame)
+    target_size = resolve_target_size((default_side, default_side), width, height)
+    factor = target_size[0] / default_side if target_size is not None else 1.0
+    render_scale = scale * factor
+    back_size = _size(elem, "back_size", _DEFAULT_BACK_SIZE, render_scale)
+    frame_size = _size(elem, "frame_size", _DEFAULT_FRAME_SIZE, render_scale)
+    faction_size = _size(elem, "faction_size", _DEFAULT_FACTION_SIZE, render_scale)
     frame_off = elem.get("frame_offset") or [0, 0]
     faction_off = elem.get("faction_offset") or _DEFAULT_FACTION_OFFSET
 
@@ -150,17 +166,7 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
     bs = back_size / max(back.size)
     back_box = (max(1, round(back.width * bs)), max(1, round(back.height * bs)))
     back_fit = back.resize(back_box, Image.Resampling.LANCZOS)
-
-    # 正方形小画布：底图中心居中，边长容纳各部件（中心 + 偏移 ± 尺寸半径）的并集；
-    # 不画框/派系标时只按底图盒计算（裸头像导出更小画布）
-    ext = max(back_box[0] // 2, back_box[1] // 2)
-    if with_frame:
-        ext = max(ext,
-                  frame_size // 2 + max(abs(round(frame_off[0] * scale)),
-                                        abs(round(frame_off[1] * scale))),
-                  faction_size // 2 + max(abs(round(faction_off[0] * scale)),
-                                          abs(round(faction_off[1] * scale))))
-    side = min(ext, 2048) * 2 + 16  # 钳制画布边长，防畸形偏移撑出超大分配
+    side = target_size[0] if target_size is not None else default_side
     center = (side // 2, side // 2)
     out = Image.new("RGBA", (side, side), (0, 0, 0, 0))
     box = (center[0] - back_box[0] // 2, center[1] - back_box[1] // 2)
@@ -169,8 +175,8 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
         path = Path(art_ref["path"])
         if path.is_file():
             art = _load_art_cropped(lib, path, art_ref.get("rotate", 0))
-            art = fit_artwork(art, back_box, art_ref.get("offset_x", 0) * scale,
-                              art_ref.get("offset_y", 0) * scale,
+            art = fit_artwork(art, back_box, art_ref.get("offset_x", 0) * render_scale,
+                              art_ref.get("offset_y", 0) * render_scale,
                               art_ref.get("scale", 1.0))
             art.putalpha(ImageChops.multiply(art.getchannel("A"),
                                              back_fit.getchannel("A")))
@@ -179,18 +185,18 @@ def render_portrait(lib: AssetLibrary, elem: dict, art_ref: dict | None,
         return out
     out = _paste_element(out, lib.duo("highlight_1"),
                          (center[0],
-                          center[1] + round(elem.get("highlight_dy_1", 0) * scale)),
+                          center[1] + round(elem.get("highlight_dy_1", 0) * render_scale)),
                          (frame_size, frame_size))
     out = _paste_element(out, lib.duo("frame_1"),
-                         (center[0] + round(frame_off[0] * scale),
-                          center[1] + round(frame_off[1] * scale)),
+                         (center[0] + round(frame_off[0] * render_scale),
+                          center[1] + round(frame_off[1] * render_scale)),
                          (frame_size, frame_size))
     color = FACTION_COLOR.get(faction or "")
     if color is not None:
         style = _coerce_faction_style(faction_style)
         out = _paste_element(out, lib.faction(color, style),
-                             (center[0] + round(faction_off[0] * scale),
-                              center[1] + round(faction_off[1] * scale)),
+                             (center[0] + round(faction_off[0] * render_scale),
+                              center[1] + round(faction_off[1] * render_scale)),
                              (faction_size, faction_size))
     return out
 

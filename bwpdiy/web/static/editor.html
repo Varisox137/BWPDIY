@@ -1030,9 +1030,11 @@ async function cPreviewPortrait(withForm) {
 // 左键拖拽=偏移（拖拽方向=图片移动方向）、滚轮=缩放（上滚放大每档 ×1.05，下滚 ÷1.05）、
 // 右键按住+滚轮=旋转（每档 ±3°，正角度顺时针，与 artRow 数值口径一致）；
 // 数值双向同步右侧输入框（artRow 输入框按 id 回写）；撤回栈与脏标记同 afterEdit 口径，
-// 预览按通道合并到动画帧；卡图同时刷新主卡与常驻实体，头像只刷新自身
+// 预览按通道合并到动画帧，在途期间只留最新待办、不排队回放；卡图同时刷新主卡与常驻实体，头像只刷新自身
 // 机制编辑态（或非式神卡的头像框）不响应；无显式 artwork.path 的缺省图（<id 或卡名>.png）同样可调
 const mousePreviewFrames = {art: 0, entity: 0, portrait: 0};
+const mousePreviewBusy = {art: false, entity: false, portrait: false};
+const mousePreviewQueued = {art: false, entity: false, portrait: false};
 function scheduleMousePreview(channel) {
   if (mousePreviewFrames[channel]) return;
   mousePreviewFrames[channel] = requestAnimationFrame(() => {
@@ -1045,9 +1047,19 @@ function flushMousePreview(channel) {
     cancelAnimationFrame(mousePreviewFrames[channel]);
     mousePreviewFrames[channel] = 0;
   }
-  if (channel === 'art') cPreviewForm(false, false);
-  else if (channel === 'entity') entityPreview();
-  else cPreviewPortrait(true);
+  if (mousePreviewBusy[channel]) {
+    mousePreviewQueued[channel] = true;
+    return;
+  }
+  mousePreviewBusy[channel] = true;
+  const request = channel === 'art' ? cPreviewForm(false, false)
+    : channel === 'entity' ? entityPreview() : cPreviewPortrait(true);
+  Promise.resolve(request).catch(e => console.error('鼠标预览失败', e)).finally(() => {
+    mousePreviewBusy[channel] = false;
+    if (!mousePreviewQueued[channel]) return;
+    mousePreviewQueued[channel] = false;
+    flushMousePreview(channel);
+  });
 }
 function afterMouseEdit(channel) {
   noteEdit();
@@ -1253,8 +1265,15 @@ function entityEligible(card) {
 function makeEntityState(card) {
   const level = Number.isInteger(card.level) && ENTITY_LEVELS.includes(card.level) ? card.level : 1;
   const color = LEVEL_COLOR_VALUES.has(card.level_color) ? card.level_color : 'yellow';
-  const nonneg = key => Number.isInteger(card[key]) && card[key] >= 0 ? card[key] : 0;
-  return {level, level_color: color, power: nonneg('power'), health: nonneg('health'),
+  const base = card.evolve === true
+    ? cards.shikigami.find(e => e.name === card.shikigami) || {} : card;
+  const nonneg = (source, key) => Number.isInteger(source[key]) && source[key] >= 0 ? source[key] : 0;
+  let power = nonneg(base, 'power'), health = nonneg(base, 'health');
+  if (card.type === '法术' && card.evolve === true) {
+    power = Math.max(0, power + (Number.isInteger(card['power+']) ? card['power+'] : 0));
+    health = Math.max(0, health + (Number.isInteger(card['health+']) ? card['health+'] : 0));
+  }
+  return {level, level_color: color, power, health,
           combat_power: 0, shield: 0, art_scale: 1};
 }
 function setEntityField(key, value) {

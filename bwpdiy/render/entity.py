@@ -11,6 +11,7 @@ from bwpdiy.render.artwork import (
 from bwpdiy.render.assets import AssetLibrary, get_library
 from bwpdiy.render.badges import TYPE_FRAME_CODE, _paste_element, _render_digits
 from bwpdiy.render.pipeline import _normalize_frame
+from bwpdiy.render.size import fit_target_canvas, resolve_target_size, scale_layout
 
 ENTITY_SIZE = (96, 144)
 ENTITY_MAX_COORD = 4096
@@ -326,7 +327,8 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         if field in ("combat_power", "shield") and value == 0:
             continue
         digits = _render_digits(str(abs(value)), lib.font("name", elem["font_size"]),
-                                round(elem.get("stroke_width", 1)))
+                                round(elem.get("stroke_width", 1)), None,
+                                elem.get("_digit_gap", 3))
         prepared_digits[field] = digits
         if digits is None:
             continue
@@ -338,38 +340,56 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
     return checked_bounds(), prepared_digits
 
 
-def _render_frame(art: Image.Image, origin: tuple[int, int]) -> Image.Image:
-    canvas = Image.new("RGBA", ENTITY_SIZE, (0, 0, 0, 0))
+def _render_frame(art: Image.Image, origin: tuple[int, int],
+                  factor: float = 1.0) -> Image.Image:
+    size = (max(1, round(ENTITY_SIZE[0] * factor)),
+            max(1, round(ENTITY_SIZE[1] * factor)))
+    v = lambda value: round(value * factor)
+    line = max(1, v(1))
+    canvas = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
-    draw.rounded_rectangle((1, 1, 94, 142), radius=8,
+    draw.rounded_rectangle((v(1), v(1), v(94), v(142)), radius=v(8),
                            fill=(18, 23, 31, 238))
     x, y = origin
     inner_box = (x, y, x + art.width - 1, y + art.height - 1)
-    mask = Image.new("L", ENTITY_SIZE, 0)
-    ImageDraw.Draw(mask).rounded_rectangle(inner_box, radius=6, fill=255)
-    layer = Image.new("RGBA", ENTITY_SIZE, (0, 0, 0, 0))
+    mask = Image.new("L", size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle(inner_box, radius=v(6), fill=255)
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
     layer.alpha_composite(art, origin)
     layer.putalpha(ImageChops.multiply(layer.getchannel("A"), mask))
     canvas = Image.alpha_composite(canvas, layer)
     draw = ImageDraw.Draw(canvas)
-    draw.rounded_rectangle((1, 1, 94, 142), radius=8,
-                           outline=(198, 164, 93, 255), width=1)
-    draw.rounded_rectangle((2, 2, 93, 141), radius=7,
-                           outline=(55, 39, 25, 255), width=1)
-    draw.rounded_rectangle(inner_box, radius=6,
-                           outline=(235, 214, 153, 220), width=1)
+    draw.rounded_rectangle((v(1), v(1), v(94), v(142)), radius=v(8),
+                           outline=(198, 164, 93, 255), width=line)
+    draw.rounded_rectangle((v(2), v(2), v(93), v(141)), radius=v(7),
+                           outline=(55, 39, 25, 255), width=line)
+    draw.rounded_rectangle(inner_box, radius=v(6),
+                           outline=(235, 214, 153, 220), width=line)
     return canvas
 
 
 def render_entity(card: dict, state: dict, assets_dir: Path,
                   layout: dict | None = None, crop: bool = True,
-                  info: dict | None = None) -> Image.Image:
+                  info: dict | None = None, width: int | None = None,
+                  height: int | None = None, _measure_only: bool = False) -> Image.Image:
+    """渲染对局小卡；width/height 按默认紧致比例原生重绘全部元素。"""
+    target_size = None
+    factor = 1.0
+    if (width is not None or height is not None) and not _measure_only:
+        probe = render_entity(card, state, assets_dir, layout, _measure_only=True)
+        target_size = resolve_target_size(probe.size, width, height)
+        factor = target_size[0] / probe.width
     if not entity_eligible(card):
         raise ValueError("该卡牌类型不支持对局式神渲染")
     state = _card_state(card, state)
     entity_layout = layout if layout is not None else _DEFAULT_LAYOUT
     if not isinstance(entity_layout, dict):
         raise ValueError("对局式神布局必须是对象")
+    if factor != 1:
+        entity_layout = scale_layout(entity_layout, factor)
+        for elem in (entity_layout.get("elements") or {}).values():
+            if elem.get("kind") == "stat":
+                elem["_digit_gap"] = 3 * factor
     window = entity_layout.get("art_window", _DEFAULT_LAYOUT["art_window"])
     validate_entity_art_window(window)
     elements = entity_layout.get("elements")
@@ -377,21 +397,24 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
     (left, top, right, bottom), prepared_digits = _entity_work_bounds(
         lib, elements, state)
     ref = artwork_ref(card)
-    original, rotated = load_card_artwork(card, lib)
-    width, height = window["width"], window["height"]
-    inner_size = (max(1, round(width)), max(1, round(height)))
-    ratio = width / 512
+    window_width, window_height = window["width"], window["height"]
+    inner_size = (max(1, round(window_width)), max(1, round(window_height)))
+    ratio = window_width / 512
     offset_y = ref["offset_y"] * ratio + window["offset_y"]
     if window["frame_center"]:
         code = TYPE_FRAME_CODE[card["type"]]
-        frame = _normalize_frame(lib.frame(code, card.get("frame_variant", "norm")))
-        _, frame_cy = frame_art_window_center(frame)
+        source_frame = _normalize_frame(lib.frame(code, card.get("frame_variant", "norm")))
+        _, frame_cy = frame_art_window_center(source_frame)
         offset_y += (256 - frame_cy) * ratio
-    art = fit_artwork(rotated, inner_size, ref["offset_x"] * ratio,
-                      offset_y, state["art_scale"], cover_base=original)
+    if _measure_only:
+        art = Image.new("RGBA", inner_size, (0, 0, 0, 0))
+    else:
+        original, rotated = load_card_artwork(card, lib)
+        art = fit_artwork(rotated, inner_size, ref["offset_x"] * ratio,
+                          offset_y, state["art_scale"], cover_base=original)
     center_x, center_y = window["center"]
-    origin = (round(center_x - width / 2), round(center_y - height / 2))
-    canvas = _render_frame(art, origin)
+    origin = (round(center_x - window_width / 2), round(center_y - window_height / 2))
+    canvas = _render_frame(art, origin, factor)
     frame = canvas
     canvas = Image.new("RGBA", (right - left, bottom - top), (0, 0, 0, 0))
     canvas.alpha_composite(frame, (-left, -top))
@@ -411,7 +434,8 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
     if info is not None:
         info["crop_origin"] = ((left + bbox[0], top + bbox[1])
                                if bbox else (0, 0))
-    return canvas.crop(bbox) if bbox else canvas
+    out = canvas.crop(bbox) if bbox else canvas
+    return fit_target_canvas(out, target_size) if target_size is not None else out
 
 
 __all__ = ["entity_eligible", "frame_art_window_center", "render_entity",

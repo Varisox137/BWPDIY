@@ -1,14 +1,16 @@
-"""python -m bwpdiy：启动编辑器 WebGUI（默认 http://127.0.0.1:8630），启动后自动打开浏览器。
+"""启动编辑器 WebGUI：打包正式版默认 8630，源码开发版默认 8631，启动后自动打开浏览器。
 
-启动先打印当前版本；探测目标端口已有实例：同版本 → 直接开浏览器复用（不重复起服务）；
-异版本 → 提示先保存工作、关闭旧程序再启动（避免 bind 崩溃报栈）。
-探测命中已有实例时暂停等按键再退出（双击运行的 exe 关窗前留看提示的时间）。
+启动先打印当前版本；目标端口被占用时显示占用者与 PID，仅在交互终端回车确认后
+结束该进程并等待端口释放，再启动服务。非交互环境只告警退出，不自动结束进程。
 """
 
 import argparse
 import json
 import logging
+import os
+import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -24,7 +26,64 @@ def _probe_running(host: str, port: int) -> str | None:
     except urllib.error.HTTPError:
         return "?"  # 有 HTTP 服务但非 BWPDIY
     except Exception:
-        return None  # 连接拒绝/超时：视为空闲（bind 失败仍由 uvicorn 报错兜底）
+        return None  # 连接拒绝/超时：由端口所有者检测兜底
+
+
+def _port_owner_pid(port: int) -> int | None:
+    """Windows 下返回监听端口的 PID；查询失败/非 Windows 返回 None。"""
+    if os.name != "nt":
+        return None
+    try:
+        result = subprocess.run(["netstat", "-ano"], capture_output=True, text=True,
+                                  encoding="mbcs", errors="replace", check=False)
+    except OSError:
+        return None
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 5 and parts[3] == "LISTENING" \
+                and parts[1].rsplit(":", 1)[-1] == str(port):
+            try:
+                return int(parts[4])
+            except ValueError:
+                continue
+    return None
+
+
+def _confirm_replace_owner(port: int, running: str, pid: int | None) -> bool:
+    who = f"BWPDIY v{running}" if running != "?" else "其他服务"
+    print(f"警告：端口 {port} 已被{who}占用。", file=sys.stderr)
+    if pid is None:
+        print("无法识别占用进程，请手动关闭后重试。", file=sys.stderr)
+        return False
+    print(f"占用进程 PID：{pid}。请先在对应界面保存工作。", file=sys.stderr)
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        print("非交互环境不自动结束进程；请手动关闭后重试。", file=sys.stderr)
+        return False
+    try:
+        answer = input("按回车确认关闭该进程并启动服务；输入其他内容取消：")
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer == ""
+
+
+def _kill_and_wait(pid: int, port: int) -> bool:
+    if pid == os.getpid():
+        print("拒绝结束当前进程。", file=sys.stderr)
+        return False
+    result = subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                            capture_output=True, text=True, encoding="mbcs",
+                            errors="replace", check=False)
+    if result.returncode != 0:
+        print(f"关闭进程失败：{result.stdout.strip()}{result.stderr.strip()}", file=sys.stderr)
+        return False
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if _port_owner_pid(port) is None:
+            return True
+        time.sleep(0.1)
+    print(f"端口 {port} 仍未释放，请手动检查后重试。", file=sys.stderr)
+    return False
 
 
 def _pause_exit() -> None:
@@ -45,9 +104,11 @@ def _pause_exit() -> None:
 
 
 def main() -> int:
+    default_port = 8630 if getattr(sys, "frozen", False) else 8631
     ap = argparse.ArgumentParser(prog="bwpdiy")
     ap.add_argument("--host", default="127.0.0.1", help="监听地址（默认 127.0.0.1）")
-    ap.add_argument("--port", type=int, default=8630, help="监听端口（默认 8630）")
+    ap.add_argument("--port", type=int, default=default_port,
+                    help=f"监听端口（正式版默认 8630，开发版默认 8631；本次 {default_port}）")
     ap.add_argument("--no-browser", action="store_true",
                     help="启动后不自动打开浏览器（测试/调试场景）")
     ap.add_argument("--no-idle-stop", action="store_true",
@@ -70,23 +131,16 @@ def main() -> int:
     logging.getLogger("bwpdiy").info("启动参数：%s", sys.argv)
 
     if args.host in ("127.0.0.1", "localhost", "::1"):
-        running = _probe_running(args.host, args.port)
-        if running is not None:
-            url = f"http://{args.host}:{args.port}/"
-            if running == __version__:
-                print(f"已在运行：{url}（直接打开浏览器复用，不重复启动）")
-                if not args.no_browser:
-                    webbrowser.open(url)
+        owner_pid = _port_owner_pid(args.port)
+        running = (_probe_running(args.host, args.port)
+                   if owner_pid is not None or os.name != "nt" else None)
+        if owner_pid is not None or running is not None:
+            confirmed = _confirm_replace_owner(args.port, running or "?", owner_pid)
+            if not confirmed or not _kill_and_wait(owner_pid, args.port):
                 _pause_exit()
-                return 0
-            who = f"旧版本 BWPDIY v{running}" if running != "?" else "另一服务"
-            print(f"端口 {args.port} 已被{who}占用，本程序（v{__version__}）未启动。",
-                  file=sys.stderr)
-            if running != "?":
-                print("请先在旧版界面保存工作并关闭旧程序，再重新启动本程序"
-                      "（旧版界面的一键更新也可直接升级）。", file=sys.stderr)
-            _pause_exit()
-            return 1
+                return 1
+            logging.getLogger("bwpdiy").warning("经回车确认，已关闭端口 %d 的占用进程 %d",
+                                                args.port, owner_pid)
 
     if not args.no_browser:
         # uvicorn.run 阻塞：用 Timer 延迟 1 秒打开，等服务就绪；通配地址对浏览器无意义，回退回环
@@ -99,7 +153,6 @@ def main() -> int:
     # 用 os._exit 绕过 atexit，分别在 on_idle 回调与 update_apply 中显式清理。
     # Windows 直接关窗可能绕过 atexit，尽力而为。
     import atexit
-    import os
 
     from bwpdiy.store import cleanup_unused_images
 

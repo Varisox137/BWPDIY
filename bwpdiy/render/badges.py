@@ -141,7 +141,7 @@ def _row_ink_extents(img: Image.Image) -> list[tuple[int, int] | None]:
 
 
 def _render_digits(text: str, font, stroke_width: int,
-                   color: str | None = None) -> Image.Image | None:
+                   color: str | None = None, gap: float = _DIGIT_GAP) -> Image.Image | None:
     """数字串渲染：逐字离屏渲染后横向拼接，变色在拼接后整体施加（渐变以整串墨迹计）。
 
     竖直：各字墨迹中点在同一水平线（不同字高取中点对齐）。
@@ -168,10 +168,10 @@ def _render_digits(text: str, font, stroke_width: int,
         for y in range(h):
             py = y - off_y
             if 0 <= py < p.height and acc_ext[y] and p_ext[py]:
-                req = acc_ext[y][1] + _DIGIT_GAP - p_ext[py][0]
+                req = acc_ext[y][1] + gap - p_ext[py][0]
                 x = req if x is None else max(x, req)
         if x is None:
-            x = acc.width + _DIGIT_GAP  # 逐行无重叠（理论上不会发生）：退回 box 等距
+            x = acc.width + gap  # 逐行无重叠（理论上不会发生）：退回 box 等距
         x = max(0, x)
         w_new = max(acc.width, x + p.width)
         grown = Image.new("RGBA", (w_new, h), (0, 0, 0, 0))
@@ -314,7 +314,8 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         digits = str(abs(value)) if signed else str(value)
         # 符号贴图（如有）+ 数字作为一个整体块，块的视觉中心对齐 num_pos；
         # sign_offset 为符号相对数字块的微调偏移
-        digit_img = _render_digits(digits, font, stroke_width, color)
+        digit_img = _render_digits(digits, font, stroke_width, color,
+                                   elem.get("_digit_gap", _DIGIT_GAP))
         if digit_img is None:
             return out
         sign_img = None
@@ -327,7 +328,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
             if color is not None:
                 sign_img = _tint_sign(sign_img, *STAT_COLORS[color])
         sign_w = sign_img.width if sign_img is not None else 0
-        gap = 2 if sign_img is not None else 0
+        gap = elem.get("_sign_gap", 2) if sign_img is not None else 0
         left = round(num_pos[0] - (sign_w + gap + digit_img.width) / 2)
         out = out.copy()
         if sign_img is not None:

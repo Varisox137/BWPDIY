@@ -58,10 +58,13 @@ def with_today(card):
     return {**card, "version_date": TODAY}
 
 
-def entry(stem, name, vd=TODAY, shiki=None):
-    return {"stem": stem, "name": name, "id": None,
+def entry(stem, name, vd=TODAY, shiki=None, stats=False):
+    data = {"stem": stem, "name": name, "id": None,
             "versions": [{"stem": stem, "date": vd}], "count": 1,
             "shikigami": shiki, "shikigami1": None, "shikigami2": None}
+    if stats:
+        data.update(power=3, health=4)
+    return data
 
 
 def _png_size(resp) -> tuple:
@@ -152,7 +155,7 @@ def project(client):
     return "测试项目"
 
 
-_SHIKI_ENTRY = entry("shikigami", "测试式神")
+_SHIKI_ENTRY = entry("shikigami", "测试式神", stats=True)
 
 
 def test_card_save_and_load_roundtrip(client, project):
@@ -211,7 +214,7 @@ def test_card_save_shikigami_rename_syncs_references(client, project):
     assert r.json() == {"ok": True, "updated": ["测试斩"], "stem": "shikigami"}
     assert client.get(f"/api/projects/{project}/cards/测试斩").json()["shikigami"] == "新名"
     lst = client.get(f"/api/projects/{project}/cards").json()
-    assert lst["shikigami"] == [entry("shikigami", "新名")]
+    assert lst["shikigami"] == [entry("shikigami", "新名", stats=True)]
 
 
 def test_card_save_shikigami_overwrite(client, project):

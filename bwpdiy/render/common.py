@@ -4,7 +4,7 @@ from PIL import Image
 
 
 def paste_centered(canvas: Image.Image, img: Image.Image,
-                   center: tuple[int, int],
+                   center: tuple[float, float],
                    size: tuple[int, int] | None = None,
                    composite: bool = False) -> Image.Image:
     """把 img 缩放至 size 后按中心点 center 贴到 canvas 上（居中对齐），返回新图。
@@ -16,7 +16,7 @@ def paste_centered(canvas: Image.Image, img: Image.Image,
     if size is None:
         size = img.size
     resized = img.resize(size, Image.Resampling.LANCZOS).convert("RGBA")
-    box = (center[0] - size[0] // 2, center[1] - size[1] // 2)
+    box = (round(center[0]) - size[0] // 2, round(center[1]) - size[1] // 2)
     out = canvas.copy()
     if composite:
         out.alpha_composite(resized, box)

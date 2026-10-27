@@ -28,6 +28,7 @@ __all__ = ["ARTWORK_MAX_PIXELS", "TYPE_FRAME_CODE", "render_card"]
 from bwpdiy.render.assets import get_library
 from bwpdiy.render.badges import TYPE_FRAME_CODE, render_element, stat_rendered
 from bwpdiy.render.layout import get_type_layout, load_layouts
+from bwpdiy.render.size import fit_target_canvas, resolve_target_size, scale_layout
 from bwpdiy.render.text import FRAME_KEYWORD_FILL, FRAME_TEXT_FILL, draw_region
 
 CARD_SIZE = (512, 512)
@@ -42,25 +43,21 @@ FRAME_CONTOUR_ERODE = 2  # px
 OBSTACLE_ALPHA = 128
 
 
-def _normalize_frame(frame: Image.Image, info: dict | None = None) -> Image.Image:
-    """牌框归一化到 512×512 画布：等比缩放至高 512（上下顶格），左右居中。
-
-    牌框素材为手工修整的紧致裁剪图，各框尺寸不一；布局坐标以归一化牌框左缘
-    为原点（卡面空间），传入 info dict 时回填 anchor=(左, 上) 居中偏移，
-    供卡面空间 → 512 画布坐标平移（anchor[1] 恒 0——框恒顶格）。
-    """
-    if frame.size == CARD_SIZE:
+def _normalize_frame(frame: Image.Image, info: dict | None = None,
+                     canvas_size: tuple[int, int] = CARD_SIZE) -> Image.Image:
+    """牌框等比缩放到目标画布高并水平居中；默认 512×512。"""
+    if frame.size == canvas_size:
         if info is not None:
             info["anchor"] = (0, 0)
         return frame
-    scale = CARD_SIZE[1] / frame.height
-    if frame.width * scale > CARD_SIZE[0]:  # 宽溢出兜底：按宽适配（正常框不会触发）
-        scale = CARD_SIZE[0] / frame.width
+    scale = canvas_size[1] / frame.height
+    if frame.width * scale > canvas_size[0]:  # 宽溢出兜底：按宽适配（正常框不会触发）
+        scale = canvas_size[0] / frame.width
     nw = max(1, round(frame.width * scale))
     nh = max(1, round(frame.height * scale))
     frame = frame.resize((nw, nh), Image.LANCZOS)
-    canvas = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
-    pos = ((CARD_SIZE[0] - nw) // 2, (CARD_SIZE[1] - nh) // 2)
+    canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+    pos = ((canvas_size[0] - nw) // 2, (canvas_size[1] - nh) // 2)
     if info is not None:
         info["anchor"] = pos
     canvas.paste(frame, pos, frame)
@@ -89,8 +86,8 @@ def _to_canvas_coords(type_layout: dict, anchor_x: int) -> dict:
     return tl
 
 
-def _art_clip_contour(frame: Image.Image) -> Image.Image:
-    """L 掩膜（255=卡图可绘制区）：牌框外轮廓向内腐蚀 FRAME_CONTOUR_ERODE px。
+def _art_clip_contour(frame: Image.Image, erode: int = FRAME_CONTOUR_ERODE) -> Image.Image:
+    """L 掩膜（255=卡图可绘制区）：牌框外轮廓向内腐蚀 erode px。
 
     外轮廓 = 框 alpha≥FRAME_CONTOUR_ALPHA 实心区 + 被框缘完整包围的卡图窗
     （对 alpha<阈值区域从画布四边 flood fill，够不到的地方即框形内部）。
@@ -106,8 +103,8 @@ def _art_clip_contour(frame: Image.Image) -> Image.Image:
             ImageDraw.floodfill(mask, s, 128, thresh=0)
     # 128=框外 → 其余（实心区+卡图窗）为框形内部
     shape = mask.point(lambda v: 0 if v == 128 else 255)
-    if FRAME_CONTOUR_ERODE > 0:
-        shape = shape.filter(ImageFilter.MinFilter(2 * FRAME_CONTOUR_ERODE + 1))
+    if erode > 0:
+        shape = shape.filter(ImageFilter.MinFilter(2 * erode + 1))
     return shape
 
 
@@ -199,7 +196,7 @@ def _draw_static(canvas, type_layout: dict, card: dict, lib, variant: str):
                           if e.get("enabled", True) and stat_rendered(e, card)]
         obstacle_mask = None
         if rendered_stats:
-            layer = Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0))
+            layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
             for i, e in enumerate(rendered_stats):
                 # composite=True：掩膜采集走 alpha_composite，图标源 alpha 保真
                 # （默认 paste 在透明层上平方 alpha，抗锯齿淡边缘会被掩膜阈值丢弃）
@@ -219,9 +216,10 @@ def _draw_static(canvas, type_layout: dict, card: dict, lib, variant: str):
     return canvas
 
 
-def _build_static_layers(type_layout: dict, card: dict, lib, variant: str) -> list:
+def _build_static_layers(type_layout: dict, card: dict, lib, variant: str,
+                         canvas_size: tuple[int, int] = CARD_SIZE) -> list:
     tape = []
-    canvas = _RecordingCanvas(Image.new("RGBA", CARD_SIZE, (0, 0, 0, 0)), tape)
+    canvas = _RecordingCanvas(Image.new("RGBA", canvas_size, (0, 0, 0, 0)), tape)
     _draw_static(canvas, type_layout, card, lib, variant)
     return tape
 
@@ -242,7 +240,8 @@ def _replay_static_layers(canvas: Image.Image, layers: list) -> Image.Image:
 
 
 def _get_static_layers(assets_dir: Path, type_layout: dict, card: dict,
-                       lib, variant: str) -> list | None:
+                       lib, variant: str,
+                       canvas_size: tuple[int, int] = CARD_SIZE) -> list | None:
     key = _static_overlay_key(assets_dir, type_layout, card)
     if key is None:
         return None
@@ -252,7 +251,7 @@ def _get_static_layers(assets_dir: Path, type_layout: dict, card: dict,
             if layers is not None:
                 _STATIC_OVERLAY_CACHE.move_to_end(key)
                 return layers
-    layers = _build_static_layers(type_layout, card, lib, variant)
+    layers = _build_static_layers(type_layout, card, lib, variant, canvas_size)
     if STATIC_OVERLAY_CACHE_MAX_ENTRIES > 0:
         with _STATIC_OVERLAY_LOCK:
             _STATIC_OVERLAY_CACHE[key] = layers
@@ -263,36 +262,47 @@ def _get_static_layers(assets_dir: Path, type_layout: dict, card: dict,
 
 
 def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
-                crop: bool = True, info: dict | None = None) -> Image.Image:
-    """渲染单张完整卡面。
+                crop: bool = True, info: dict | None = None,
+                width: int | None = None, height: int | None = None,
+                _measure_only: bool = False) -> Image.Image:
+    """渲染完整卡面；width/height 按比例原生重排重绘，不缩放默认成品。
 
-    crop=True（默认，导出/预览）：按整卡 tightest alpha bbox 裁剪后原尺寸
-    直接返回（RGBA，高 512 顶格、宽按内容，无 512 画布留白）；传入 info dict
-    时回填 crop_origin（卡面空间坐标，与布局坐标同系）与 anchor_x（卡面空间
-    x 原点在本框品 512 画布中的位置），供布局页覆盖层换算。
-    布局坐标为卡面空间：x 原点 = 归一化牌框左缘（随框品宽度动态计算，
-    元素与牌框胶着、换框品不跑位；探出框左缘的元素 x 为负），y 原点 = 画布顶。
-    crop=False：跳过导出裁剪，返回 512 全画布合成结果（管线内部分层断言用）。
-    缺资源/缺字段抛明确异常（FileNotFoundError/KeyError/ValueError），调用方兜底。
+    无尺寸参数时保持默认紧致输出。双参数比例不一致、非正整数或超像素预算
+    抛 ValueError；crop=False 返回对应缩放的完整工作画布。
     """
+    target_size = None
+    factor = 1.0
+    if (width is not None or height is not None) and not _measure_only:
+        # 只测默认牌框与静态层的 alpha 外边界，不加载卡图，也不缩放默认成品。
+        probe = render_card(card, assets_dir, layout, _measure_only=True)
+        target_size = resolve_target_size(probe.size, width, height)
+        factor = target_size[0] / probe.width
+    canvas_size = (max(1, round(CARD_SIZE[0] * factor)),
+                   max(1, round(CARD_SIZE[1] * factor)))
     card_type = card["type"]
     if card_type not in TYPE_FRAME_CODE:
         raise ValueError(f"未知卡牌类型: {card_type}")
     code = TYPE_FRAME_CODE[card_type]
     variant = card.get("frame_variant", "norm")
     if card_type == "协战":
-        variant = "norm"  # 协战框仅 norm 一种框品
+        variant = "norm"
     lib = get_library(assets_dir)
 
     finfo: dict = {}
-    frame = _normalize_frame(lib.frame(code, variant), finfo)
-    anchor_x = finfo["anchor"][0]  # 卡面空间 x 原点（本框品归一化牌框左缘）
-    type_layout = layout if layout is not None else get_type_layout(load_layouts(Path(assets_dir)), card_type)
-    # 布局坐标卡面空间 → 512 画布（锚点随框品：元素与牌框左缘胶着，换框品不跑位）
+    frame = _normalize_frame(lib.frame(code, variant), finfo, canvas_size)
+    anchor_x = finfo["anchor"][0]
+    type_layout = layout if layout is not None else get_type_layout(
+        load_layouts(Path(assets_dir)), card_type)
+    if factor != 1:
+        type_layout = scale_layout(type_layout, factor)
+        for region in (type_layout.get("text_regions") or {}).values():
+            region["_line_gap"] = 6 * factor
+        for elem in (type_layout.get("elements") or {}).values():
+            if elem.get("kind") == "stat":
+                elem["_digit_gap"] = 3 * factor
+                elem["_sign_gap"] = 2 * factor
     type_layout = _to_canvas_coords(type_layout, anchor_x)
-    card = dict(card)
-    # 脚注兜底：式神名-类型[/子类型]；协战为 式神1×式神2-协战（缺任一式神只标 协战）；
-    # 中立牌（无所属式神）只标 类型[/子类型]（式神卡自身无所属式神字段，回退卡名）
+    card = copy.deepcopy(card) if factor != 1 else dict(card)
     if not card.get("footer"):
         if card_type == "协战":
             s1, s2 = card.get("shikigami1"), card.get("shikigami2")
@@ -302,25 +312,36 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
             card["footer"] = f"{shikigami}-{card_type}" if shikigami else card_type
             if card.get("special_type"):
                 card["footer"] += f"/{card['special_type']}"
+    if factor != 1:
+        for slot in card.get("_duo") or []:
+            art_ref = slot.get("art") if isinstance(slot, dict) else None
+            if isinstance(art_ref, dict):
+                art_ref["offset_x"] = art_ref.get("offset_x", 0) * factor
+                art_ref["offset_y"] = art_ref.get("offset_y", 0) * factor
 
-    ref = artwork_ref(card)
-    orig_size, art = load_card_artwork(card, lib)
-    art = fit_artwork_cached(art, CARD_SIZE, ref["offset_x"], ref["offset_y"],
-                             ref["scale"], cover_base=orig_size)
-    # 卡图按轮廓预裁剪（框实心区内缩 2px），框缘半透明带下无卡图、不洇色
-    art.putalpha(ImageChops.multiply(art.getchannel("A"), _art_clip_contour(frame)))
-    canvas = Image.alpha_composite(art, frame)  # 牌框在上：卡图区透明，无需蒙版
-    layers = _get_static_layers(assets_dir, type_layout, card, lib, variant)
+    if _measure_only:
+        canvas = frame
+    else:
+        ref = artwork_ref(card)
+        orig_size, art = load_card_artwork(card, lib)
+        art = fit_artwork_cached(art, canvas_size, ref["offset_x"] * factor,
+                                 ref["offset_y"] * factor, ref["scale"],
+                                 cover_base=orig_size)
+        erode = max(1, round(FRAME_CONTOUR_ERODE * factor))
+        art.putalpha(ImageChops.multiply(art.getchannel("A"),
+                                         _art_clip_contour(frame, erode)))
+        canvas = Image.alpha_composite(art, frame)
+    layers = _get_static_layers(assets_dir, type_layout, card, lib, variant, canvas_size)
     if layers is None:
         canvas = _draw_static(canvas, type_layout, card, lib, variant)
     else:
         canvas = _replay_static_layers(canvas, layers)
-    # 导出：按整卡 tightest alpha bbox 裁剪后原尺寸直接返回（无 512 画布留白）
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
-    if info is not None:  # 裁剪原点报卡面空间（与布局坐标同系，探出框左缘元素可为负）
+    if info is not None:
         info["anchor_x"] = anchor_x
         info["crop_origin"] = ((bbox[0] - anchor_x, bbox[1]) if bbox
                                else (-anchor_x, 0))
-    return canvas.crop(bbox) if bbox else canvas
+    out = canvas.crop(bbox) if bbox else canvas
+    return fit_target_canvas(out, target_size) if target_size is not None else out

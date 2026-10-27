@@ -197,9 +197,9 @@ def _normalize_newlines(text: str) -> str:
     return re.sub(r"\n+", "\n", text)
 
 
-def _line_height(font: ImageFont.FreeTypeFont) -> float:
+def _line_height(font: ImageFont.FreeTypeFont, gap: float = _LINE_GAP) -> float:
     box = font.getbbox("国Ag")
-    return box[3] - box[1] + _LINE_GAP
+    return box[3] - box[1] + gap
 
 
 def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
@@ -219,7 +219,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
     acx, acy = cx + ox, cy + oy - dy  # 居中锚点（dy=自适应临时上移量）
     half_w, half_h = region["width"] / 2, region["height"] / 2
     y_top, y_bottom = cy - half_h, cy + half_h
-    lh = _line_height(font)
+    lh = _line_height(font, region.get("_line_gap", _LINE_GAP))
     gap = region.get("obstacle_gap", 4)
     icon_scale = region.get("icon_scale", 1.0)  # 内嵌图标相对文字大小（高=字号×scale）
     icon_w = (_icon_widths(items, font, lib, icon_variant, icon_scale)
@@ -315,7 +315,7 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
     acx = region["center"][0] + region.get("center_offset", [0, 0])[0]
     for size in range(max_size, min_size - 1, -1):
         font = lib.font(region["font"], size)
-        max_dy = int(_line_height(font) / 2)
+        max_dy = int(_line_height(font, region.get("_line_gap", _LINE_GAP)) / 2)
         for dy in range(0, max_dy + 1):
             lines = _layout_at_size(items, font, region, region["wrap"], row_runs,
                                     dy=dy, lib=lib, icon_variant=icon_variant)

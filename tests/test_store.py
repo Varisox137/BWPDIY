@@ -30,11 +30,14 @@ def with_today(card):
     return {**card, "version_date": TODAY}
 
 
-def entry(stem, name, cid=None, vd=TODAY, shiki=None):
-    """单版本分组条目（list_cards/list_mechanisms 口径；shiki=所属式神，机制/式神卡为 None）。"""
-    return {"stem": stem, "name": name, "id": cid,
+def entry(stem, name, cid=None, vd=TODAY, shiki=None, stats=False):
+    """单版本分组条目（list_cards/list_mechanisms 口径；stats=附式神基础值）。"""
+    data = {"stem": stem, "name": name, "id": cid,
             "versions": [{"stem": stem, "date": vd}], "count": 1,
             "shikigami": shiki, "shikigami1": None, "shikigami2": None}
+    if stats:
+        data.update(power=3, health=4)
+    return data
 
 
 SHIKIGAMI = {"type": "式神", "name": "山风", "faction": "红莲", "power": 3, "health": 4}
@@ -170,7 +173,7 @@ def test_list_cards_reads_name_and_sorts(lib):
     save_card(lib, "山风", "100307", SHIKIGAMI)        # name=山风
     (lib / "山风" / "cards" / "坏.yaml").write_text("- 这不是映射", encoding="utf-8")
     listed = list_cards(lib, "山风")
-    assert listed["shikigami"] == [entry("100307", "山风")]
+    assert listed["shikigami"] == [entry("100307", "山风", stats=True)]
     assert listed["cards"] == [
         entry("10030701", "斩", shiki="山风"),
         entry("10030702", "烈", shiki="山风"),

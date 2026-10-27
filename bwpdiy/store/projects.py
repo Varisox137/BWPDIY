@@ -152,9 +152,11 @@ def _card_group(pdir: Path, sub: str, key: tuple[str, str]) -> list[tuple[Path, 
     return out
 
 
-def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = False) -> list[dict]:
+def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = False,
+                   include_stats: bool = False) -> list[dict]:
     """(路径, 数据|None) → 分组条目：stem=最新版本（date 最大、并列取 stem 大者；
     缺日期视为最旧），versions 按日期降序，count=版本数；损坏文件单列不合并。
+    include_stats 时附最新基础力量/生命，供觉醒小卡查找所属式神默认值。
     机制复用：_group_key 的 id 恒空、name=机制名，天然按名归组。"""
     groups: dict[tuple[str, str], list[tuple[Path, dict]]] = {}
     out = []
@@ -169,12 +171,16 @@ def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = Fal
         vs = sorted(({"stem": p.stem, "date": _norm_date(d.get("version_date")) or ""}
                      for p, d in versions), key=lambda v: (v["date"], v["stem"]))
         latest_data = next(d for p, d in versions if p.stem == vs[-1]["stem"])
-        out.append({"stem": vs[-1]["stem"], "name": name or None, "id": cid or None,
-                    "versions": list(reversed(vs)), "count": len(vs),
-                    # 最新版本的所属式神引用：GUI 按主要式神筛选/中立牌过滤用（机制恒 None）
-                    "shikigami": latest_data.get("shikigami"),
-                    "shikigami1": latest_data.get("shikigami1"),
-                    "shikigami2": latest_data.get("shikigami2")})
+        entry = {"stem": vs[-1]["stem"], "name": name or None, "id": cid or None,
+                 "versions": list(reversed(vs)), "count": len(vs),
+                 # 最新版本的所属式神引用：GUI 按主要式神筛选/中立牌过滤用（机制恒 None）
+                 "shikigami": latest_data.get("shikigami"),
+                 "shikigami1": latest_data.get("shikigami1"),
+                 "shikigami2": latest_data.get("shikigami2")}
+        if include_stats:
+            entry["power"] = latest_data.get("power")
+            entry["health"] = latest_data.get("health")
+        out.append(entry)
     if sort_by_id:  # 主要式神/卡牌衍生物：有 id 按 id 升序（数字按数值），无 id 在后按名称
         out.sort(key=lambda c: (not c["id"], not str(c["id"] or "").isdigit(),
                                 int(c["id"]) if str(c["id"] or "").isdigit() else (c["id"] or ""),
@@ -239,13 +245,14 @@ def delete_project(library: Path, project: str) -> None:
 def list_cards(library: Path, project: str) -> dict[str, list[dict]]:
     """项目内全部卡（按 id+name 归组）：{"shikigami": [...], "cards": [...]}，
     条目 {stem(最新版本), name, id, versions:[{stem,date}] 降序, count}；组按 name 排序。
+    式神条目另附最新 power/health，供 GUI 计算觉醒小卡默认数值。
     """
     pdir = _require_project(library, project)
     result: dict[str, list[dict]] = {"shikigami": [], "cards": []}
     for sub in ("shikigami", "cards"):
         cdir = pdir / sub
         items = [(p, _read_yaml(p)) for p in cdir.glob("*.yaml")] if cdir.is_dir() else []
-        result[sub] = _group_entries(items, sort_by_id=True)
+        result[sub] = _group_entries(items, sort_by_id=True, include_stats=sub == "shikigami")
     return result
 
 

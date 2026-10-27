@@ -172,7 +172,7 @@ def _render_digits(text: str, font, stroke_width: int,
                 x = req if x is None else max(x, req)
         if x is None:
             x = acc.width + gap  # 逐行无重叠（理论上不会发生）：退回 box 等距
-        x = max(0, x)
+        x = max(0, round(x))  # 原生尺寸缩放的 gap 可为浮点，最终像素位置统一取整
         w_new = max(acc.width, x + p.width)
         grown = Image.new("RGBA", (w_new, h), (0, 0, 0, 0))
         grown.alpha_composite(acc, (0, 0))
@@ -337,7 +337,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                                 (left + round(sx),
                                  round(num_pos[1] - sign_img.height / 2 + sy)))
         out.alpha_composite(digit_img,
-                            (left + sign_w + gap, round(num_pos[1] - digit_img.height / 2)))
+                            (round(left + sign_w + gap), round(num_pos[1] - digit_img.height / 2)))
         return out
     if kind == "duo_frame":
         # 协战双式神框：卡面 duo_frame: true 且类型为协战时绘制（默认不绘制）；

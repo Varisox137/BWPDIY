@@ -16,6 +16,26 @@ from pathlib import Path
 
 _KEEP = 10  # 最多保留最近几次运行日志
 _LOG_PATH: Path | None = None
+_LEVEL_COLORS = {
+    logging.DEBUG: "34", logging.INFO: "32", logging.WARNING: "33",
+    logging.ERROR: "31", logging.CRITICAL: "35",
+}
+
+
+class LevelColorFormatter(logging.Formatter):
+    """终端级别标签着色；文件与重定向输出使用无色格式器。"""
+
+    def __init__(self, fmt: str, color: bool):
+        super().__init__(fmt)
+        self.color = color
+
+    def format(self, record: logging.LogRecord) -> str:
+        text = super().format(record)
+        color = _LEVEL_COLORS.get(record.levelno)
+        if not self.color or color is None:
+            return text
+        level = record.levelname
+        return text.replace(level, f"\x1b[{color}m{level}\x1b[0m", 1)
 
 
 def setup_run_logging(log_dir: Path | None = None) -> Path:
@@ -46,10 +66,13 @@ def setup_run_logging(log_dir: Path | None = None) -> Path:
 
     root = logging.getLogger()
     root.setLevel(logging.INFO)
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-    for handler in (logging.FileHandler(path, encoding="utf-8"), logging.StreamHandler()):
-        handler.setFormatter(fmt)
-        root.addHandler(handler)
+    fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+    file_handler = logging.FileHandler(path, encoding="utf-8")
+    file_handler.setFormatter(logging.Formatter(fmt))
+    console = logging.StreamHandler()
+    console.setFormatter(LevelColorFormatter(fmt, color=console.stream.isatty()))
+    root.addHandler(file_handler)
+    root.addHandler(console)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)  # 每次预览一条，刷屏
 
     def log_exception(exc_type, exc, tb, hook):

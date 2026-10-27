@@ -9,7 +9,7 @@
 记号本身不进入输出；图标高度=字号×icon_scale（desc 文本区布局字段，缺省 1.0，
 跨类型归一），内嵌前预处理为 alpha bbox 外接的最紧方形 box（内容居中、占位
 恒为正方形）、竖直中心对齐行中心；图标宽度计入换行与
-逐行居中（随字号递减一同缩小）。图标与相邻文字之间自动加四分之一宽空格（0.25em）；
+逐行居中（随字号递减一同缩小）。图标与相邻文字之间自动加八分之一宽空格（0.125em）；
 图标处于行首/行尾时该侧无空格（空格只存在于同一行内的文字-图标相邻处，
 图标与图标相邻不加）。
 '#' 后跟两个英文字母才视为图标代码：未知代码 ValueError；其余 '#' 为字面字符。
@@ -164,13 +164,13 @@ def _icon_widths(items: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFon
             for k, v, _ in items if k == "icon"}
 
 
-_ICON_GAP_EM = 0.25  # 图标与同行相邻文字之间的四分之一宽空格（em 计）
+_ICON_GAP_EM = 0.125  # 图标与同行相邻文字之间的八分之一宽空格（em 计）
 
 
 def _line_width(line: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
                 icon_w: dict[str, int]) -> float:
     """行宽：连续字符段 getlength（保字距），图标按缩放宽度计入；
-    同行内文字-图标相邻（任一顺序）自动加一个四分之一宽空格——图标在行首/行尾
+    同行内文字-图标相邻（任一顺序）自动加一个八分之一宽空格——图标在行首/行尾
     时该侧无空格（空格只存在于行内相邻处），图标-图标相邻不加。"""
     w, run, prev = 0.0, "", None
     gap = font.size * _ICON_GAP_EM

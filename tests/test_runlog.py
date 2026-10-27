@@ -45,3 +45,15 @@ def test_run_log_keeps_recent_10(tmp_path):
     remaining = sorted(tmp_path.glob("bwpdiy-*.log"))
     assert len(remaining) == runlog._KEEP
     assert remaining[-1] == path  # 最旧的删除，本次新文件保留
+
+
+@pytest.mark.parametrize("level,color", [
+    (logging.DEBUG, "34"), (logging.INFO, "32"), (logging.WARNING, "33"),
+    (logging.ERROR, "31"), (logging.CRITICAL, "35"),
+])
+def test_level_color_formatter_only_colors_level(level, color):
+    record = logging.LogRecord("test", level, __file__, 1, "普通文本", (), None)
+    colored = runlog.LevelColorFormatter("%(levelname)s %(message)s", color=True)
+    plain = runlog.LevelColorFormatter("%(levelname)s %(message)s", color=False)
+    assert colored.format(record) == f"\x1b[{color}m{record.levelname}\x1b[0m 普通文本"
+    assert plain.format(record) == f"{record.levelname} 普通文本"

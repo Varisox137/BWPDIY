@@ -324,7 +324,7 @@ def test_help_button_and_modal():
     html = EDITOR_HTML.read_text(encoding="utf-8")
     assert html.index('id="c-btn-help"') < html.index('id="c-btn-refresh"')
     modal = html.split('id="help-modal"', 1)[1]
-    for needle in ("[[关键字]]", "#ll", "四分之一宽空格", "扩展选项", "自适应"):
+    for needle in ("[[关键字]]", "#ll", "八分之一宽空格", "扩展选项", "自适应"):
         assert needle in modal
 
 
@@ -343,7 +343,8 @@ def _script() -> str:
 def _extract_js(script: str, decl: str) -> str:
     """按花括号配对从内嵌脚本中抽取一个声明（函数/const 对象字面量）。"""
     start = script.index(decl)
-    brace = script.index("{", start)
+    brace = script.index(") {", start) + 2 if decl.startswith("function ") \
+        else script.index("{", start)
     depth = 0
     for i in range(brace, len(script)):
         if script[i] == "{":
@@ -363,6 +364,148 @@ def _run_node(tmp_path, driver: str):
                        encoding="utf-8")  # node 输出 UTF-8；默认 locale(GBK) 解码中文会炸
     assert r.returncode == 0, r.stderr
     assert "OK" in r.stdout
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_derived_shikigami_skeleton_keeps_owner(tmp_path):
+    """式神骨架有所属式神时保留引用，不能在提前返回时丢弃。"""
+    skeleton = _extract_js(_script(), "function skeleton(type, name, shiki = {})")
+    driver = f"""
+const assert = require('node:assert');
+{skeleton}
+assert.deepStrictEqual(skeleton('式神', '召唤物', {{shikigami: '基础式神'}}),
+  {{type: '式神', name: '召唤物', shikigami: '基础式神',
+    faction: '红莲', power: 3, health: 4, description: ''}});
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_new_derived_shikigami_uses_main_owner_and_card_slot(tmp_path):
+    """卡牌栏新建式神沿用当前主要式神，对话框放在卡牌栏而不是左栏底部。"""
+    ask_new_card = _extract_js(_script(), "function askNewCard(")
+    driver = f"""
+const assert = require('node:assert');
+function element(tag) {{
+  return {{tag, style: {{}}, children: [], value: '', textContent: '',
+    appendChild(child) {{ this.children.push(child); child.parent = this; return child; }},
+    focus() {{}}, select() {{}}}};
+}}
+const box = element('div'), slot = element('div');
+const document = {{createElement: element,
+  getElementById(id) {{ return id === 'c-ask' ? box : slot; }}}};
+const TYPES = ['式神', '战斗', '法术', '形态', '幻境', '协战'];
+const mainShiki = '基础式神';
+function shikigamiNames() {{ return [mainShiki]; }}
+{ask_new_card}
+(async () => {{
+  const pending = askNewCard('c-ask-card');
+  assert.strictEqual(box.parent, slot);
+  const nameInput = box.children[1], typeSel = box.children[2];
+  nameInput.value = '召唤物'; typeSel.value = '式神'; typeSel.onchange();
+  box.children.at(-1).children[0].onclick();
+  const result = await pending;
+  assert.deepStrictEqual(result, {{name: '召唤物', type: '式神',
+                                    shiki: {{shikigami: '基础式神'}}}});
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_inline_ask_moves_to_requested_slot(tmp_path):
+    """通用输入框移动到调用栏目；主要式神/机制/新版本不再共用左栏底部。"""
+    ask = _extract_js(_script(), "function ask(")
+    driver = f"""
+const assert = require('node:assert');
+function element(tag) {{
+  return {{tag, style: {{}}, children: [], value: '', textContent: '',
+    appendChild(child) {{ this.children.push(child); child.parent = this; return child; }},
+    focus() {{}}, select() {{}}}};
+}}
+const box = element('div'), slot = element('div'), home = element('div');
+const document = {{createElement: element,
+  getElementById(id) {{ return id === 'c-ask' ? box : id === 'c-ask-home' ? home : slot; }}}};
+{ask}
+(async () => {{
+  const pending = ask({{title: '新建机制', target: 'c-ask-mech'}});
+  assert.strictEqual(box.parent, slot);
+  box.children.at(-1).children[1].onclick();
+  assert.strictEqual(await pending, null);
+  assert.strictEqual(box.parent, home);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_session_confirm_suppression_is_per_kind_and_confirm_only(tmp_path):
+    """勾选后确认才抑制同类提示；取消不抑制，命名与未保存两类互不影响。"""
+    script = _script()
+    suppressed = _extract_js(script, "const sessionPromptSuppressed =")
+    confirm = _extract_js(script, "function sessionConfirm(message, kind)")
+    finish = _extract_js(script, "function finishSessionConfirm(ok)")
+    driver = f"""
+const assert = require('node:assert');
+const ids = ['session-confirm-modal', 'session-confirm-text', 'session-confirm-suppress'];
+const elements = Object.fromEntries(ids.map(id => [id,
+  {{style: {{display: 'none'}}, textContent: '', checked: false}}]));
+const document = {{getElementById: id => elements[id]}};
+{suppressed}
+let sessionConfirmState = null;
+{confirm}
+{finish}
+(async () => {{
+  let pending = sessionConfirm('id 未填写', 'naming');
+  assert.strictEqual(elements['session-confirm-modal'].style.display, 'block');
+  assert.strictEqual(elements['session-confirm-text'].textContent, 'id 未填写');
+  elements['session-confirm-suppress'].checked = true;
+  finishSessionConfirm(false);
+  assert.strictEqual(await pending, false);
+  assert.strictEqual(sessionPromptSuppressed.naming, false);
+  pending = sessionConfirm('id 未填写', 'naming');
+  elements['session-confirm-suppress'].checked = true;
+  finishSessionConfirm(true);
+  assert.strictEqual(await pending, true);
+  assert.strictEqual(sessionPromptSuppressed.naming, true);
+  elements['session-confirm-modal'].style.display = 'none';
+  assert.strictEqual(await sessionConfirm('id 未填写', 'naming'), true);
+  assert.strictEqual(elements['session-confirm-modal'].style.display, 'none');
+  pending = sessionConfirm('有未保存修改', 'unsaved');
+  assert.strictEqual(elements['session-confirm-modal'].style.display, 'block');
+  finishSessionConfirm(false);
+  assert.strictEqual(await pending, false);
+  assert.strictEqual(sessionPromptSuppressed.unsaved, false);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_unsaved_and_naming_guards_await_session_confirm(tmp_path):
+    """异步自定义弹窗的取消结果必须阻止切换与保存，不能按 Promise 真值放行。"""
+    script = _script()
+    discard = _extract_js(script, "async function confirmDiscard()")
+    naming = _extract_js(script, "async function confirmFallbackNaming()")
+    driver = f"""
+const assert = require('node:assert');
+let cDirty = true, mDirty = false, curMech = null;
+const formData = {{id: '', version_date: '20261027'}}, mechForm = null;
+function confirm() {{ throw new Error('不应再调用原生 confirm'); }}
+async function sessionConfirm(message, kind) {{ return kind === 'naming'; }}
+{discard}
+{naming}
+(async () => {{
+  assert.strictEqual(await confirmDiscard(), false);
+  assert.strictEqual(await confirmFallbackNaming(), true);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")

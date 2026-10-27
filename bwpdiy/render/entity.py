@@ -22,6 +22,7 @@ ENTITY_MAX_STAT_DIGITS = 12
 ENTITY_MAX_ART_WINDOW_SIDE = 8000
 ENTITY_MAX_WORK_SIDE = 4096
 ENTITY_MAX_WORK_PIXELS = 16_000_000
+ENTITY_ART_Y_BIAS = -0.04  # 下角标使视觉重心偏下，卡图默认上移窗口高度的 4%
 LEVEL_COLORS = {"yellow", "cyan", "purple", "red", "blue", "brown"}
 
 _DEFAULT_LAYOUT = {
@@ -400,7 +401,7 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
     window_width, window_height = window["width"], window["height"]
     inner_size = (max(1, round(window_width)), max(1, round(window_height)))
     ratio = window_width / 512
-    offset_y = ref["offset_y"] * ratio + window["offset_y"]
+    offset_y = ref["offset_y"] * ratio + window["offset_y"] + window_height * ENTITY_ART_Y_BIAS
     if window["frame_center"]:
         code = TYPE_FRAME_CODE[card["type"]]
         source_frame = _normalize_frame(lib.frame(code, card.get("frame_variant", "norm")))

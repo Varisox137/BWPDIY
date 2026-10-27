@@ -141,7 +141,7 @@ def _allowed_fields(ctype: str) -> set[str]:
         allowed |= set(_SHIKIGAMI_ONLY) | set(_STATS_BY_TYPE["式神"])
         allowed |= set(_SHIKIGAMI_RENDER_FIELDS)
         allowed.add("frame_variant")  # 式神牌框同形态，支持四框品（无觉醒）
-        allowed |= {"level", "faction_style"}  # 标记扩展：式神可选等级与派系样式
+        allowed |= {"level", "faction_style", "shikigami"}  # 有所属式神者为衍生物
     else:
         allowed |= set(_NON_SHIKIGAMI_FIELDS) | set(_STATS_BY_TYPE[ctype])
         allowed |= set(_ASSIST_FIELDS) if ctype == "协战" else {"shikigami"}
@@ -190,6 +190,8 @@ def validate_card(data) -> list[str]:
                                         or data["faction_style"] not in FACTION_STYLES):
             errors.append(f"字段 faction_style：派系样式必须是整数 "
                           f"{'/'.join(map(str, FACTION_STYLES))} 之一")
+        if "shikigami" in data and not isinstance(data["shikigami"], str):
+            errors.append("字段 shikigami：必须是字符串")
     else:
         rarity = data.get("rarity")
         # rarity 可缺省：缺省 = 无稀有度（衍生牌口径，对齐 BWPro token 卡 rarity 须缺省）

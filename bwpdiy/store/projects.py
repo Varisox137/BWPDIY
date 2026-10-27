@@ -278,11 +278,11 @@ def load_card(library: Path, project: str, card_name: str) -> dict:
 
 
 def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[Path, list[str]]:
-    """schema 校验通过才落盘；按 type 分派目录（式神 → shikigami/，其余 → cards/）。
+    """schema 校验通过才落盘；无所属式神的式神入 shikigami/，其余入 cards/。
 
     文件名任意（卡名以文件内 name 为准，方便 BWPro 按 id 命名文件）；
-    请求 stem 已存在于另一目录（类型与目录不符）报错指引。非式神卡新增超 MAX_CARDS 拒绝。
-    式神卡 name 全项目唯一（引用按名关联）；改名时联动改写其余卡的 shikigami/shikigami1/
+    请求 stem 已存在于另一目录（类型与目录不符）报错指引。衍生物/非式神卡新增超 MAX_CARDS 拒绝。
+    主要式神 name 全项目唯一（引用按名关联）；改名时联动改写其余卡的 shikigami/shikigami1/
     shikigami2 引用（只换名不再校验）。
     返回 (落盘路径, 联动更新了的卡的 name 列表)。
     """
@@ -297,7 +297,7 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
         raise SchemaError(errors)
     if not data.get("version_date"):
         data["version_date"] = date.today().strftime("%Y%m%d")  # 留空按当前系统日期
-    sub = "shikigami" if data["type"] == "式神" else "cards"
+    sub = "shikigami" if data["type"] == "式神" and not data.get("shikigami") else "cards"
     other = "cards" if sub == "shikigami" else "shikigami"
     if (pdir / other / f"{card_name}.yaml").is_file():
         raise StoreError(f"同名文件已存在于 {other}/ 目录（与卡牌类型不符）：{card_name}.yaml，"

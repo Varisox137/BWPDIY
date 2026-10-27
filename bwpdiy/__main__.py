@@ -60,7 +60,9 @@ def _confirm_replace_owner(port: int, running: str, pid: int | None) -> bool:
         print("非交互环境不自动结束进程；请手动关闭后重试。", file=sys.stderr)
         return False
     try:
+        print()
         answer = input("按回车确认关闭该进程并启动服务；输入其他内容取消：")
+        print()
     except (EOFError, KeyboardInterrupt):
         print()
         return False
@@ -91,6 +93,7 @@ def _pause_exit() -> None:
     stdin/stdout 任一非交互终端（测试/脚本/输出捕获）直接跳过，避免挂起。"""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return
+    print()
     print("按任意键退出……", end="", flush=True)
     try:
         import msvcrt  # Windows：真·任意键
@@ -100,7 +103,7 @@ def _pause_exit() -> None:
             input()  # 其他平台退化为回车
         except EOFError:
             pass
-    print()
+    print("\n")
 
 
 def main() -> int:
@@ -125,7 +128,7 @@ def main() -> int:
     from bwpdiy.runlog import setup_run_logging
     from bwpdiy.web.app import create_app
 
-    print(f"BWPDIY v{__version__}")
+    print(f"BWPDIY v{__version__}\n")
     log_path = setup_run_logging()
     print(f"运行日志：{log_path}（反馈问题请附上该文件）")
     logging.getLogger("bwpdiy").info("启动参数：%s", sys.argv)

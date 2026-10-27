@@ -55,6 +55,12 @@ def test_browser_autopen_default(fakes, monkeypatch):
     assert fakes["browser"] == ["http://127.0.0.1:8631/"]
 
 
+def test_version_line_has_blank_line_after(fakes, monkeypatch, capsys):
+    from bwpdiy import __version__
+    _run(monkeypatch, [])
+    assert capsys.readouterr().out.startswith(f"BWPDIY v{__version__}\n\n")
+
+
 def test_frozen_default_port(fakes, monkeypatch):
     from pathlib import Path
     from bwpdiy import resources
@@ -114,13 +120,14 @@ def test_occupied_port_non_tty_refuses_kill(fakes, monkeypatch, capsys):
     assert "1234" in err and "非交互" in err and "BWPDIY v0.5.0" in err
 
 
-def test_confirm_replace_owner_only_empty_enter(monkeypatch):
+def test_confirm_replace_owner_only_empty_enter(monkeypatch, capsys):
     import bwpdiy.__main__ as m
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     answers = iter(["取消", ""])
     monkeypatch.setattr("builtins.input", lambda prompt: next(answers))
     assert not m._confirm_replace_owner(8631, "?", 1234)
+    assert capsys.readouterr().out == "\n\n"  # 回车交互前后各留一行
     assert m._confirm_replace_owner(8631, "?", 1234)
 
 
@@ -130,6 +137,16 @@ def test_pause_exit_skipped_when_not_tty(monkeypatch):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
     m._pause_exit()  # 不挂起即通过
+
+
+def test_pause_exit_has_blank_lines(monkeypatch, capsys):
+    import msvcrt
+    import bwpdiy.__main__ as m
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(msvcrt, "getch", lambda: "x")
+    m._pause_exit()
+    assert capsys.readouterr().out == "\n按任意键退出……\n\n"
 
 
 def test_probe_non_loopback_skipped(fakes, monkeypatch):
@@ -155,10 +172,10 @@ def test_no_idle_stop_disables_watchdog(fakes, monkeypatch):
     assert seen == [0, 7200.0]
 
 
-def test_unreleased_changes_are_consolidated_into_1_7_1():
+def test_unreleased_changes_are_consolidated_into_1_7_2():
     from bwpdiy import __version__
     from bwpdiy.changelog import CHANGELOG
 
-    assert __version__ == "1.7.1"
-    assert "1.7.1" in CHANGELOG
+    assert __version__ == "1.7.2"
+    assert "1.7.2" in CHANGELOG
     assert "1.6.3" not in CHANGELOG

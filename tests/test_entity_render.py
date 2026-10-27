@@ -218,7 +218,7 @@ def test_entity_art_scale_replaces_source_scale_and_maps_offsets(
     args, kwargs = calls[-1]
     inner_size = args[1]
     assert args[2] == 128 * inner_size[0] / 512
-    assert args[3] == -64 * inner_size[0] / 512
+    assert args[3] == -64 * inner_size[0] / 512 - inner_size[1] * 0.04
     assert args[4] == 2
     assert kwargs["cover_base"] is not None
 
@@ -330,7 +330,7 @@ def test_entity_frame_window_correction(assets_dir, sample_art, monkeypatch):
     layout["art_window"]["offset_y"] = 2
     render_entity(card, {}, assets_dir, layout=layout)
     assert captured["target"] == (84, 132)
-    assert captured["y"] == 8 * 84 / 512 + (256 - 169.5) * 84 / 512 + 2
+    assert captured["y"] == 8 * 84 / 512 + (256 - 169.5) * 84 / 512 + 2 - 132 * 0.04
 
 
 def test_entity_custom_window_without_frame_correction(assets_dir, sample_art, monkeypatch):
@@ -355,7 +355,7 @@ def test_entity_custom_window_without_frame_correction(assets_dir, sample_art, m
     }
     render_entity(card, {}, assets_dir, layout=layout)
     assert captured == {"target": (60, 100), "x": 12 * 60 / 512,
-                        "y": 8 * 60 / 512 - 3}
+                        "y": 8 * 60 / 512 - 3 - 100 * 0.04}
 
 
 @pytest.mark.parametrize("code", ["form", "combat", "spell", "field"])

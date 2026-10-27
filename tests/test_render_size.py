@@ -74,10 +74,54 @@ def test_card_scales_artwork_and_font_natively(assets_dir, sample_art, monkeypat
     assert name_size * 2 in font_sizes  # 字体按目标分辨率重新加载，而非放大位图
 
 
+def test_card_native_size_scales_text_badges_and_signed_digits(
+        assets_dir, sample_art, monkeypatch):
+    """战斗牌多位带符号数字可绘制，文本与各类角标几何均按目标尺寸缩放。"""
+    from bwpdiy.render import pipeline
+    art = sample_art.resolve()
+    layout = load_layouts(assets_dir)["战斗"]
+    layout["elements"]["power"]["sign_offset"] = [3, 4]
+    layout["elements"]["shield"]["fragile_sign_offset"] = [5, 6]
+    card = {"type": "战斗", "name": "尺寸核验", "level": 1, "rarity": "R",
+            "power+": 12, "shield+": -34, "description": "[[测试]]文本#ll。",
+            "_base_dir": str(art.parent), "artwork": {"images": [{"path": art.name}]}}
+    seen = []
+    original = pipeline._draw_static
+
+    def capture(canvas, type_layout, card, lib, variant):
+        seen.append(type_layout)
+        return original(canvas, type_layout, card, lib, variant)
+
+    monkeypatch.setattr(pipeline, "_draw_static", capture)
+    pipeline._STATIC_OVERLAY_CACHE.clear()
+    base = render_card(card, assets_dir, layout)
+    doubled = render_card(card, assets_dir, layout, width=base.width * 2)
+    scaled = seen[-1]
+    assert doubled.size == (base.width * 2, base.height * 2)
+    region = scaled["text_regions"]["desc"]
+    assert (region["width"], region["height"], region["center"][1]) == (500, 250, 836)
+    assert region["font_range"] == [48, 24] and region["icon_scale"] == 0.9
+    assert scaled["elements"]["name"]["font_size"] == 48
+    assert scaled["elements"]["footer"]["font_size"] == 30
+    assert scaled["elements"]["rarity"]["size"] == 44
+    assert scaled["elements"]["rarity"]["gap"] == 180
+    assert scaled["elements"]["level"]["base_size"] == 136
+    assert scaled["elements"]["level"]["num_size"] == 96
+    for key, expected in {"icon_size": 144, "font_size": 112, "stroke_width": 4,
+                          "sign_size_plus": 56, "sign_size_minus": 32}.items():
+        assert scaled["elements"]["power"][key] == expected
+    assert scaled["elements"]["power"]["num_offset"] == [-2, 4]
+    assert scaled["elements"]["power"]["group_offset"] == [-2, 0]
+    assert scaled["elements"]["power"]["sign_offset"] == [6, 8]
+    assert scaled["elements"]["shield"]["fragile_icon_size"] == 140
+    assert scaled["elements"]["shield"]["fragile_num_offset"] == [2, 4]
+    assert scaled["elements"]["shield"]["fragile_sign_offset"] == [10, 12]
+
+
 def test_entity_native_size_and_level_zero(assets_dir, sample_art):
     card = _card(sample_art)
-    state = {"level": 0, "level_color": "yellow", "power": 3, "health": 4,
-             "combat_power": 1, "shield": -1, "art_scale": 1}
+    state = {"level": 0, "level_color": "yellow", "power": 12, "health": 34,
+             "combat_power": 11, "shield": -22, "art_scale": 1}
     base = render_entity(card, state, assets_dir)
     same = render_entity(card, state, assets_dir, width=base.width, height=base.height)
     assert same.tobytes() == base.tobytes()

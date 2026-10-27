@@ -168,6 +168,19 @@ def test_card_save_and_load_roundtrip(client, project):
     assert got == with_today(card)
 
 
+def test_derived_shikigami_is_card_not_main_shikigami(client, project):
+    """有所属式神的式神是衍生物，进入 cards/；主要式神仍只有无所属式神者。"""
+    card = {"type": "式神", "name": "召唤物", "shikigami": "测试式神",
+            "faction": "红莲", "power": 1, "health": 2, "description": ""}
+    r = client.put(f"/api/projects/{project}/cards/召唤物", json=card)
+    assert r.status_code == 200
+    assert client.get(f"/api/projects/{project}/cards").json() == {
+        "shikigami": [_SHIKI_ENTRY],
+        "cards": [entry("召唤物", "召唤物", shiki="测试式神")],
+    }
+    assert client.get(f"/api/projects/{project}/cards/召唤物").json() == with_today(card)
+
+
 def test_card_rename_without_id_renames_file(client, project):
     """无 id 卡改名：保存后服务端重命名 yaml，响应 stem 为新文件名。"""
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())

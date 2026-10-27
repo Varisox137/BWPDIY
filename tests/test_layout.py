@@ -44,7 +44,7 @@ def test_entity_layout_backfilled(tmp_path):
         "center": [48, 72], "width": 84, "height": 132,
         "frame_center": True, "offset_y": 0,
     }
-    assert entity["elements"]["level"]["pos"] == [48, 140]
+    assert entity["elements"]["level"]["pos"] == [48, 137]
     assert "机制" in layouts
     assert "text_regions" not in entity
 

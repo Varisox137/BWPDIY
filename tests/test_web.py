@@ -772,6 +772,7 @@ const assert = require('node:assert');
 let entityLayoutMode = true, mechLayoutMode = false, cardLayoutMode = null;
 let previewSeq = 0, dirty = false, singleDirty = false;
 let previewImg = null, previewOffset = [0, 0];
+const entityLayoutSample = {{level: 2, level_color: 'yellow', power: 2, health: 5, combat_power: 1, shield: -1}};
 const layouts = {{'对局式神': {{elements: {{}}}}}};
 const canvas = {{width: 0, height: 0, style: {{}},
   getBoundingClientRect: () => ({{left: 10, top: 20, width: 288, height: 432}})}};
@@ -796,7 +797,7 @@ async function fetch(url, options) {{
   assert.strictEqual(requests[0].url, '/api/entity-preview');
   assert.deepStrictEqual(JSON.parse(requests[0].options.body), {{
     card: {{type: '式神', name: '布局样卡'}},
-    state: {{level: 2, level_color: 'cyan', power: 2, health: 5, combat_power: 1, shield: -1}},
+    state: {{level: 2, level_color: 'yellow', power: 2, health: 5, combat_power: 1, shield: -1}},
     layout: layouts['对局式神'],
   }});
   assert.strictEqual(canvas.width, 96);
@@ -806,6 +807,49 @@ async function fetch(url, options) {{
   assert.deepStrictEqual(mousePos({{clientX: 154, clientY: 236}}), [48, 72]);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_layout_sample_stat_inputs(tmp_path):
+    """对局布局样卡四项数值实时预览，力量/生命非负且不污染布局脏标记。"""
+    script = _script()
+    sample = _extract_js(script, "const entityLayoutSample = {") + ";"
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function buildCardProps()",
+        "function numRowC(div, label, val, nonneg, set, extra = null, max = null)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let entityLayoutMode = true, cardLayoutMode = null, scheduled = 0;
+function schedulePreview() {{ scheduled++; }}
+function element(tag) {{ return {{tag, children: [], textContent: '', value: '', style: {{}},
+  appendChild(child) {{ this.children.push(child); }} }}; }}
+const div = element('div');
+const document = {{getElementById: () => div, createElement: element}};
+{sample}
+{functions}
+buildCardProps();
+assert.deepStrictEqual(div.children.map(x => x.textContent), ['力量 ', '生命 ', '战力 ', '护甲 ']);
+const inputs = div.children.map(x => x.children[0]);
+assert.deepStrictEqual(inputs.map(x => x.min), [0, 0, undefined, undefined]);
+inputs[0].value = '-8'; inputs[0].onchange();
+inputs[1].value = '7'; inputs[1].onchange();
+inputs[2].value = '-3'; inputs[2].onchange();
+inputs[3].value = '-2'; inputs[3].onchange();
+assert.deepStrictEqual([entityLayoutSample.power, entityLayoutSample.health,
+  entityLayoutSample.combat_power, entityLayoutSample.shield], [0, 7, -3, -2]);
+assert.strictEqual(scheduled, 4);
+inputs[3].onwheel({{deltaY: -1, preventDefault() {{}}}});
+assert.strictEqual(entityLayoutSample.shield, -1);
+assert.strictEqual(scheduled, 5);
+inputs[0].value = '1000000000000'; inputs[0].onchange();
+inputs[3].value = '-1000000000000'; inputs[3].onchange();
+assert.strictEqual(entityLayoutSample.power, 999999999999);
+assert.strictEqual(entityLayoutSample.shield, -999999999999);
+assert.strictEqual(scheduled, 7);
+console.log('OK');
 """
     _run_node(tmp_path, driver)
 
@@ -1750,7 +1794,7 @@ def test_entity_controls_append_to_normal_form_without_dirtying(tmp_path):
         "function appendEntityForm(div)",
         "function setEntityField(key, value)",
         "function selRowC(div, label, opts, val, set, map = null)",
-        "function numRowC(div, label, val, nonneg, set, extra = null)",
+        "function numRowC(div, label, val, nonneg, set, extra = null, max = null)",
         "function artRow(div, label, val, set, pval, pset, step = 1, min = null, ids = null)",
     ))
     build_form = _extract_js(script, "function buildForm()")

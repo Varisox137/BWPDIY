@@ -31,7 +31,7 @@ _DEFAULT_LAYOUT = {
     },
     "elements": {
         "level": {
-            "kind": "level_badge", "pos": [48, 140], "base_size": 27,
+            "kind": "level_badge", "pos": [48, 137], "base_size": 27,
             "num_size": 21, "num_offset": [0, 0],
         },
         "power": {

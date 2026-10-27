@@ -1501,7 +1501,7 @@ function afterEdit(rebuild = false) {
   }
   scheduleCardPreview();
 }
-function numRowC(div, label, val, nonneg, set, extra = null) {
+function numRowC(div, label, val, nonneg, set, extra = null, max = null) {
   const l = document.createElement('label');
   l.textContent = label + ' ';
   const i = document.createElement('input');
@@ -1512,6 +1512,7 @@ function numRowC(div, label, val, nonneg, set, extra = null) {
     let v = parseInt(i.value, 10);
     if (isNaN(v)) { i.value = cur; return; }
     if (nonneg) v = Math.max(0, v);
+    if (max !== null) v = Math.max(-max, Math.min(max, v));
     i.value = v; cur = v; set(v);
   };
   i.onchange = commit;
@@ -2118,6 +2119,9 @@ let singleDirty = false;
 let mechLayoutMode = false;
 // 对局式神是独立全局布局段，不属于六种卡牌类型，也与卡牌库临时预览模式分离。
 let entityLayoutMode = false;
+// 布局样卡数值仅控制预览，不写盘、不计入未保存。
+const entityLayoutSample = {level: 2, level_color: 'yellow',
+  power: 2, health: 5, combat_power: 1, shield: -1};
 // 与 render/mech.py DEFAULT_LAYOUT 同口径（缺键/缺段时补齐，保存时全段随 layouts 写回）：
 // 三类框共用仅字号/小图标；角标配置随 seal 区域（badge 仅 seal 合法）；名称无独立偏移
 const MECH_LAYOUT_DEFAULTS = {name_size: 26, text_size: 24, icon_scale: 1.0};
@@ -2459,7 +2463,18 @@ async function refreshMechPreview() {
 function buildCardProps() {
   const div = document.getElementById('l-cardprops');
   div.innerHTML = '';
-  if (entityLayoutMode) return;  // 对局式神布局使用固定样卡，不编辑卡牌内容
+  if (entityLayoutMode) {
+    for (const [field, label, nonneg] of [
+      ['power', '力量', true], ['health', '生命', true],
+      ['combat_power', '战力', false], ['shield', '护甲', false],
+    ]) {
+      numRowC(div, label, entityLayoutSample[field], nonneg, v => {
+        entityLayoutSample[field] = v;
+        schedulePreview();
+      }, null, 999999999999);
+    }
+    return;
+  }
   if (!cardLayoutMode && (!samples || !samples[curType])) return;  // 单卡模式数据源是 formData，无需样卡
   textRow(div, '卡名', cardField('name') || '', v => setCardField('name', v));
   selRow(div, '等级', ['0', '1', '2', '3'], String(cardField('level') ?? 0),
@@ -2606,7 +2621,7 @@ async function refreshEntityLayoutPreview() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         card: {type: '式神', name: '布局样卡'},
-        state: {level: 2, level_color: 'cyan', power: 2, health: 5, combat_power: 1, shield: -1},
+        state: entityLayoutSample,
         layout: typeLayout(),
       }),
     });

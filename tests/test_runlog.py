@@ -47,6 +47,20 @@ def test_run_log_keeps_recent_10(tmp_path):
     assert remaining[-1] == path  # 最旧的删除，本次新文件保留
 
 
+def test_run_log_deletes_files_older_than_7_days(tmp_path):
+    import os
+    import time
+    stale = tmp_path / "bwpdiy-20200101-000000.log"
+    recent = tmp_path / "bwpdiy-20200102-000000.log"
+    stale.write_text("stale", encoding="utf-8")
+    recent.write_text("recent", encoding="utf-8")
+    old = time.time() - 8 * 86400
+    os.utime(stale, (old, old))
+    path = runlog.setup_run_logging(tmp_path)
+    assert not stale.exists()
+    assert recent.exists() and path.exists()
+
+
 @pytest.mark.parametrize("level,color", [
     (logging.DEBUG, "34"), (logging.INFO, "32"), (logging.WARNING, "33"),
     (logging.ERROR, "31"), (logging.CRITICAL, "35"),

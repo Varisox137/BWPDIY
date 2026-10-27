@@ -74,6 +74,8 @@ def _check_name(name: str, kind: str) -> None:
 
 def _project_dir(library: Path, project: str) -> Path:
     _check_name(project, "项目名")
+    if project.casefold() == MECH_DIR_NAME:
+        raise StoreError(f"项目名「{MECH_DIR_NAME}」为机制共享池保留目录名", code="invalid_name")
     return Path(library) / project
 
 
@@ -207,13 +209,11 @@ def list_projects(library: Path) -> list[str]:
     if not library.is_dir():
         return []
     return sorted(p.name for p in library.iterdir()
-                  if p.is_dir() and p.name != MECH_DIR_NAME)
+                  if p.is_dir() and p.name.casefold() != MECH_DIR_NAME)
 
 
 def create_project(library: Path, project: str) -> Path:
     """新建空项目骨架：cards/ 与 images/（不出厂默认式神卡）。"""
-    if project == MECH_DIR_NAME:
-        raise StoreError(f"项目名「{MECH_DIR_NAME}」为机制共享池保留目录名", code="invalid_name")
     pdir = _project_dir(library, project)
     if pdir.exists():
         raise StoreError(f"项目已存在：{project}", code="already_exists")
@@ -223,8 +223,6 @@ def create_project(library: Path, project: str) -> Path:
 
 
 def rename_project(library: Path, old: str, new: str) -> Path:
-    if new == MECH_DIR_NAME:
-        raise StoreError(f"项目名「{MECH_DIR_NAME}」为机制共享池保留目录名", code="invalid_name")
     src = _require_project(library, old)
     dst = _project_dir(library, new)
     if dst.exists():

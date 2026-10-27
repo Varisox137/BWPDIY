@@ -135,6 +135,23 @@ def test_rename_to_reserved_name(lib):
     assert "已存在" not in str(exc.value)  # Windows 上 NUL.exists() 为真，不得误报
 
 
+@pytest.mark.parametrize("reserved", ["mechanisms", "Mechanisms", "MECHANISMS"])
+def test_mechanisms_project_name_rejected_everywhere(lib, reserved):
+    """共享机制目录保留名不区分大小写，且删除等路径操作也不能绕过。"""
+    create_project(lib, "山风")
+    shared = lib / "mechanisms"
+    shared.mkdir()
+    keep = shared / "keep.yaml"
+    keep.write_text("name: 保留机制", encoding="utf-8")
+    with pytest.raises(StoreError, match="机制共享池保留目录名"):
+        create_project(lib, reserved)
+    with pytest.raises(StoreError, match="机制共享池保留目录名"):
+        rename_project(lib, "山风", reserved)
+    with pytest.raises(StoreError, match="机制共享池保留目录名"):
+        delete_project(lib, reserved)
+    assert keep.is_file() and list_projects(lib) == ["山风"]
+
+
 def test_card_name_reserved_rejected(lib):
     create_project(lib, "山风")
     with pytest.raises(StoreError, match="保留"):

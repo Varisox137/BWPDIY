@@ -509,6 +509,31 @@ async function sessionConfirm(message, kind) {{ return kind === 'naming'; }}
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_reserved_project_name_warns_before_request(tmp_path):
+    """mechanisms 大小写变体均被前端拦截并弹窗说明，不发送项目请求。"""
+    script = _script()
+    is_reserved = _extract_js(script, "function isReservedProjectName(name)")
+    reject = _extract_js(script, "function rejectReservedProjectName(name)")
+    driver = f"""
+const assert = require('node:assert');
+const messages = [];
+function alert(message) {{ messages.push(message); }}
+{is_reserved}
+{reject}
+assert.strictEqual(isReservedProjectName('mechanisms'), true);
+assert.strictEqual(isReservedProjectName(' Mechanisms '), true);
+assert.strictEqual(isReservedProjectName('MECHANISMS'), true);
+assert.strictEqual(isReservedProjectName('mechanisms-old'), false);
+assert.strictEqual(isReservedProjectName('我的项目'), false);
+assert.strictEqual(rejectReservedProjectName('Mechanisms'), true);
+assert.strictEqual(rejectReservedProjectName('我的项目'), false);
+assert.deepStrictEqual(messages, ['项目名「mechanisms」是跨项目通用机制的保留目录，请更换项目名。']);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_propagate_style_keys_only(tmp_path):
     """保存传播只镜像样式键白名单；kind/field/icon/icon_neg/pos/enabled 不跨类型覆盖。"""
     script = _script()

@@ -723,9 +723,17 @@ function ask({title, value = '', options = null, selDefault = null, target}) {
   });
 }
 
+function isReservedProjectName(name) {
+  return name.trim().toLowerCase() === 'mechanisms';
+}
+function rejectReservedProjectName(name) {
+  if (!isReservedProjectName(name)) return false;
+  alert('项目名「mechanisms」是跨项目通用机制的保留目录，请更换项目名。');
+  return true;
+}
 document.getElementById('c-new-proj').onclick = async () => {
   const r = await ask({title: '新项目名', target: 'c-ask-project'});
-  if (!r || !r.text) return;
+  if (!r || !r.text || rejectReservedProjectName(r.text)) return;
   const resp = await fetch('/api/projects', {method: 'POST',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: r.text})});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
@@ -737,7 +745,7 @@ document.getElementById('c-ren-proj').onclick = async () => {
   if (!curProject) { listErr(['请先选择项目']); return; }
   const r = await ask({title: `重命名项目「${curProject}」为`, value: curProject,
     target: 'c-ask-project'});
-  if (!r || !r.text || r.text === curProject) return;
+  if (!r || !r.text || r.text === curProject || rejectReservedProjectName(r.text)) return;
   if (cDirty && !await sessionConfirm('当前卡牌有未保存修改，项目重命名后将丢弃，继续？', 'unsaved')) return;
   const resp = await fetch(`/api/projects/${enc(curProject)}`, {method: 'PUT',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify({new_name: r.text})});

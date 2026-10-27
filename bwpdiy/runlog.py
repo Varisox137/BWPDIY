@@ -2,7 +2,7 @@
 
 每次启动在 <运行目录>/logs/ 写 bwpdiy-YYYYMMDD-HHMMSS.log（UTF-8，exe 取 exe 所在
 目录、开发取 cwd；不可写回退系统临时目录 bwpdiy-logs/），同时保留控制台输出；
-最多保留最近 10 次运行日志。内容：版本/启动参数、uvicorn 服务日志（access 降级
+最多保留最近 10 次运行日志，启动时同时删除超过 7 天的旧日志。内容：版本/启动参数、uvicorn 服务日志（access 降级
 WARNING 防刷屏）、更新全过程（updater 模块日志）、未捕获异常。纯本地工具无账号
 体系，日志不含卡牌/项目内容，仅路径与事件。
 """
@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 _KEEP = 10  # 最多保留最近几次运行日志
+_LOG_MAX_AGE_SECONDS = 7 * 86400
 _LOG_PATH: Path | None = None
 _LEVEL_COLORS = {
     logging.DEBUG: "34", logging.INFO: "32", logging.WARNING: "33",
@@ -60,7 +61,12 @@ def setup_run_logging(log_dir: Path | None = None) -> Path:
     log_dir.mkdir(parents=True, exist_ok=True)
     path = log_dir / time.strftime("bwpdiy-%Y%m%d-%H%M%S.log")
 
+    now = time.time()
     old = sorted(log_dir.glob("bwpdiy-*.log"))
+    for stale in old:
+        if now - stale.stat().st_mtime > _LOG_MAX_AGE_SECONDS:
+            stale.unlink(missing_ok=True)
+    old = [p for p in old if p.exists()]
     for stale in old[:max(0, len(old) - (_KEEP - 1))]:  # 给本次新文件留位
         stale.unlink(missing_ok=True)
 

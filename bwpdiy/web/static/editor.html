@@ -62,9 +62,9 @@
   #l-cardprops textarea { width: 195px; height: 64px; font-size: 12px; }
   .note { font-size: 11px; color: #777; }
   #l-status { color: #ffd77a; margin-left: 8px; }
-  #l-frame-variants { color: #d9b96a; font-size: 12px; margin-top: 4px; }
-  #l-frame-variants .fv { margin: 0 3px; font-size: 12px; }
-  #l-frame-variants .fv.active { background: #d9b96a; }
+  #l-frame-variants, #c-frame-variants { color: #d9b96a; font-size: 12px; margin: 4px 0; }
+  #l-frame-variants .fv, #c-frame-variants .fv { margin: 0 3px; font-size: 12px; }
+  #l-frame-variants .fv.active, #c-frame-variants .fv.active { background: #d9b96a; }
   /* 机制布局：三类框体三画布同屏预览 */
   #l-mech { flex-wrap: wrap; gap: 16px; justify-content: center; align-items: flex-start; margin-top: 12px; overflow-y: auto; }
   #l-mech .mech-view h4 { color: #d9b96a; font-size: 12px; margin: 0 0 4px; text-align: center; }
@@ -151,6 +151,13 @@
       <span id="c-status"></span>
     </div>
     <div id="c-error"></div>
+    <div id="c-frame-variants">
+      框品
+      <button class="fv active" data-fv="norm">常规</button>
+      <button class="fv" data-fv="blue">琉璃</button>
+      <button class="fv" data-fv="black">墨染</button>
+      <button class="fv" data-fv="red">百炼</button>
+    </div>
     <img id="c-preview" alt="">
     <div id="c-subpreviews">
       <img id="c-portrait" alt="" style="display:none">
@@ -214,7 +221,7 @@
     <h4>机制描述框</h4>
     <div>左栏「机制」为全局共享列表（不随项目切换，所有项目可复用），用于制作灵咒/关键字/加护蚀印等机制说明图：新建时选框类型（默认关键字）、填名称与描述即可，框高按内容行数自动伸缩（最少 2 行：名称+空行；名称与描述之间空一行，超过 5 行时框体按行高拼接加长，不缩小字号）。描述逐行左对齐，同样支持 <code>[[关键字]]</code> 高亮与 <code>#xx</code> 内嵌小图标（唯一/瞬发等标记直接写进描述即可）；加护蚀印框可选「加护/蚀印」圆形角标（名称自动右移避让）。「导出描述框」把当前机制（含未保存修改）下载为 PNG。</div>
     <h4>框品</h4>
-    <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。</div>
+    <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。卡牌库与布局设置均在中央预览上方以四个按钮切换；全局布局可按框品分别调整，单卡布局叠加在该卡实际框品的全局配置上。</div>
     <h4>协战双式神框</h4>
     <div>协战卡可勾选「双式神框」，在牌框左上外侧渲染双菱形头像框；头像自动取所属式神卡的卡图（式神缺卡图则该槽位留空菱形），派系小标随式神派系。</div>
     <h4>扩展选项</h4>
@@ -752,6 +759,7 @@ function clearCard() {
   curCard = null; cardData = null; formData = null; entityState = null; cDirty = false;
   resetUndo();
   document.getElementById('c-form').textContent = '未选中卡牌';
+  syncCardFrameButtons();
   cPreviewImg.removeAttribute('src');
   cPortraitImg.style.display = 'none';
   cPortraitImg.removeAttribute('src');
@@ -1505,11 +1513,29 @@ function appendEntityForm(div) {
   row.appendChild(exportBtn); div.appendChild(row);
 }
 
+function syncCardFrameButtons() {
+  const variant = formData && FRAME_VARIANT_TYPES.has(formData.type)
+    ? (formData.frame_variant ?? 'norm') : 'norm';
+  document.querySelectorAll('#c-frame-variants .fv').forEach(b => {
+    b.classList.toggle('active', b.dataset.fv === variant);
+    b.disabled = !formData || (b.dataset.fv !== 'norm' && !FRAME_VARIANT_TYPES.has(formData.type));
+  });
+}
+document.querySelectorAll('#c-frame-variants .fv').forEach(b => b.onclick = () => {
+  if (!formData || b.disabled) return;
+  if (b.dataset.fv === 'norm') delete formData.frame_variant;
+  else formData.frame_variant = b.dataset.fv;
+  syncCardFrameButtons();
+  afterEdit();
+});
+syncCardFrameButtons();
+
 // ---- 右栏卡牌表单：按类型动态显隐字段，即时校验 + 防抖预览 ----
 function buildForm() {
   if (activeAsk) return;  // 防止键盘/程序化变更绕过点击锁后销毁未完成输入框
   const div = document.getElementById('c-form');
   div.innerHTML = '';
+  syncCardFrameButtons();
   if (!formData) { div.textContent = '未选中卡牌'; return; }
   const t = formData.type;
   // 类型创建时定死；id 可留空（上传卡图按 id 命名、留空回退卡名；改 id 不动已有卡图）；
@@ -1521,11 +1547,7 @@ function buildForm() {
   if (t === '式神') {
     if (extOptions.marker) factionRow(div);  // 标记扩展：派系 + 派系样式并排
     else selRowC(div, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
-    // 框品缺省常规（norm 不写进 yaml，保持字段最小化）
-    selRowC(div, '框品', FRAME_VARIANTS.map(([v]) => v), formData.frame_variant ?? 'norm',
-      v => { if (v === 'norm') delete formData.frame_variant; else formData.frame_variant = v; afterEdit(); },
-      v => FRAME_VARIANTS.find(([val]) => val === v)[1]);
-    if (extOptions.marker) levelColorRow(div);  // 标记扩展：式神等级/勾玉颜色（框品与力量之间）
+    if (extOptions.marker) levelColorRow(div);  // 标记扩展：式神等级/勾玉颜色
     if (formData.shikigami) {
       infoRow(div, '所属式神', formData.shikigami);  // 衍生物式神
       textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
@@ -1541,12 +1563,6 @@ function buildForm() {
         if (t === '法术' && !v) { delete formData['power+']; delete formData['health+']; }  // 非觉醒法术不可携带数值
         afterEdit(true);
       });
-    }
-    if (FRAME_VARIANT_TYPES.has(t)) {
-      // 框品缺省常规（norm 不写进 yaml，保持字段最小化）
-      selRowC(div, '框品', FRAME_VARIANTS.map(([v]) => v), formData.frame_variant ?? 'norm',
-        v => { if (v === 'norm') delete formData.frame_variant; else formData.frame_variant = v; afterEdit(); },
-        v => FRAME_VARIANTS.find(([val]) => val === v)[1]);
     }
     if (t === '协战') {  // 协战：shikigami 拆为 shikigami1/shikigami2 两个同构组合框
       shikigamiRow(div, '所属式神1', 'shikigami1');
@@ -2397,12 +2413,29 @@ function statInputs() {
 }
 let cardOverrides = {};      // type -> {field: value} 卡牌内容覆盖（POST /api/preview 的 card）
 let curType = "式神";
-let layoutFrameVariant = "norm";  // 预览框品切换（随「手动调整布局」扩展选项所在的布局 tab 显隐）
-// 框品按钮：点击切换并刷新预览；协战无框品，切到该类时整组禁用
-document.querySelectorAll('#l-frame-variants .fv').forEach(b => b.onclick = () => {
+let layoutFrameVariant = "norm";  // 当前全局布局框品；单卡模式仅切换预览框品
+function globalTypeLayout(t, variant = layoutFrameVariant) {
+  const base = layouts && layouts[t];
+  if (!base || variant === 'norm' || t === '协战') return base || null;
+  return (base.frame_variants && base.frame_variants[variant]) || base;
+}
+function layoutForRender(layout) {
+  return {elements: layout.elements, text_regions: layout.text_regions};
+}
+function syncLayoutFrameButtons() {
+  const shown = FRAME_VARIANT_TYPES.has(curType) ? layoutFrameVariant : 'norm';
+  document.querySelectorAll('#l-frame-variants .fv').forEach(b => {
+    b.classList.toggle('active', b.dataset.fv === shown);
+    b.disabled = entityLayoutMode || (b.dataset.fv !== 'norm' && !FRAME_VARIANT_TYPES.has(curType));
+  });
+}
+// 框品按钮：切换同类型的独立布局；未保存工作保留在对应框品工作副本中
+document.querySelectorAll('#l-frame-variants .fv').forEach(b => b.onclick = async () => {
+  if (b.disabled || b.dataset.fv === layoutFrameVariant) return;
+  if ((cardLayoutMode ? singleDirty : dirty) &&
+      !await sessionConfirm('布局有未保存修改（切换框品不会丢弃，但仍未保存），继续？', 'unsaved')) return;
   layoutFrameVariant = b.dataset.fv;
-  document.querySelectorAll('#l-frame-variants .fv').forEach(x => x.classList.toggle('active', x === b));
-  refreshPreview();
+  selectType(curType);
 });
 let sel = null;              // {kind:'element'|'region', name}
 let dirty = false;
@@ -2480,7 +2513,7 @@ async function layoutBoot() {
 }
 function typeLayout() {
   if (entityLayoutMode) return layouts['对局式神'];
-  return cardLayoutMode ? singleLayout : layouts[curType];
+  return cardLayoutMode ? singleLayout : globalTypeLayout(curType);
 }
 function layoutRegions() {
   const layout = typeLayout();
@@ -2560,19 +2593,23 @@ function schedulePreview() {
   previewTimer = setTimeout(refreshPreview, 300);
 }
 
-// 尺寸类字段跨类型同步：同名元素在所有类型间保持一致（pos 与内容类字段不同步）；
+// 尺寸类字段只在同一框品内跨类型同步（pos 与内容类字段不同步）；
 // 单卡与对局式神模式均无跨类型同步（只改各自独立布局段）
 function syncElemField(name, key, val) {
   if (cardLayoutMode || entityLayoutMode) return;
   for (const t of TYPES) {
-    const el = layouts[t] && layouts[t].elements && layouts[t].elements[name];
+    if (t === '协战' && layoutFrameVariant !== 'norm') continue;
+    const layout = globalTypeLayout(t);
+    const el = layout && layout.elements && layout.elements[name];
     if (el && key in el) el[key] = val;
   }
 }
 function syncRegionField(name, key, val) {
   if (cardLayoutMode || entityLayoutMode) return;
   for (const t of TYPES) {
-    const r = layouts[t] && layouts[t].text_regions && layouts[t].text_regions[name];
+    if (t === '协战' && layoutFrameVariant !== 'norm') continue;
+    const layout = globalTypeLayout(t);
+    const r = layout && layout.text_regions && layout.text_regions[name];
     if (r && key in r) r[key] = val;
   }
 }
@@ -2648,8 +2685,7 @@ function selectType(t) {
   curType = t; sel = null; previewImg = null;  // 清旧图，避免与新类型覆盖层短暂共存
   document.querySelectorAll('#l-types .tab').forEach(b =>
     b.classList.toggle('active', b.textContent === t));
-  document.querySelectorAll('#l-frame-variants .fv').forEach(b =>
-    b.disabled = !FRAME_VARIANT_TYPES.has(t));
+  syncLayoutFrameButtons();
   buildLists(); buildCardProps(); buildProps(); refreshPreview();
 }
 function selectEntityLayout() {
@@ -2657,7 +2693,7 @@ function selectEntityLayout() {
   document.querySelectorAll('#l-types .tab').forEach(b =>
     b.classList.toggle('active', b.textContent === '对局式神'));
   showMechPanel(false);
-  document.querySelectorAll('#l-frame-variants .fv').forEach(b => b.disabled = true);
+  syncLayoutFrameButtons();
   buildLists(); buildCardProps(); buildProps(); refreshPreview();
 }
 
@@ -2892,10 +2928,10 @@ async function refreshPreview() {
       if (FRAME_VARIANT_TYPES.has(curType)) cardOv.frame_variant = layoutFrameVariant;
       r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(cardLayoutMode)}/preview`, {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({layout: singleLayout, card: cardOv}),
+        body: JSON.stringify({layout: layoutForRender(singleLayout), card: cardOv}),
       });
     } else {
-      const body = {type: curType, layout: typeLayout()};
+      const body = {type: curType, layout: layoutForRender(typeLayout())};
       const cardOv = deepCopy(cardOverrides[curType] || {});
       if (FRAME_VARIANT_TYPES.has(curType)) cardOv.frame_variant = layoutFrameVariant;
       if (Object.keys(cardOv).length) body.card = cardOv;
@@ -3262,7 +3298,7 @@ function selRow(div, label, opts, val, set, map = null) {
   l.appendChild(s); div.appendChild(l);
 }
 
-// 保存时以当前类型为准传播：同名元素的样式键镜像到所有类型（缺键不删、各自保留）。
+// 保存时以当前类型为准传播：同名元素的样式键只在同一框品内镜像（缺键不删、各自保留）。
 // 内容/结构键（kind/field/pos 等）一律不镜像——field 曾被跨类型覆盖
 // 造成数据污染（式神/形态 power→power+、法术 health+→health），只同步白名单内样式键。
 // 编辑期 syncElemField 调用点同样只传样式键（num_offset/sign_offset/sign_size_plus/
@@ -3277,8 +3313,9 @@ function propagateFromCurrentType() {
   const cur = typeLayout().elements || {};
   for (const [name, el] of Object.entries(cur)) {
     for (const t of TYPES) {
-      if (t === curType) continue;
-      const other = layouts[t] && layouts[t].elements && layouts[t].elements[name];
+      if (t === curType || (t === '协战' && layoutFrameVariant !== 'norm')) continue;
+      const layout = globalTypeLayout(t);
+      const other = layout && layout.elements && layout.elements[name];
       if (!other) continue;
       for (const k of STYLE_KEYS) {
         if (k in el) other[k] = JSON.parse(JSON.stringify(el[k]));
@@ -3317,18 +3354,33 @@ function diffLayout(eff, base) {
   }
   return Object.keys(out).length ? out : null;
 }
+function layoutSavePayload() {
+  const payload = deepCopy(layouts);
+  for (const t of TYPES) {
+    const base = payload[t];
+    if (!base || !base.frame_variants) continue;
+    for (const [variant, effective] of Object.entries(base.frame_variants)) {
+      const sparse = diffLayout(effective, base);
+      if (sparse) base.frame_variants[variant] = sparse;
+      else delete base.frame_variants[variant];
+    }
+    if (!Object.keys(base.frame_variants).length) delete base.frame_variants;
+  }
+  return payload;
+}
+function singleGlobalLayout() {
+  return layoutForRender(globalTypeLayout(formData.type, formData.frame_variant ?? 'norm'));
+}
 async function enterCardLayout() {
   if (!formData || !curCard || cardLayoutMode) return;
   try { await ensureLayouts(); } catch (e) { listErr(['布局加载失败: ' + e]); return; }
   if (!layouts[formData.type]) { listErr([`布局缺失类型：${formData.type}`]); return; }
   cardLayoutMode = curCard;
-  singleLayout = mergeLayoutJS(layouts[formData.type], formData.layout);
+  singleLayout = mergeLayoutJS(singleGlobalLayout(), formData.layout);
   singleSnapshot = deepCopy(singleLayout);
   singleDirty = false;
   curType = formData.type;
   layoutFrameVariant = formData.frame_variant ?? 'norm';
-  document.querySelectorAll('#l-frame-variants .fv').forEach(b =>
-    b.classList.toggle('active', b.dataset.fv === layoutFrameVariant));
   sel = null; previewImg = null;
   updateLayoutNavtab();
   document.getElementById('l-btn-save').textContent = '保存并返回';
@@ -3341,7 +3393,7 @@ function exitCardLayout() {
   document.getElementById('l-btn-save').textContent = '保存';
 }
 async function saveCardLayout() {
-  const ov = diffLayout(singleLayout, layouts[curType]);
+  const ov = diffLayout(singleLayout, singleGlobalLayout());
   if (ov) formData.layout = ov; else delete formData.layout;
   const ok = await saveCard();  // 校验/保存失败：留在单卡模式，错误已在表单栏显示
   if (!ok) return;
@@ -3356,7 +3408,7 @@ document.getElementById('l-btn-save').onclick = async () => {
   let r;
   try {
     r = await fetch('/api/layout', {method: 'PUT',
-      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(layouts)});
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(layoutSavePayload())});
   } catch (e) {
     statusEl.textContent = '保存请求失败: ' + e;
     return;

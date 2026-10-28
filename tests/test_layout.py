@@ -215,6 +215,49 @@ def test_shipped_layouts_already_normalized():
         assert not [w for w in caught if issubclass(w.category, UserWarning)]
 
 
+def test_frame_variant_sparse_layout_merges_without_polluting_norm(tmp_path):
+    custom = {"战斗": {
+        "elements": {"name": {"kind": "text", "pos": [100, 60], "font_size": 30}},
+        "text_regions": {},
+        "frame_variants": {"black": {"elements": {"name": {"pos": [12, 34]}}}},
+    }}
+    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    layouts = layout.load_layouts(tmp_path)
+
+    norm = layout.get_type_layout(layouts, "战斗")
+    black = layout.get_type_layout(layouts, "战斗", "black")
+    blue = layout.get_type_layout(layouts, "战斗", "blue")
+    assert norm["elements"]["name"]["pos"] == [100, 60]
+    assert black["elements"]["name"] == {"kind": "text", "pos": [12, 34], "font_size": 30}
+    assert blue == norm
+    assert "frame_variants" not in norm and "frame_variants" not in black
+
+
+def test_frame_variant_size_normalization_is_independent(tmp_path):
+    custom = {}
+    for card_type in layout.FRAME_LAYOUT_TYPES:
+        custom[card_type] = {
+            "elements": {"power": _stat(30)},
+            "text_regions": {},
+            "frame_variants": {"black": {"elements": {"power": {"font_size": 24}}}},
+        }
+    custom["战斗"]["frame_variants"]["black"]["elements"]["power"]["pos"] = [8, 9]
+    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        layouts = layout.load_layouts(tmp_path)
+
+    assert not caught
+    for card_type in layout.FRAME_LAYOUT_TYPES:
+        assert layout.get_type_layout(layouts, card_type)["elements"]["power"]["font_size"] == 30
+        assert layout.get_type_layout(
+            layouts, card_type, "blue")["elements"]["power"]["font_size"] == 30
+        assert layout.get_type_layout(
+            layouts, card_type, "black")["elements"]["power"]["font_size"] == 24
+    assert layout.get_type_layout(
+        layouts, "战斗", "black")["elements"]["power"]["pos"] == [8, 9]
+
+
 def test_merge_card_layout():
     """单卡布局覆盖：按键两级合并、base 不被修改、畸形 override 安全跳过。"""
     base = {"elements": {"name": {"kind": "text", "pos": [256, 60], "font_size": 30}},

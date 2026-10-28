@@ -133,6 +133,41 @@ def test_put_layout_roundtrip(client, assets_dir, tmp_path):
     assert '\n  "战斗"' in raw
 
 
+def test_put_layout_frame_variant_sparse_roundtrip(client, assets_dir):
+    import json
+
+    layouts = client.get("/api/layout").json()
+    base = {key: layouts["战斗"][key] for key in ("elements", "text_regions")}
+    sparse = {"elements": {"name": {"pos": [12, 34]}}}
+    assert client.put("/api/layout", json={
+        "战斗": {**base, "frame_variants": {"black": sparse}},
+    }).status_code == 200
+
+    loaded = client.get("/api/layout").json()
+    assert loaded["战斗"]["elements"]["name"]["pos"] != [12, 34]
+    assert loaded["战斗"]["frame_variants"]["black"]["elements"]["name"]["pos"] == [12, 34]
+    assert loaded["战斗"]["frame_variants"]["blue"] == base
+    raw = json.loads((assets_dir / "layout.json").read_text(encoding="utf-8"))
+    assert raw["战斗"]["frame_variants"] == {"black": sparse}
+
+
+@pytest.mark.parametrize("card_type,variants", [
+    ("战斗", []),
+    ("战斗", {"gold": {}}),
+    ("协战", {"black": {}}),
+    ("战斗", {"black": {"elements": []}}),
+])
+def test_put_layout_rejects_invalid_frame_variants(client, assets_dir, card_type, variants):
+    layouts = client.get("/api/layout").json()
+    base = {key: layouts[card_type][key] for key in ("elements", "text_regions")}
+    before = (assets_dir / "layout.json").read_bytes()
+    response = client.put("/api/layout", json={
+        card_type: {**base, "frame_variants": variants},
+    })
+    assert response.status_code == 422
+    assert (assets_dir / "layout.json").read_bytes() == before
+
+
 def test_put_layout_partial_types(client, assets_dir):
     """允许只保存部分类型；独立段缺失时 load_layouts 从包内默认补齐。"""
     r = client.put("/api/layout", json={"战斗": client.get("/api/layout").json()["战斗"]})
@@ -802,7 +837,7 @@ def test_propagate_style_keys_only(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
-let curType = "战斗", entityLayoutMode = false;
+let curType = "战斗", entityLayoutMode = false, layoutFrameVariant = "norm";
 {style_keys}
 {propagate}
 const layouts = {{
@@ -829,6 +864,7 @@ const layouts = {{
             icon_size: 32, num_offset: [22, 0], font_size: 30}},
   }}}},
 }};
+function globalTypeLayout(t) {{ return layouts[t]; }}
 function typeLayout() {{ return layouts[curType]; }}
 propagateFromCurrentType();
 // 样式键镜像
@@ -845,6 +881,89 @@ assert.ok(!("icon_neg" in layouts["法术"].elements.shield));
 assert.deepStrictEqual(layouts["法术"].elements.power.pos, [160, 485]);
 assert.strictEqual(layouts["法术"].elements.level.enabled, true);
 console.log("OK");
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_frame_variant_layout_sync_and_sparse_payload(tmp_path):
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function globalTypeLayout(t, variant = layoutFrameVariant)",
+        "function layoutForRender(layout)",
+        "function typeLayout()",
+        "function syncElemField(name, key, val)",
+        "function propagateFromCurrentType()",
+        "function diffLayout(eff, base)",
+        "function layoutSavePayload()",
+        "function singleGlobalLayout()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
+const base = () => ({{elements: {{power: {{kind: 'stat', field: 'power', pos: [1, 2],
+  icon_size: 16, num_offset: [0, 1], font_size: 12}}}},
+  text_regions: {{desc: {{center: [1, 2], width: 20, height: 10}}}}}});
+const layouts = Object.fromEntries(TYPES.map(t => [t, base()]));
+for (const t of TYPES.filter(t => t !== '协战'))
+  layouts[t].frame_variants = {{black: base(), blue: base(), red: base()}};
+let layoutFrameVariant = 'black', curType = '战斗';
+let entityLayoutMode = false, cardLayoutMode = null, singleLayout = null;
+let formData = {{type: '战斗', frame_variant: 'black'}};
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+const STYLE_KEYS = new Set(['icon_size']);
+{functions}
+assert.strictEqual(typeLayout(), layouts['战斗'].frame_variants.black);
+syncElemField('power', 'icon_size', 64);
+propagateFromCurrentType();
+for (const t of TYPES) {{
+  assert.strictEqual(layouts[t].elements.power.icon_size, 16, `${{t}} norm`);
+  if (t !== '协战') {{
+    assert.strictEqual(layouts[t].frame_variants.black.elements.power.icon_size, 64, `${{t}} black`);
+    assert.strictEqual(layouts[t].frame_variants.blue.elements.power.icon_size, 16, `${{t}} blue`);
+  }}
+}}
+assert.strictEqual(singleGlobalLayout().elements.power.icon_size, 64);
+assert.strictEqual(singleGlobalLayout().frame_variants, undefined);
+assert.strictEqual(layoutForRender(layouts['战斗']).frame_variants, undefined);
+const payload = layoutSavePayload();
+assert.strictEqual(payload['战斗'].frame_variants.black.elements.power.icon_size, 64);
+assert.strictEqual(payload['战斗'].frame_variants.blue, undefined);
+assert.strictEqual(payload['战斗'].frame_variants.red, undefined);
+assert.strictEqual(payload['协战'].frame_variants, undefined);
+assert.strictEqual(layouts['战斗'].frame_variants.black.elements.power.icon_size, 64);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_card_frame_variant_buttons(tmp_path):
+    html = (Path(__file__).resolve().parent.parent / "bwpdiy/web/static/editor.html").read_text(
+        encoding="utf-8")
+    assert 'id="c-frame-variants"' in html
+    assert "selRowC(div, '框品'" not in html
+    sync = _extract_js(_script(), "function syncCardFrameButtons()")
+    driver = f"""
+const assert = require('node:assert');
+const FRAME_VARIANT_TYPES = new Set(["式神", "战斗", "法术", "形态", "幻境"]);
+const buttons = ['norm', 'blue', 'black', 'red'].map(fv =>
+  ({{dataset: {{fv}}, disabled: false, classList: {{active: false}}}}));
+for (const b of buttons) b.classList.toggle = (name, on) => {{ b.classList.active = on; }};
+const document = {{querySelectorAll: () => buttons}};
+let formData = {{type: '战斗', frame_variant: 'black'}};
+{sync}
+syncCardFrameButtons();
+assert(buttons.every(b => !b.disabled));
+assert.deepStrictEqual(buttons.map(b => b.classList.active), [false, false, true, false]);
+formData = {{type: '协战'}};
+syncCardFrameButtons();
+assert.deepStrictEqual(buttons.map(b => b.disabled), [false, true, true, true]);
+assert.deepStrictEqual(buttons.map(b => b.classList.active), [true, false, false, false]);
+formData = null;
+syncCardFrameButtons();
+assert(buttons.every(b => b.disabled));
+console.log('OK');
 """
     _run_node(tmp_path, driver)
 
@@ -1005,7 +1124,7 @@ const assert = require('node:assert');
 const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
 const FRAME_VARIANT_TYPES = new Set(TYPES.filter(t => t !== '协战'));
 let curType = '式神', cardLayoutMode = null, singleLayout = {{elements: {{}}}};
-let entityLayoutMode = false, mechLayoutMode = false;
+let entityLayoutMode = false, mechLayoutMode = false, layoutFrameVariant = 'norm';
 let sel = null, previewImg = null, dirty = false, singleDirty = false;
 const base = () => ({{elements: {{power: {{kind: 'stat', field: 'power', pos: [1, 2],
   icon_size: 16, num_offset: [0, 1], font_size: 12}}}},
@@ -1018,6 +1137,7 @@ const statusEl = {{textContent: ''}};
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 function markDirty() {{ dirty = true; }}
 function showMechPanel(on) {{}}
+function syncLayoutFrameButtons() {{}}
 function buildLists() {{}}
 function buildCardProps() {{}}
 function buildMechProps() {{}}
@@ -1040,6 +1160,7 @@ const document = {{
 {style_keys}
 {propagate}
 let activeAsk = null;
+function globalTypeLayout(t) {{ return layouts[t]; }}
 {functions}
 entityLayoutMode = true;
 assert.strictEqual(typeLayout(), layouts['对局式神']);
@@ -2049,6 +2170,7 @@ function listErr() {{}}
 function enc(value) {{ return value; }}
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 function resetUndo() {{}}
+function syncCardFrameButtons() {{}}
 function buildForm() {{ builds++; }}
 function cPreviewProject() {{ previews++; }}
 const pending = {{}};
@@ -2118,6 +2240,7 @@ function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 function clearTimeout() {{}}
 function cancelAnimationFrame() {{}}
 function resetUndo() {{}}
+function syncCardFrameButtons() {{}}
 function buildForm() {{ builds++; }}
 function cPreviewProject() {{ previews++; }}
 let resolveA;
@@ -2175,6 +2298,7 @@ const document = {{getElementById: () => ({{textContent: ''}})}};
 const URL = {{revokeObjectURL() {{}}}};
 function clearTimeout() {{}}
 function resetUndo() {{}}
+function syncCardFrameButtons() {{}}
 const previews = [];
 function cPreviewForm() {{ previews.push('art'); }}
 function entityPreview() {{ previews.push('entity'); }}
@@ -2245,6 +2369,7 @@ function clearTimeout() {{}}
 function syncSubpreviews() {{}}
 function enc(value) {{ return value; }}
 function resetUndo() {{}}
+function syncCardFrameButtons() {{}}
 const document = {{getElementById: () => ({{textContent: ''}})}};
 let portraitRequests = 0;
 async function fetch() {{ return {{ok: true, blob: async () => 'portrait-' + (++portraitRequests)}}; }}
@@ -2373,6 +2498,7 @@ function buildCardList() {{}}
 function listErr() {{}}
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 function resetUndo() {{}}
+function syncCardFrameButtons() {{}}
 function buildForm() {{}}
 function cPreviewProject() {{}}
 async function fetch() {{ return {{ok: true, json: async () => ({{type: '形态', name: '新', power: 3, health: 4}})}}; }}

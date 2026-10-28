@@ -10,6 +10,8 @@ from collections import Counter
 from pathlib import Path
 
 _DEFAULT = Path(__file__).with_name("default_layout.json")
+FRAME_LAYOUT_TYPES = ("式神", "战斗", "法术", "形态", "幻境")
+FRAME_LAYOUT_VARIANTS = ("blue", "black", "red")
 
 # 可按类型不同的键（位置/内容类）；其余数值字段为尺寸类，跨类型必须一致
 # group_offset：四类带符号数值的符号数字整体偏移，按类型×角标各自微调，不归一
@@ -99,6 +101,26 @@ def _fill_entity_defaults(entity: dict, default: dict) -> None:
             _fill_entity_defaults(entity[key], value)
 
 
+def _base_layout(type_layout: dict) -> dict:
+    return {key: value for key, value in type_layout.items() if key != "frame_variants"}
+
+
+def _materialize_frame_variants(layouts: dict) -> None:
+    """把非常规框的稀疏覆盖补成编辑器使用的完整工作布局。"""
+    for card_type in FRAME_LAYOUT_TYPES:
+        type_layout = layouts.get(card_type)
+        if not isinstance(type_layout, dict):
+            continue
+        configured = type_layout.get("frame_variants")
+        if not isinstance(configured, dict):
+            configured = {}
+        base = _base_layout(type_layout)
+        type_layout["frame_variants"] = {
+            variant: merge_card_layout(base, configured.get(variant))
+            for variant in FRAME_LAYOUT_VARIANTS
+        }
+
+
 def load_layouts(assets_dir: Path) -> dict:
     """加载布局表。assets_dir/layout.json 优先，缺失回退包内默认；
     用户文件缺「对局式神」「机制」独立段时从包内默认补齐。"""
@@ -117,21 +139,35 @@ def load_layouts(assets_dir: Path) -> dict:
             entity = layouts["对局式神"]
             entity["version"] = 2
         _fill_entity_defaults(entity, default["对局式神"])
+    _materialize_frame_variants(layouts)
     _normalize_size_fields(layouts)
+    for variant in FRAME_LAYOUT_VARIANTS:
+        _normalize_size_fields({
+            card_type: layouts[card_type]["frame_variants"][variant]
+            for card_type in FRAME_LAYOUT_TYPES
+            if card_type in layouts and "frame_variants" in layouts[card_type]
+        })
     return layouts
 
 
-def get_type_layout(layouts: dict, card_type: str) -> dict:
-    """取单类型布局 {"elements": ..., "text_regions": ...}。"""
+def get_type_layout(layouts: dict, card_type: str,
+                    frame_variant: str = "norm") -> dict:
+    """取类型与框品的有效布局；非常规框合并稀疏覆盖，不携带其他框配置。"""
     if card_type not in layouts:
         raise ValueError(f"布局缺失: {card_type}")
-    return layouts[card_type]
+    type_layout = layouts[card_type]
+    base = _base_layout(type_layout)
+    if frame_variant == "norm" or card_type == "协战":
+        return base
+    variants = type_layout.get("frame_variants")
+    if not isinstance(variants, dict):
+        return base
+    return merge_card_layout(base, variants.get(frame_variant))
 
 
 def merge_card_layout(base: dict, override: dict | None) -> dict:
-    """单卡布局覆盖合并：深拷贝 base（该卡类型的全局布局），按 section→名称→键
-    两级合并 override（卡牌 yaml 的 `layout` 稀疏覆盖段）。base 不被修改；
-    override 缺 section、项非 dict 等畸形数据跳过（schema 已做形状校验，此处纵深防御）。
+    """稀疏布局覆盖合并：深拷贝 base，按 section→名称→键两级合并 override。
+    用于框品全局覆盖与卡牌 yaml 的单卡 layout 段；base 不被修改，畸形数据安全跳过。
     """
     merged = copy.deepcopy(base)
     if not isinstance(override, dict):

@@ -292,7 +292,7 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     frame = _normalize_frame(lib.frame(code, variant), finfo, canvas_size)
     anchor_x = finfo["anchor"][0]
     type_layout = layout if layout is not None else get_type_layout(
-        load_layouts(Path(assets_dir)), card_type)
+        load_layouts(Path(assets_dir)), card_type, variant)
     if factor != 1:
         type_layout = scale_layout(type_layout, factor)
         for region in (type_layout.get("text_regions") or {}).values():

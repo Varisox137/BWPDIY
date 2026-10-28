@@ -239,6 +239,21 @@ def test_frame_variant_changes_pixels(assets_dir, sample_art):
     assert list(norm.getdata()) != list(black.getdata())
 
 
+def test_render_uses_actual_frame_variant_layout(assets_dir, sample_art, monkeypatch):
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+    import bwpdiy.render.pipeline as pipeline
+
+    layouts = load_layouts(assets_dir)
+    layouts["法术"]["frame_variants"]["black"]["elements"]["name"]["pos"] = [-20, 120]
+    monkeypatch.setattr(pipeline, "load_layouts", lambda _path: layouts)
+    card = make_card(sample_art.parent, "法术", name="框品布局", frame_variant="black")
+
+    actual = render_card(card, assets_dir, crop=False)
+    expected = render_card(card, assets_dir, crop=False,
+                           layout=get_type_layout(layouts, "法术", "black"))
+    assert actual.tobytes() == expected.tobytes()
+
+
 def test_desc_avoids_stat_obstacles(assets_dir, sample_art):
     # 左右下有数值贴图的战斗牌 + 长描述：排版须避让（不炸且出图）
     card = {"type": "战斗", "name": "sample_art", "shikigami": "测试式神",

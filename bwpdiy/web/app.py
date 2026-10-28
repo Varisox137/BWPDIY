@@ -28,7 +28,9 @@ from bwpdiy.render.assets import get_library
 from bwpdiy.render.duo import render_portrait
 from bwpdiy.render.entity import (
     entity_eligible, render_entity, validate_entity_art_window, validate_entity_state)
-from bwpdiy.render.layout import get_type_layout, load_layouts, merge_card_layout
+from bwpdiy.render.layout import (
+    FRAME_LAYOUT_TYPES, FRAME_LAYOUT_VARIANTS,
+    get_type_layout, load_layouts, merge_card_layout)
 from bwpdiy.render.mech import MECH_FRAMES, render_mechanism
 from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
 from bwpdiy.resources import default_library_dir
@@ -196,6 +198,18 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                     or "text_regions" not in type_layout):
                 raise HTTPException(
                     422, f"布局形状非法: 类型 {card_type} 必须是含 elements/text_regions 键的对象")
+            variants = type_layout.get("frame_variants", {})
+            if not isinstance(variants, dict):
+                raise HTTPException(422, f"布局形状非法: {card_type}.frame_variants 必须是对象")
+            for variant, variant_layout in variants.items():
+                if card_type not in FRAME_LAYOUT_TYPES or variant not in FRAME_LAYOUT_VARIANTS:
+                    raise HTTPException(422, f"布局框品非法: {card_type}/{variant}")
+                if not isinstance(variant_layout, dict):
+                    raise HTTPException(422, f"布局形状非法: {card_type}/{variant} 必须是对象")
+                for section in ("elements", "text_regions"):
+                    if section in variant_layout and not isinstance(variant_layout[section], dict):
+                        raise HTTPException(
+                            422, f"布局形状非法: {card_type}/{variant}.{section} 必须是对象")
         path = assets_dir / "layout.json"
         data = json.dumps(request, ensure_ascii=False, indent=2)
         try:
@@ -405,8 +419,9 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             card_data = _with_artwork_fallback(card_data, library_dir / project / "images")
             req_layout = (request or {}).get("layout")
             if req_layout is None and isinstance(card_data.get("layout"), dict):
-                # 单卡布局覆盖：卡面 layout 段按键合并覆盖该类型全局布局（导出同路）
-                base = get_type_layout(load_layouts(Path(assets_dir)), card_data["type"])
+                # 单卡布局覆盖：叠加到该卡实际框品的全局布局（导出同路）
+                base = get_type_layout(load_layouts(Path(assets_dir)), card_data["type"],
+                                       card_data.get("frame_variant", "norm"))
                 req_layout = merge_card_layout(base, card_data["layout"])
             info: dict = {}
             # crop=True 紧致原尺寸（预览=导出形状）+ 裁剪原点（布局页覆盖层换算）

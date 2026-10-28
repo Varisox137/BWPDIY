@@ -9,6 +9,10 @@ def make_art(w=800, h=600):
     return Image.new("RGBA", (w, h), (200, 100, 50, 255))
 
 
+def test_artwork_ref_empty_id_falls_back_to_card_name():
+    assert artwork.artwork_ref({"id": "", "name": "甲"})["path"] == "甲.png"
+
+
 def test_fit_cover_and_size():
     out = fit_artwork(make_art(), (512, 512))
     assert out.size == (512, 512)

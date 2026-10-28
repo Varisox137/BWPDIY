@@ -76,6 +76,36 @@ def test_check_update_has_update(monkeypatch):
     assert r["sha256_url"] == "https://example.com/x.exe.sha256"
 
 
+def test_check_update_selects_asset_matching_latest_tag(monkeypatch):
+    """release 同时含旧包时必须选 latest 对应资产，不能取列表第一个 exe。"""
+    payload = _release("v99.0.0", assets=[
+        {"name": "BWPDIY-v98.0.0.exe", "browser_download_url": "https://example.com/old.exe"},
+        {"name": "BWPDIY-v98.0.0.exe.sha256", "browser_download_url": "https://example.com/old.sha"},
+        {"name": "BWPDIY-v99.0.0.exe", "browser_download_url": "https://example.com/new.exe"},
+        {"name": "BWPDIY-v99.0.0.exe.sha256", "browser_download_url": "https://example.com/new.sha"},
+    ])
+    _mock_urlopen(monkeypatch, payload)
+    r = updater.check_update()
+    assert r["asset_name"] == "BWPDIY-v99.0.0.exe"
+    assert r["asset_url"] == "https://example.com/new.exe"
+
+
+def test_update_apply_is_mutually_exclusive(monkeypatch):
+    updater._APPLY_LOCK.acquire()
+    try:
+        with pytest.raises(ValueError, match="已有更新任务"):
+            updater.download_and_schedule_restart({})
+    finally:
+        updater._APPLY_LOCK.release()
+
+
+def test_update_downloads_require_https(tmp_path):
+    with pytest.raises(ValueError, match="HTTPS"):
+        updater._download("http://example.com/x.exe", tmp_path / "x.exe")
+    with pytest.raises(ValueError, match="HTTPS"):
+        updater._download_text("http://example.com/x.sha256")
+
+
 def test_check_update_older_or_equal(monkeypatch):
     _mock_urlopen(monkeypatch, _release("v0.0.1"))
     assert updater.check_update()["has_update"] is False

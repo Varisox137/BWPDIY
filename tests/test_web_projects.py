@@ -58,10 +58,11 @@ def with_today(card):
     return {**card, "version_date": TODAY}
 
 
-def entry(stem, name, vd=TODAY, shiki=None, stats=False, rarity="R"):
+def entry(stem, name, vd=TODAY, shiki=None, stats=False, rarity="R", ctype=None):
     version = {"stem": stem, "date": vd}
     if shiki is not None or stats:
-        version.update(rarity=None if stats else rarity, shikigami=shiki,
+        version.update(type=ctype or ("式神" if stats else "战斗"),
+                       rarity=None if stats else rarity, shikigami=shiki,
                        shikigami1=None, shikigami2=None)
     data = {"stem": stem, "name": name, "id": None,
             "versions": [version], "count": 1,
@@ -180,7 +181,7 @@ def test_derived_shikigami_is_card_not_main_shikigami(client, project):
     assert r.status_code == 200
     assert client.get(f"/api/projects/{project}/cards").json() == {
         "shikigami": [_SHIKI_ENTRY],
-        "cards": [entry("召唤物", "召唤物", shiki="测试式神", rarity=None)],
+        "cards": [entry("召唤物", "召唤物", shiki="测试式神", rarity=None, ctype="式神")],
     }
     assert client.get(f"/api/projects/{project}/cards/召唤物").json() == with_today(card)
 
@@ -620,6 +621,19 @@ def test_artwork_upload_preserves_offset_scale_and_keeps_old(client, project, li
     assert _img_files(library_dir, project) == ["测试斩.jpg", "测试斩.png"]  # 旧图保留
     got = client.get(f"/api/projects/{project}/cards/测试斩").json()["artwork"]["images"][0]
     assert got["path"] == "测试斩.jpg" and got["offset_x"] == 5 and got["scale"] == 1.2
+
+
+def test_artwork_upload_write_failure_preserves_existing_file(client, project, library_dir, monkeypatch):
+    """写盘异常不得截断同名旧图；原子替换失败时旧内容原样保留。"""
+    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+    target = library_dir / project / "images" / "测试斩.png"
+    target.write_bytes(b"ORIGINAL")
+    monkeypatch.setattr("bwpdiy.web.app._atomic_write_bytes",
+                        lambda *args: (_ for _ in ()).throw(OSError("模拟磁盘写入失败")))
+    r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=x.png",
+                    content=SAMPLE_ART.read_bytes())
+    assert r.status_code == 422
+    assert target.read_bytes() == b"ORIGINAL"
 
 
 def test_artwork_upload_bad_ext_422(client, project, library_dir):

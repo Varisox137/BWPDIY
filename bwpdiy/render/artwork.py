@@ -17,7 +17,7 @@ ARTWORK_MAX_PIXELS = 64_000_000  # 8000×8000
 def artwork_ref(card: dict) -> dict:
     images = card.get("artwork", {}).get("images") or [{}]
     ref = dict(images[0])
-    ref.setdefault("path", f"{card.get('id', card['name'])}.png")
+    ref.setdefault("path", f"{card.get('id') or card['name']}.png")
     for key, default in (("offset_x", 0), ("offset_y", 0),
                          ("scale", 1.0), ("rotate", 0)):
         ref.setdefault(key, default)

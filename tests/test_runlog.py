@@ -30,11 +30,20 @@ def clean_root_logger():
 def test_run_log_writes_file_and_idempotent(tmp_path):
     path = runlog.setup_run_logging(tmp_path)
     assert path.parent == tmp_path and path.name.startswith("bwpdiy-")
+    assert path.stem.endswith(f"-{runlog.os.getpid()}")  # 同秒多实例不共用日志文件
     logging.getLogger("bwpdiy.test").info("你好，单次运行记录")
+    logging.getLogger("bwpdiy.gui").debug("按钮与数值调试事件")
     for h in logging.getLogger().handlers:
         h.flush()
     text = path.read_text(encoding="utf-8")
     assert "BWPDIY v" in text and "你好，单次运行记录" in text  # 版本行 + 模块日志均落盘
+    assert "DEBUG bwpdiy.gui: 按钮与数值调试事件" in text
+    file_handler = next(h for h in logging.getLogger().handlers
+                        if getattr(h, "baseFilename", None) == str(path))
+    console_handler = next(h for h in logging.getLogger().handlers
+                           if type(h) is logging.StreamHandler)
+    assert file_handler.level == logging.DEBUG
+    assert console_handler.level == logging.INFO
     assert runlog.setup_run_logging(tmp_path) == path  # 重复调用不新建文件/不重复加 handler
 
 

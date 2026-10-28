@@ -25,6 +25,7 @@ GUI 等级下拉 0 = 删 level 键）；rarity 全类型可缺省（缺省 = 无
 from __future__ import annotations
 
 import datetime
+import math
 import re
 
 CARD_TYPES = ("式神", "战斗", "法术", "形态", "幻境", "协战")
@@ -130,7 +131,22 @@ def _is_int(v) -> bool:
 
 
 def _is_num(v) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return False
+    return isinstance(v, int) or math.isfinite(v)
+
+
+def layout_numbers_valid(value) -> bool:
+    """布局数值须有限且限幅，防止 NaN/Infinity 或异常尺寸进入渲染/写盘。"""
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, (int, float)):
+        return _is_num(value) and abs(value) <= 8192
+    if isinstance(value, (list, tuple)):
+        return all(layout_numbers_valid(v) for v in value)
+    if isinstance(value, dict):
+        return all(layout_numbers_valid(v) for v in value.values())
+    return True
 
 
 def _allowed_fields(ctype: str) -> set[str]:
@@ -225,6 +241,8 @@ def validate_card(data) -> list[str]:
                 elif not isinstance(section, dict) or any(
                         not isinstance(item, dict) for item in section.values()):
                     errors.append(f"字段 layout.{key}：必须是「名称 → 键值映射」的映射")
+            if not layout_numbers_valid(lay):
+                errors.append("字段 layout：数值必须是有限且绝对值不超过 8192 的数字")
     for field in _STATS_BY_TYPE[ctype]:
         cfield = f"{field}_color"
         if cfield in data and data[cfield] not in STAT_VALUE_COLORS:
@@ -244,6 +262,8 @@ def validate_card(data) -> list[str]:
             errors.append(f"字段 {field}：必须是整数")
         elif field not in _SIGNED_STATS and data[field] < 0:
             errors.append(f"字段 {field}：必须是非负整数")
+        elif len(str(abs(data[field]))) > 12:
+            errors.append(f"字段 {field}：数值位数不得超过 12 位")
 
     if "artwork" in data:
         errors += _validate_artwork(data["artwork"])

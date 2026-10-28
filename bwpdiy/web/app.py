@@ -9,6 +9,7 @@ import copy
 import json
 import os
 import shutil
+import tempfile
 import threading
 import time
 from io import BytesIO
@@ -50,6 +51,7 @@ from bwpdiy.store import (
     save_card,
     save_mechanism,
 )
+from bwpdiy.store.schema import layout_numbers_valid
 from bwpdiy.web.sample_cards import SAMPLE_CARDS
 
 _STATIC = Path(__file__).parent / "static"
@@ -57,6 +59,21 @@ _SAMPLE_ART = Path(__file__).parent / "sample_art.png"  # 缺图占位（与样�
 
 # 空闲统计排除的被动轮询路径（前端自动请求：更新检查每 1min、下载中进度每 1s，不算用户操作）
 _IDLE_EXCLUDE_PATHS = {"/api/update/check", "/api/update/progress"}
+
+
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    """同目录临时文件 + os.replace，写入失败不得截断已存在的卡图。"""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def create_app(assets_dir: Path, static_dir: Path | None = None,
@@ -71,12 +88,26 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     app.state.assets_dir = assets_dir
     app.state.library_dir = library_dir
     app.state.last_activity = time.time()
+    write_lock = threading.RLock()  # 多标签页/并发请求不得交叉写同一批 YAML 与图片
 
     @app.middleware("http")
     async def _activity_track(request, call_next):
-        if request.url.path not in _IDLE_EXCLUDE_PATHS:
+        path = request.url.path
+        if path not in _IDLE_EXCLUDE_PATHS:
             app.state.last_activity = time.time()
-        return await call_next(request)
+        is_write = (request.method in {"POST", "PUT", "PATCH", "DELETE"}
+                    and path != "/api/client-log" and not path.endswith("preview"))
+        if is_write and request.headers.get("sec-fetch-site", "").lower() == "cross-site":
+            return JSONResponse(status_code=403, content={"detail": "拒绝跨站写操作"})
+        if is_write and path != "/api/update/apply":
+            with write_lock:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
+        if is_write:
+            logging.getLogger("bwpdiy.web").debug(
+                "本地写操作 %s %s -> HTTP %d", request.method, path, response.status_code)
+        return response
 
     if idle_timeout > 0:
         def _watchdog():
@@ -144,6 +175,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         # 「机制」段为扁平参数映射；两个独立段均无 text_regions
         if not request:
             raise HTTPException(422, "布局为空：拒绝覆盖现有配置")
+        if not layout_numbers_valid(request):
+            raise HTTPException(422, "布局数值必须是有限且绝对值不超过 8192 的数字")
         for card_type, type_layout in request.items():
             if card_type in ("对局式神", "机制"):
                 if not isinstance(type_layout, dict):
@@ -181,6 +214,21 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     def get_version():
         return {"version": __version__, "boot_id": boot_id,
                 "notes": CHANGELOG.get(__version__, [])}
+
+    @app.post("/api/client-log")
+    def client_log(request: dict = Body(...)):
+        """GUI 调试事件（仅 DEBUG 级）；限制长度并去除控制字符，避免日志注入。"""
+        event = request.get("event")
+        detail = request.get("detail", "")
+        if (not isinstance(event, str) or not 1 <= len(event) <= 80
+                or any(not (c.isalnum() or c in "_.-") for c in event)):
+            raise HTTPException(422, "日志 event 须为 1–80 位字母、数字、点、下划线或连字符")
+        if not isinstance(detail, str) or len(detail) > 500:
+            raise HTTPException(422, "日志 detail 须为不超过 500 字符的字符串")
+        detail = "".join(c if c >= " " else " " for c in detail)
+        logging.getLogger("bwpdiy.gui").debug(
+            "%s%s", event, f" | {detail}" if detail else "")
+        return {"ok": True}
 
     # ---------- 自动更新（仅 frozen exe 可一键替换；检查对全模式开放） ----------
 
@@ -458,11 +506,13 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         card_data["artwork"] = artwork
         images_dir = library_dir / project / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
+        if images_dir.resolve().parent != (library_dir / project).resolve():
+            raise HTTPException(422, "卡图目录越出项目目录，已拒绝写盘")
         target = images_dir / filename
         try:
             old_bytes = target.read_bytes() if target.is_file() else None
             if old_bytes != data:
-                target.write_bytes(data)  # 同名同内容：复用跳过写盘
+                _atomic_write_bytes(target, data)  # 同名同内容复用；异常不得截断旧图
         except OSError as e:
             raise HTTPException(422, f"卡图写盘失败: {e}") from e
         try:
@@ -471,7 +521,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             if old_bytes is None:
                 target.unlink(missing_ok=True)  # schema 不过：删图回滚，不留孤儿文件
             elif old_bytes != data:
-                target.write_bytes(old_bytes)  # 同名覆盖：还原原文件内容
+                _atomic_write_bytes(target, old_bytes)  # 同名覆盖：还原原文件内容
             raise
         return {"ok": True, "path": filename}
 

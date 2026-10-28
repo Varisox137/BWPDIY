@@ -47,6 +47,7 @@ _MIN_EXE_SIZE = 5 * 1024 * 1024  # 打包产物 ~30MB+，小于 5MB 必为错误
 
 # 下载进度（模块级单例：一键更新同时最多一个，GUI 轮询 /api/update/progress 读取）
 _PROGRESS = {"active": False, "downloaded": 0, "total": 0}
+_APPLY_LOCK = threading.Lock()
 
 
 # 检查更新日志去重：自动轮询每 1min 一次，相同错误/相同新版本只记一次，
@@ -81,13 +82,16 @@ def check_update() -> dict:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
             data = json.loads(resp.read())
         _LAST_CHECK_LOG["error"] = None  # 检查成功：重置错误去重（恢复后再失败会重新记）
-        latest = parse_version(str(data.get("tag_name", "")))
+        tag = str(data.get("tag_name", ""))
+        latest = parse_version(tag)
         current = parse_version(__version__)
         if latest is None or current is None or latest <= current:
             return result
-        asset = next((a for a in data.get("assets", []) if ASSET_RE.match(a.get("name", ""))), None)
+        expected_name = f"BWPDIY-{tag}.exe"
+        asset = next((a for a in data.get("assets", [])
+                      if a.get("name") == expected_name), None)
         if asset is None:
-            result["error"] = "最新 release 未包含 exe 资产"
+            result["error"] = "最新 release 未包含与版本号对应的 exe 资产"
             return result
         sha_asset = next((a for a in data.get("assets", [])
                           if a.get("name") == asset["name"] + ".sha256"), None)
@@ -95,14 +99,6 @@ def check_update() -> dict:
             # 无校验文件视同检查失败：hash 校验是安全防线，不降级为不校验
             result["error"] = "最新 release 未包含 sha256 校验文件，已跳过本次更新"
             return result
-        result.update({
-            "has_update": True,
-            "latest": data["tag_name"],
-            "asset_name": asset["name"],
-            "asset_url": asset["browser_download_url"],
-            "sha256_url": sha_asset["browser_download_url"],
-            "size": asset.get("size", 0),
-        })
         result.update({
             "has_update": True,
             "latest": data["tag_name"],
@@ -129,6 +125,8 @@ def _download(url: str, dest: Path, on_progress=None) -> None:
     on_progress(本次字节数) 每段回调（进度回报）；总时长超过 DOWNLOAD_MAX_SECONDS
     抛 TimeoutError（单段超时不覆盖低速涓流）；失败删除半截文件。
     """
+    if not url.lower().startswith("https://"):
+        raise ValueError("更新下载地址必须使用 HTTPS")
     log.info("开始下载：%s → %s", url, dest)
     started = time.monotonic()
     downloaded = 0
@@ -167,6 +165,8 @@ def _download(url: str, dest: Path, on_progress=None) -> None:
 
 def _download_text(url: str) -> str:
     """下载小文本资产（sha256 校验文件）。"""
+    if not url.lower().startswith("https://"):
+        raise ValueError("更新校验文件地址必须使用 HTTPS")
     req = urllib.request.Request(url, headers={"User-Agent": f"BWPDIY/{__version__}"})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return resp.read().decode("utf-8")
@@ -256,6 +256,16 @@ def _dir_writable(d: Path) -> bool:
 
 
 def download_and_schedule_restart(info: dict) -> str:
+    """同一进程内更新任务互斥，防止重复请求并发写同一 exe/进度状态。"""
+    if not _APPLY_LOCK.acquire(blocking=False):
+        raise ValueError("已有更新任务正在进行，请勿重复点击")
+    try:
+        return _download_and_schedule_restart_locked(info)
+    finally:
+        _APPLY_LOCK.release()
+
+
+def _download_and_schedule_restart_locked(info: dict) -> str:
     """下载新版 exe 并安排替换重启（仅 frozen）。返回新版本 tag。
 
     首选直接下载到当前运行目录（新版 exe 与旧版并存，退出后删旧启新）；

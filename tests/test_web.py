@@ -61,6 +61,21 @@ def test_host_guard(client):
         assert client.get("/api/version", headers={"host": ok}).status_code == 200
 
 
+def test_cross_site_write_is_rejected(client):
+    """Host 正确也不能替代 CSRF 防护：浏览器跨站写操作一律 403。"""
+    r = client.post("/api/update/apply", headers={"sec-fetch-site": "cross-site"})
+    assert r.status_code == 403 and "跨站" in r.json()["detail"]
+
+
+def test_layout_rejects_nonfinite_numbers(client):
+    import json
+    layouts = client.get("/api/layout").json()
+    layouts["战斗"]["elements"]["name"]["pos"][0] = float("nan")
+    r = client.put("/api/layout", content=json.dumps(layouts),
+                   headers={"Content-Type": "application/json"})
+    assert r.status_code == 422
+
+
 def test_version_carries_changelog(client):
     """/api/version 附带当前版本更新说明（「最近更新」弹窗数据源）与本次启动 boot_id。"""
     from bwpdiy import __version__
@@ -70,6 +85,30 @@ def test_version_carries_changelog(client):
     assert isinstance(data["boot_id"], int)
     assert data["notes"] == CHANGELOG.get(__version__, [])
     assert CHANGELOG.get(__version__), "当前版本必须在 changelog.py 登记更新说明"
+
+
+def test_client_debug_log_and_write_operation_log(client, caplog):
+    """GUI 事件与本地写操作均落 DEBUG；控制字符不得伪造额外日志行。"""
+    import logging
+    with caplog.at_level(logging.DEBUG):
+        r = client.post("/api/client-log", json={
+            "event": "button.click", "detail": "保存\n伪造级别"})
+        assert r.status_code == 200 and r.json()["ok"]
+        client.put("/api/layout", json=client.get("/api/layout").json())
+    gui = next(rec for rec in caplog.records if rec.name == "bwpdiy.gui")
+    assert gui.levelno == logging.DEBUG
+    assert gui.getMessage() == "button.click | 保存 伪造级别"
+    assert any(rec.name == "bwpdiy.web" and "本地写操作 PUT /api/layout -> HTTP 200"
+               in rec.getMessage() for rec in caplog.records)
+
+
+@pytest.mark.parametrize("body", [
+    {}, {"event": "bad event"}, {"event": "x" * 81},
+    {"event": "button.click", "detail": 1},
+    {"event": "button.click", "detail": "x" * 501},
+])
+def test_client_debug_log_rejects_invalid_payload(client, body):
+    assert client.post("/api/client-log", json=body).status_code == 422
 
 
 def test_preview_rejects_artwork_path_escape(client):
@@ -400,14 +439,43 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_delete_button_only_shows_for_selected_entry_group(tmp_path):
+    """式神/卡牌/机制互斥选中时，仅当前条目所属栏目显示并启用删除按钮。"""
+    sync = _extract_js(_script(), "function syncDeleteButtons()")
+    driver = f"""
+const assert = require('node:assert');
+const ids = ['c-del-shiki', 'c-del-card', 'c-del-mech'];
+const buttons = Object.fromEntries(ids.map(id => [id, {{style: {{}}, disabled: false}}]));
+const document = {{getElementById: id => buttons[id]}};
+const cards = {{
+  shikigami: [{{stem: 's', versions: [{{stem: 's'}}]}}],
+  cards: [{{stem: 'c', versions: [{{stem: 'c'}}]}}],
+}};
+let curCard = 's', curMech = null;
+{sync}
+function shown(id) {{ return buttons[id].style.display !== 'none' && !buttons[id].disabled; }}
+syncDeleteButtons();
+assert.deepStrictEqual(ids.map(shown), [true, false, false]);
+curCard = 'c'; syncDeleteButtons();
+assert.deepStrictEqual(ids.map(shown), [false, true, false]);
+curCard = null; curMech = 'm'; syncDeleteButtons();
+assert.deepStrictEqual(ids.map(shown), [false, false, true]);
+curMech = null; syncDeleteButtons();
+assert.deepStrictEqual(ids.map(shown), [false, false, false]);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_shiki_deck_valid_checks_every_date_and_ignores_assist(tmp_path):
-    """每个日期快照均须 8 张非协战卡且 4R/3SR/1SSR；允许同日期对调稀有度。"""
+    """每日期排除协战/衍生物式神后至少 4R/3SR/1SSR；额外普通卡不影响结果。"""
     valid = _extract_js(_script(), "function shikiDeckValid(shikiName, groups)")
     driver = f"""
 const assert = require('node:assert');
 {valid}
-function v(date, rarity, shiki = '甲', assist = false) {{
-  return {{date, rarity, shikigami: assist ? null : shiki,
+function v(date, rarity, shiki = '甲', assist = false, type = '战斗') {{
+  return {{date, rarity, type, shikigami: assist ? null : shiki,
     shikigami1: assist ? shiki : null, shikigami2: assist ? '乙' : null}};
 }}
 function card(name, versions) {{ return {{name, versions}}; }}
@@ -427,7 +495,11 @@ const oneChanged = base.map((g, i) => i === 0
   ? card(g.name, [v('20260201', 'SR'), ...g.versions]) : g);
 assert.strictEqual(shikiDeckValid('甲', oneChanged), false);
 assert.strictEqual(shikiDeckValid('甲', [...base,
-  card('协战', [v('20260101', 'R', '甲', true)])]), true);
+  card('协战', [v('20260101', 'R', '甲', true)]),
+  card('衍生物', [v('20260101', 'SSR', '甲', false, '式神')]),
+  card('额外N', [v('20260101', 'N')])]), true);
+assert.strictEqual(shikiDeckValid('甲', [...base.slice(1),
+  card('衍生物', [v('20260101', 'SSR', '甲', false, '式神')])]), false);
 console.log('OK');
 """
     _run_node(tmp_path, driver)
@@ -444,12 +516,14 @@ function element(tag) {{
     appendChild(child) {{ this.children.push(child); child.parent = this; return child; }},
     focus() {{}}, select() {{}}}};
 }}
-const box = element('div'), slot = element('div');
+const box = element('div'), slot = element('div'), home = element('div');
 const document = {{createElement: element,
-  getElementById(id) {{ return id === 'c-ask' ? box : slot; }}}};
+  getElementById(id) {{ return id === 'c-ask' ? box : id === 'c-ask-home' ? home : slot; }}}};
 const TYPES = ['式神', '战斗', '法术', '形态', '幻境', '协战'];
 const mainShiki = '基础式神';
 function shikigamiNames() {{ return [mainShiki]; }}
+function beginAsk() {{ return true; }}
+function endAsk() {{}}
 {ask_new_card}
 (async () => {{
   const pending = askNewCard('c-ask-card');
@@ -467,9 +541,14 @@ function shikigamiNames() {{ return [mainShiki]; }}
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_inline_ask_moves_to_requested_slot(tmp_path):
-    """通用输入框移动到调用栏目；主要式神/机制/新版本不再共用左栏底部。"""
-    ask = _extract_js(_script(), "function ask(")
+def test_inline_ask_locks_save_and_recovers(tmp_path):
+    """新版本等内联输入未结束时禁止保存/重开；取消后输入框与按钮流程恢复。"""
+    script = _script()
+    ask = _extract_js(script, "function ask(")
+    busy = _extract_js(script, "function askBusy()")
+    begin = _extract_js(script, "function beginAsk(title)")
+    end = _extract_js(script, "function endAsk()")
+    save = _extract_js(script, "async function saveCard()")
     driver = f"""
 const assert = require('node:assert');
 function element(tag) {{
@@ -480,15 +559,111 @@ function element(tag) {{
 const box = element('div'), slot = element('div'), home = element('div');
 const document = {{createElement: element,
   getElementById(id) {{ return id === 'c-ask' ? box : id === 'c-ask-home' ? home : slot; }}}};
+let activeAsk = null, pendingStorageWrites = 0;
+const errors = [];
+function showFormErrors(messages) {{ errors.push(...messages); }}
+function guiDebug() {{}}
+function storageBusy() {{ return false; }}
+function fetch() {{ throw new Error('输入未结束时不得发起写盘请求'); }}
+{busy}
+{begin}
+{end}
 {ask}
+{save}
 (async () => {{
-  const pending = ask({{title: '新建机制', target: 'c-ask-mech'}});
+  const pending = ask({{title: '新版本', target: 'c-version-ask'}});
   assert.strictEqual(box.parent, slot);
+  assert.strictEqual(askBusy(), true);
+  assert.strictEqual(await ask({{title: '新建机制', target: 'c-ask-mech'}}), null);
+  assert.strictEqual(await saveCard(), false);
   box.children.at(-1).children[1].onclick();
   assert.strictEqual(await pending, null);
   assert.strictEqual(box.parent, home);
+  assert.strictEqual(activeAsk, null);
+  const reopened = ask({{title: '新建机制', target: 'c-ask-mech'}});
+  box.children.at(-1).children[0].onclick();
+  assert.deepStrictEqual(await reopened, {{text: '', sel: null}});
+  assert.strictEqual(activeAsk, null);
+  assert.strictEqual(box.parent, home);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_save_response_cannot_overwrite_new_selection_or_later_edits(tmp_path):
+    """慢保存响应不得改写已切换卡牌；保存后的新编辑仍保持未保存状态。"""
+    save = _extract_js(_script(), "async function saveCard()")
+    driver = f"""
+const assert = require('node:assert');
+let selectSeq = 0, contentRev = 0, pendingStorageWrites = 0;
+let curProject = 'P', curCard = 'A', formData = {{name: 'A'}}, cardData = null, cDirty = true;
+const cStatusEl = {{textContent: ''}};
+let resolveFetch, reloads = 0;
+function askBusy() {{ return false; }}
+function storageBusy() {{ return false; }}
+function guiDebug() {{}}
+function validateCardJS() {{ return []; }}
+async function confirmFallbackNaming() {{ return true; }}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function enc(value) {{ return value; }}
+function fetch() {{ return new Promise(resolve => {{ resolveFetch = resolve; }}); }}
+function showFormErrors() {{}}
+function resetUndo() {{ throw new Error('旧响应不得重置撤回栈'); }}
+async function loadCards() {{ reloads++; }}
+const document = {{getElementById: () => null}};
+{save}
+(async () => {{
+  const first = saveCard();
+  while (!resolveFetch) await Promise.resolve();
+  selectSeq++; curCard = 'B'; formData = {{name: 'B'}};
+  resolveFetch({{ok: true, json: async () => ({{stem: 'A', updated: []}})}});
+  assert.strictEqual(await first, true);
+  assert.strictEqual(curCard, 'B');
+  assert.strictEqual(formData.name, 'B');
+  assert.strictEqual(cardData, null);
+  assert.strictEqual(cDirty, true);
+  assert.strictEqual(reloads, 0);
+
+  selectSeq = 0; contentRev = 0; curCard = 'A'; formData = {{name: 'A'}};
+  cardData = null; cDirty = true; resolveFetch = null;
+  const second = saveCard();
+  while (!resolveFetch) await Promise.resolve();
+  contentRev++;  // 模拟写盘在途时键盘继续编辑
+  resolveFetch({{ok: true, json: async () => ({{stem: 'A', updated: []}})}});
+  assert.strictEqual(await second, true);
+  assert.deepStrictEqual(cardData, {{name: 'A'}});
+  assert.strictEqual(cDirty, true);
+  assert.strictEqual(reloads, 0);
+  assert.ok(cStatusEl.textContent.includes('仍未保存'));
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_active_input_blocks_form_rebuild_and_write_tracking_excludes_preview(tmp_path):
+    """键盘路径也不能销毁活动输入框；预览请求不计入写盘交互锁。"""
+    script = _script()
+    build_card = _extract_js(script, "function buildForm()")
+    build_mech = _extract_js(script, "function buildMechForm()")
+    tracks = _extract_js(script, "function tracksStorageWrite(args)")
+    driver = f"""
+const assert = require('node:assert');
+let activeAsk = {{title: '新版本'}};
+{build_card}
+{build_mech}
+{tracks}
+buildForm();
+buildMechForm();  // 活动输入时提前返回，无需访问/清空 DOM
+assert.strictEqual(tracksStorageWrite(['/api/preview', {{method: 'POST'}}]), false);
+assert.strictEqual(tracksStorageWrite(['/api/entity-preview', {{method: 'POST'}}]), false);
+assert.strictEqual(tracksStorageWrite(['/api/client-log', {{method: 'POST'}}]), false);
+assert.strictEqual(tracksStorageWrite(['/api/projects/P/cards/A', {{method: 'PUT'}}]), true);
+assert.strictEqual(tracksStorageWrite(['/api/projects/P/cards/A/artwork?x=1', {{method: 'POST'}}]), true);
+console.log('OK');
 """
     _run_node(tmp_path, driver)
 
@@ -548,6 +723,8 @@ const assert = require('node:assert');
 let cDirty = true, mDirty = false, curMech = null;
 const formData = {{id: '', version_date: '20261027'}}, mechForm = null;
 function confirm() {{ throw new Error('不应再调用原生 confirm'); }}
+function askBusy() {{ return false; }}
+function storageBusy() {{ return false; }}
 async function sessionConfirm(message, kind) {{ return kind === 'naming'; }}
 {discard}
 {naming}
@@ -832,6 +1009,7 @@ const document = {{
 }};
 {style_keys}
 {propagate}
+let activeAsk = null;
 {functions}
 entityLayoutMode = true;
 assert.strictEqual(typeLayout(), layouts['对局式神']);
@@ -897,6 +1075,7 @@ const elems = element('div');
 const document = {{getElementById: () => elems, createElement: element}};
 let sel = null;
 function refreshSel() {{}}
+let activeAsk = null;
 {functions}
 buildLists();
 const items = elems.children;
@@ -943,6 +1122,7 @@ const document = {{getElementById: () => props, createElement: element}};
 function disp(key) {{ return key; }}
 function markDirty() {{ dirty = true; }}
 function schedulePreview() {{ scheduled++; }}
+let activeAsk = null;
 {functions}
 assert.deepStrictEqual(layoutRegions(), {{art_window: entity.art_window}});
 assert.deepStrictEqual(Object.keys(layoutRegions()), ['art_window']);
@@ -1010,6 +1190,7 @@ async function fetch(url, options) {{
   requests.push({{url, options}});
   return {{ok: true, headers: {{get: () => '0,0'}}, blob: async () => ({{kind: 'png'}})}};
 }}
+let activeAsk = null;
 {functions}
 (async () => {{
   await refreshPreview();
@@ -1049,6 +1230,7 @@ function element(tag) {{ return {{tag, children: [], textContent: '', value: '',
 const div = element('div');
 const document = {{getElementById: () => div, createElement: element}};
 {sample}
+let activeAsk = null;
 {functions}
 buildCardProps();
 assert.deepStrictEqual(div.children.map(x => x.textContent), ['力量 ', '生命 ', '战力 ', '护甲 ']);
@@ -1187,6 +1369,7 @@ let entityState = null;
 let cDirty = false;
 let scheduled = 0;
 function scheduleEntityPreview() {{ scheduled++; }}
+let activeAsk = null;
 {functions}
 assert(entityEligible({{type: '式神'}}));
 assert(entityEligible({{type: '形态'}}));
@@ -1254,6 +1437,7 @@ const cErrorEl = {{textContent: ''}};
 const URL = {{createObjectURL: () => 'blob:new', revokeObjectURL() {{}}}};
 async function fetch() {{ return {{ok: true, blob: async () => ({{kind: 'png'}})}}; }}
 async function cHandleEntityPreviewResponse(r, seq) {{ cEntityImg.src = 'blob:entity'; }}
+let activeAsk = null;
 {functions}
 (async () => {{
   await cPreviewPortrait(false);
@@ -1316,6 +1500,7 @@ async function fetch(url, options) {{
   return {{ok: true, blob: async () => ({{kind: 'png'}})}};
 }}
 async function parseErrorDetail(response) {{ return ['bad']; }}
+let activeAsk = null;
 {functions}
 (async () => {{
   await entityPreview();
@@ -1430,6 +1615,7 @@ function enc(value) {{ return value; }}
 let releaseEntity, releasePortrait;
 async function fetch() {{ return {{ok: true,
   blob: () => new Promise(resolve => {{ releasePortrait = resolve; }})}}; }}
+let activeAsk = null;
 {functions}
 (async () => {{
   const oldEntity = cHandleEntityPreviewResponse({{ok: true,
@@ -1552,6 +1738,7 @@ const frames = new Map();
 function requestAnimationFrame(fn) {{ const id = ++nextFrame; frames.set(id, fn); return id; }}
 function cancelAnimationFrame(id) {{ frames.delete(id); }}
 function runFrame(id) {{ const fn = frames.get(id); frames.delete(id); fn(); }}
+let activeAsk = null;
 {functions}
 for (let i = 1; i <= 20; i++) {{
   formData.artwork.images[0].offset_x = i;
@@ -1602,6 +1789,7 @@ function entityPreview() {{}}
 function cPreviewPortrait() {{}}
 function requestAnimationFrame() {{ throw new Error('本测试直接刷新'); }}
 function cancelAnimationFrame() {{}}
+let activeAsk = null;
 {functions}
 async function settle() {{
   pending.shift()();
@@ -1672,6 +1860,7 @@ function makeImage(channel) {{
     getBoundingClientRect: () => ({{width: 100}})}};
 }}
 const artImg = makeImage('art'), cPortraitImg = makeImage('portrait');
+let activeAsk = null;
 {functions}
 bindArtMouse(artImg);
 bindArtMouse(cPortraitImg);
@@ -1731,6 +1920,7 @@ function setTimeout(fn) {{ const id = ++nextTimer; timers.set(id, fn); return id
 function clearTimeout(id) {{ timers.delete(id); }}
 function requestAnimationFrame(fn) {{ const id = ++nextFrame; frames.set(id, fn); return id; }}
 function cancelAnimationFrame(id) {{ frames.delete(id); }}
+let activeAsk = null;
 {functions}
 scheduleCardPreview();
 scheduleEntityPreview();
@@ -1779,6 +1969,7 @@ function entityPreview() {{ entities++; }}
 function cPreviewPortrait() {{ portraits++; }}
 async function cHandlePreviewResponse() {{ handled++; }}
 async function fetch() {{ return {{ok: true}}; }}
+let activeAsk = null;
 {functions}
 (async () => {{
   scheduleCardPreview();
@@ -1833,6 +2024,7 @@ async function fetch(url) {{
   const stem = url.endsWith('/A') ? 'A' : 'B';
   return {{ok: true, json: () => new Promise(resolve => {{ pending[stem] = resolve; }})}};
 }}
+let activeAsk = null;
 {functions}
 (async () => {{
   const a = selectCard('A');
@@ -1900,6 +2092,7 @@ let resolveA;
 async function fetch() {{
   return {{ok: true, json: () => new Promise(resolve => {{ resolveA = resolve; }})}};
 }}
+let activeAsk = null;
 {functions}
 (async () => {{
   const a = selectCard('A');
@@ -1958,6 +2151,7 @@ let nextFrame = 0;
 const frames = new Map(), cancelled = [];
 function requestAnimationFrame(fn) {{ const id = ++nextFrame; frames.set(id, fn); return id; }}
 function cancelAnimationFrame(id) {{ cancelled.push(id); frames.delete(id); }}
+let activeAsk = null;
 {functions}
 scheduleMousePreview('art');
 scheduleMousePreview('art');
@@ -2022,6 +2216,7 @@ const document = {{getElementById: () => ({{textContent: ''}})}};
 let portraitRequests = 0;
 async function fetch() {{ return {{ok: true, blob: async () => 'portrait-' + (++portraitRequests)}}; }}
 function success(url) {{ return {{ok: true, blob: async () => url}}; }}
+let activeAsk = null;
 {functions}
 const mainResponse = r => cHandlePreviewResponse(r, ++cPreviewSeq);
 const entityResponse = r => cHandleEntityPreviewResponse(r, ++cEntitySeq);
@@ -2076,6 +2271,7 @@ async function parseErrorDetail(response) {{ return [response.detail]; }}
 function success(url) {{ return {{ok: true, blob: async () => url}}; }}
 function failure(detail) {{ return {{ok: false, detail}}; }}
 {error_helper}
+let activeAsk = null;
 {functions}
 const mainResponse = r => cHandlePreviewResponse(r, ++cPreviewSeq);
 const entityResponse = r => cHandleEntityPreviewResponse(r, ++cEntitySeq);
@@ -2147,6 +2343,7 @@ function resetUndo() {{}}
 function buildForm() {{}}
 function cPreviewProject() {{}}
 async function fetch() {{ return {{ok: true, json: async () => ({{type: '形态', name: '新', power: 3, health: 4}})}}; }}
+let activeAsk = null;
 {functions}
 (async () => {{
   await selectCard('new');
@@ -2219,6 +2416,7 @@ const normalButton = element('button'); normalButton.textContent = '保存';
 form.appendChild(normalLabel); form.appendChild(normalButton);
 const document = {{createElement: element}};
 const buildFormSource = {build_form!r};
+let activeAsk = null;
 {functions}
 appendEntityForm(form);
 assert.strictEqual(form.children[0], normalLabel);

@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 import pytest
 import yaml
@@ -30,11 +31,12 @@ def with_today(card):
     return {**card, "version_date": TODAY}
 
 
-def entry(stem, name, cid=None, vd=TODAY, shiki=None, stats=False, rarity="R"):
+def entry(stem, name, cid=None, vd=TODAY, shiki=None, stats=False, rarity="R", ctype=None):
     """单版本分组条目（list_cards/list_mechanisms 口径；stats=附式神基础值）。"""
     version = {"stem": stem, "date": vd}
     if shiki is not None or stats:
-        version.update(rarity=None if stats else rarity, shikigami=shiki,
+        version.update(type=ctype or ("式神" if stats else "战斗"),
+                       rarity=None if stats else rarity, shikigami=shiki,
                        shikigami1=None, shikigami2=None)
     data = {"stem": stem, "name": name, "id": cid,
             "versions": [version], "count": 1,
@@ -197,7 +199,7 @@ def test_list_cards_reads_name_and_sorts(lib):
     assert listed["shikigami"] == [entry("100307", "山风", stats=True)]
     assert listed["cards"] == [
         entry("10030701", "斩", shiki="山风"),
-        entry("10030702", "烈", shiki="山风", rarity="SR"),
+        entry("10030702", "烈", shiki="山风", rarity="SR", ctype="法术"),
         entry("坏", None, vd=""),
     ]
 
@@ -755,9 +757,10 @@ def test_list_cards_versions_carry_deck_snapshot_metadata(lib):
     save_card(lib, "山风", "斩@20260201",
               {**FIGHT, "rarity": "SR", "shikigami": "薰", "version_date": "20260201"})
     versions = list_cards(lib, "山风")["cards"][0]["versions"]
-    assert versions[0] == {"stem": "斩@20260201", "date": "20260201", "rarity": "SR",
-                           "shikigami": "薰", "shikigami1": None, "shikigami2": None}
-    assert versions[1] == {"stem": "斩", "date": "20260101", "rarity": "R",
+    assert versions[0] == {"stem": "斩@20260201", "date": "20260201", "type": "战斗",
+                           "rarity": "SR", "shikigami": "薰",
+                           "shikigami1": None, "shikigami2": None}
+    assert versions[1] == {"stem": "斩", "date": "20260101", "type": "战斗", "rarity": "R",
                            "shikigami": "山风", "shikigami1": None, "shikigami2": None}
 
 
@@ -836,6 +839,20 @@ def test_mechanism_versions(lib):
         new_mechanism_version(lib, "魔蛊@20260301", "20260301")
 
 
+def test_blank_mechanism_date_is_saved_as_compact_yyyymmdd(lib):
+    path = save_mechanism(lib, "蛊蚀", {**MECH, "version_date": ""})
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert raw["version_date"] == TODAY and "-" not in raw["version_date"]
+
+
+def test_new_mechanism_version_rejects_missing_name(lib):
+    mdir = lib / "mechanisms"
+    mdir.mkdir(parents=True)
+    (mdir / "坏.yaml").write_text("frame: skill\ntext: ''\n", encoding="utf-8")
+    with pytest.raises(StoreError, match="缺少有效名称"):
+        new_mechanism_version(lib, "坏", "20260101")
+
+
 def test_cleanup_unused_images(lib):
     create_project(lib, "山风")
     images = lib / "山风" / "images"
@@ -848,6 +865,69 @@ def test_cleanup_unused_images(lib):
     assert sorted(d.replace("\\", "/") for d in deleted) == ["山风/images/orphan.jpg", "山风/images/orphan.png"]
     assert (images / "used.png").is_file() and (images / "烈.png").is_file()
     assert (images / "notes.txt").is_file()  # 非图片不动
+
+
+def test_cleanup_preserves_all_images_when_any_yaml_is_broken(lib):
+    """损坏 YAML 不可按“无引用”处理：整个项目跳过清理，避免二次数据损失。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", {**FIGHT, "artwork": {"images": [{"path": "used.png"}]}})
+    images = lib / "山风" / "images"
+    (images / "used.png").write_bytes(b"used")
+    (images / "orphan.png").write_bytes(b"orphan")
+    (lib / "山风" / "cards" / "斩.yaml").write_text("name: [unterminated", encoding="utf-8")
+    assert cleanup_unused_images(lib) == []
+    assert (images / "used.png").is_file() and (images / "orphan.png").is_file()
+
+
+def test_cleanup_normalizes_relative_artwork_paths(lib):
+    """sub/../used.png 与 used.png 是同一引用，路径未归一不得误删。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", {**FIGHT, "artwork": {"images": [{"path": "sub/../used.png"}]}})
+    images = lib / "山风" / "images"
+    (images / "used.png").write_bytes(b"used")
+    (images / "orphan.png").write_bytes(b"orphan")
+    deleted = cleanup_unused_images(lib)
+    assert [Path(d).name for d in deleted] == ["orphan.png"]
+    assert (images / "used.png").is_file()
+
+
+def test_shikigami_rename_failure_rolls_back_references(lib, monkeypatch):
+    """主卡写盘失败时，已改写的引用也必须回滚，不能留下悬空新名。"""
+    from bwpdiy.store import projects
+    create_project(lib, "山风")
+    save_card(lib, "山风", "旧名", {**SHIKIGAMI, "name": "旧名"})
+    save_card(lib, "山风", "斩", {**FIGHT, "shikigami": "旧名"})
+    original = projects._dump_yaml
+
+    def fail_main(path, data):
+        if path.name == "旧名.yaml" and data.get("name") == "新名":
+            raise OSError("模拟主文件写盘失败")
+        return original(path, data)
+
+    monkeypatch.setattr(projects, "_dump_yaml", fail_main)
+    with pytest.raises(OSError, match="模拟主文件"):
+        save_card(lib, "山风", "旧名", {**SHIKIGAMI, "name": "新名"})
+    assert load_card(lib, "山风", "旧名")["name"] == "旧名"
+    assert load_card(lib, "山风", "斩")["shikigami"] == "旧名"
+
+
+def test_list_cards_treats_malformed_group_key_as_broken_entry(lib):
+    """手改 name 为列表时仅该文件标损坏，不得让 unhashable 值拖垮项目列表。"""
+    create_project(lib, "山风")
+    (lib / "山风" / "cards" / "bad.yaml").write_text("name: [坏, 列表]\ntype: 战斗\n", encoding="utf-8")
+    listed = list_cards(lib, "山风")["cards"]
+    assert len(listed) == 1 and listed[0]["stem"] == "bad" and listed[0]["name"] is None
+
+
+def test_schema_rejects_nonfinite_layout_values_and_overlong_stats(lib):
+    """NaN/Infinity 与超 12 位数值在保存前拒绝，避免异常渲染/巨量分配。"""
+    base = {**SHIKIGAMI, "artwork": {"images": [{"scale": float("nan")}]}}
+    assert any("scale" in e for e in validate_card(base))
+    assert any("offset_x" in e for e in validate_card(
+        {**SHIKIGAMI, "portrait": {"offset_x": float("inf")}}))
+    assert any("layout" in e for e in validate_card(
+        {**SHIKIGAMI, "layout": {"elements": {"name": {"pos": [float("inf"), 0]}}}}))
+    assert any("12 位" in e for e in validate_card({**SHIKIGAMI, "power": 10 ** 12}))
 
 
 def test_legacy_dashed_version_date_normalized(lib):

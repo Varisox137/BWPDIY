@@ -172,10 +172,9 @@ def test_no_idle_stop_disables_watchdog(fakes, monkeypatch):
     assert seen == [0, 7200.0]
 
 
-def test_unreleased_changes_are_consolidated_into_1_7_3():
+def test_current_version_has_changelog():
     from bwpdiy import __version__
     from bwpdiy.changelog import CHANGELOG
 
-    assert __version__ == "1.7.3"
-    assert "1.7.3" in CHANGELOG
+    assert __version__ in CHANGELOG
     assert "1.6.3" not in CHANGELOG

@@ -1,13 +1,16 @@
 """单次运行文件日志：启动时初始化，供用户提交单次运行记录排查问题。
 
-每次启动在 <运行目录>/logs/ 写 bwpdiy-YYYYMMDD-HHMMSS.log（UTF-8，exe 取 exe 所在
+每次启动在 <运行目录>/logs/ 写 bwpdiy-YYYYMMDD-HHMMSS-PID.log（UTF-8，exe 取 exe 所在
 目录、开发取 cwd；不可写回退系统临时目录 bwpdiy-logs/），同时保留控制台输出；
-最多保留最近 10 次运行日志，启动时同时删除超过 7 天的旧日志。内容：版本/启动参数、uvicorn 服务日志（access 降级
-WARNING 防刷屏）、更新全过程（updater 模块日志）、未捕获异常。纯本地工具无账号
-体系，日志不含卡牌/项目内容，仅路径与事件。
+最多保留最近 10 次运行日志，启动时同时删除超过 7 天的旧日志。文件记录 DEBUG
+及以上（GUI 按钮/字段变更、上传/保存与本地写操作），控制台只显示 INFO 及以上；
+另有版本/启动参数、uvicorn 服务日志（access 降级 WARNING）、更新全过程与未捕获异常。
+纯本地工具无账号体系；文本正文不写入日志，字段文本变更只记录长度，写操作记录
+资源路径与 HTTP 结果。
 """
 
 import logging
+import os
 import sys
 import tempfile
 import threading
@@ -59,23 +62,31 @@ def setup_run_logging(log_dir: Path | None = None) -> Path:
         except OSError:
             log_dir = Path(tempfile.gettempdir()) / "bwpdiy-logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    path = log_dir / time.strftime("bwpdiy-%Y%m%d-%H%M%S.log")
+    path = log_dir / (time.strftime("bwpdiy-%Y%m%d-%H%M%S") + f"-{os.getpid()}.log")
 
     now = time.time()
     old = sorted(log_dir.glob("bwpdiy-*.log"))
     for stale in old:
-        if now - stale.stat().st_mtime > _LOG_MAX_AGE_SECONDS:
-            stale.unlink(missing_ok=True)
+        try:
+            if now - stale.stat().st_mtime > _LOG_MAX_AGE_SECONDS:
+                stale.unlink(missing_ok=True)
+        except OSError:
+            pass  # 多实例同时清理时文件可能已被另一进程删除
     old = [p for p in old if p.exists()]
     for stale in old[:max(0, len(old) - (_KEEP - 1))]:  # 给本次新文件留位
-        stale.unlink(missing_ok=True)
+        try:
+            stale.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     root = logging.getLogger()
-    root.setLevel(logging.INFO)
+    root.setLevel(logging.DEBUG)
     fmt = "%(asctime)s %(levelname)s %(name)s: %(message)s"
     file_handler = logging.FileHandler(path, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)  # 文件保留完整 DEBUG 轨迹
     file_handler.setFormatter(logging.Formatter(fmt))
     console = logging.StreamHandler()
+    console.setLevel(logging.INFO)  # 控制台不因高频 GUI/写操作事件刷屏
     console.setFormatter(LevelColorFormatter(fmt, color=console.stream.isatty()))
     root.addHandler(file_handler)
     root.addHandler(console)

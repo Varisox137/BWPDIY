@@ -307,14 +307,45 @@ let samples = null;          // 六类型样卡字段（/api/samples），布局
 // 此后一切请求连接失败——包装 fetch 统一捕获，弹一次说明（JSON 解析失败等非
 // 网络错误不触发：只有 fetch 自身 reject 才是连接级失败）
 let serverDownShown = false;
+let pendingStorageWrites = 0;
 const _origFetch = window.fetch.bind(window);
-window.fetch = (...args) => _origFetch(...args).catch(e => {
-  if (!serverDownShown) {
-    serverDownShown = true;
-    document.getElementById('server-down-modal').style.display = 'block';
-  }
-  throw e;
-});
+function tracksStorageWrite(args) {
+  const [resource, options = {}] = args;
+  const method = (options.method || resource.method || 'GET').toUpperCase();
+  const url = typeof resource === 'string' ? resource : resource.url;
+  return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
+    && !url.endsWith('preview') && !url.includes('/api/client-log');
+}
+window.fetch = (...args) => {
+  const tracked = tracksStorageWrite(args);
+  if (tracked) pendingStorageWrites++;
+  return _origFetch(...args).catch(e => {
+    if (!serverDownShown) {
+      serverDownShown = true;
+      document.getElementById('server-down-modal').style.display = 'block';
+    }
+    throw e;
+  }).finally(() => { if (tracked) pendingStorageWrites--; });
+};
+// GUI 事件写入单次运行日志；绕过服务失联弹窗，日志失败不影响编辑操作。
+function guiDebug(event, detail = '') {
+  const text = typeof detail === 'string' ? detail : JSON.stringify(detail);
+  _origFetch('/api/client-log', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({event, detail: text})}).catch(() => {});
+}
+document.addEventListener('click', ev => {
+  const button = ev.target.closest('button');
+  if (button) guiDebug('button.click', button.id || button.textContent.trim().slice(0, 80));
+}, true);
+document.addEventListener('change', ev => {
+  const el = ev.target;
+  if (!el.matches('input, select, textarea') || el.type === 'file') return;
+  const label = el.id || (el.closest('label') ? el.closest('label').textContent.trim() : '') || el.type;
+  const isText = el.tagName === 'TEXTAREA' || ['text', 'search', 'password'].includes(el.type);
+  const value = el.type === 'checkbox' ? el.checked
+    : (isText ? `(已修改，长度 ${el.value.length})` : el.value);
+  guiDebug('field.change', `${label.replace(/\s+/g, ' ').slice(0, 80)}=${value}`);
+}, true);
 
 async function ensureLayouts() {
   if (!layouts) layouts = await (await fetch('/api/layout')).json();
@@ -424,6 +455,7 @@ function resetUndo() {
   lastEditAt = 0;
 }
 function noteEdit() {  // 每次表单变更后调用（afterEdit/afterMouseEdit 统一入口）
+  contentRev++;
   const now = Date.now();
   if (prevFormSnap && now - lastEditAt > UNDO_GAP) {
     undoStack.push(prevFormSnap);
@@ -451,6 +483,7 @@ function undoAll() {  // 撤回全部修改 = 恢复到上次保存/加载的状
   scheduleCardPreview();
 }
 let cDirty = false;
+let contentRev = 0;  // 写盘响应返回时识别期间是否又有键盘/程序化编辑
 // ---- 机制（灵咒/关键字/加护蚀印描述框）：全局共享池，不随项目切换；与选中卡牌互斥 ----
 let mechs = [];        // 机制列表（{stem, name}，与卡牌列表同口径）
 let curMech = null;    // 当前选中机制名
@@ -507,6 +540,7 @@ function finishSessionConfirm(ok) {
 document.getElementById('session-confirm-ok').onclick = () => finishSessionConfirm(true);
 document.getElementById('session-confirm-cancel').onclick = () => finishSessionConfirm(false);
 async function confirmDiscard() {
+  if (askBusy() || storageBusy()) return false;
   if (cDirty && !await sessionConfirm('当前卡牌有未保存修改，切换将丢弃，继续？', 'unsaved')) return false;
   if (mDirty && !await sessionConfirm('当前机制有未保存修改，切换将丢弃，继续？', 'unsaved')) return false;
   return true;
@@ -588,14 +622,29 @@ function shikiDeckValid(shikiName, groups) {
     const rarities = [];
     for (const group of owned) {
       const version = (group.versions || []).find(v => !v.date || !date || v.date <= date);
-      if (!version || version.shikigami1 || version.shikigami2 || version.shikigami !== shikiName) continue;
+      if (!version || version.type === '式神' || version.shikigami1 || version.shikigami2
+          || version.shikigami !== shikiName) continue;  // 协战/衍生物式神不计入稀有度校验
       rarities.push(version.rarity);
     }
-    if (rarities.length !== 8 || rarities.filter(r => r === 'R').length !== 4
-        || rarities.filter(r => r === 'SR').length !== 3
-        || rarities.filter(r => r === 'SSR').length !== 1) return false;
+    if (rarities.filter(r => r === 'R').length < 4
+        || rarities.filter(r => r === 'SR').length < 3
+        || rarities.filter(r => r === 'SSR').length < 1) return false;
   }
   return true;
+}
+function syncDeleteButtons() {
+  const hasStem = (group, stem) => !!stem && group.some(e =>
+    (e.versions || [{stem: e.stem}]).some(v => v.stem === stem));
+  const visible = {
+    'c-del-shiki': !curMech && hasStem(cards.shikigami, curCard),
+    'c-del-card': !curMech && hasStem(cards.cards, curCard),
+    'c-del-mech': !!curMech,
+  };
+  for (const [id, show] of Object.entries(visible)) {
+    const button = document.getElementById(id);
+    button.style.display = show ? '' : 'none';
+    button.disabled = !show;
+  }
 }
 function buildCardList() {
   const shikiDiv = document.getElementById('c-shikigami');
@@ -615,6 +664,7 @@ function buildCardList() {
     ? `${cards.cards.length}/299（筛选：${visible.length}）` : `${cards.cards.length}/299`;
   document.getElementById('c-neutral').textContent = neutralMode ? '显示全部卡牌' : '显示中立牌';
   fitListHeight(shikiDiv); fitListHeight(div);
+  syncDeleteButtons();
 }
 function entryItem(c, activeStem) {
   // 分组条目（v1.6.0）：卡名(id)（id 空不显示）+ 右侧非加粗 (版本数)；
@@ -650,7 +700,7 @@ function cardItem(c, isShiki) {
     if (!shikiDeckValid(c.name, cards.cards)) {
       const count = d.lastElementChild;
       count.classList.add('deck-invalid');
-      count.title = '卡组校验未通过：每个版本日期均须有 8 张非协战卡，且为 4R/3SR/1SSR';
+      count.title = '卡组校验未通过：每个版本日期在排除协战/衍生物式神后，至少须有 4R/3SR/1SSR';
     }
   }
   d.onclick = () => selectCard(c.stem);
@@ -686,6 +736,7 @@ async function selectCard(stem, force = false) {
   cPreviewProject();
 }
 function clearCard() {
+  if (activeAsk) return;  // 输入框挂载在表单内时，任何重建都不得将其销毁
   selectSeq++;
   clearTimeout(cPreviewTimer);
   clearTimeout(cPortraitTimer);
@@ -715,9 +766,45 @@ function clearCard() {
 }
 
 // ---- 项目/卡牌操作（新建/重命名/删除） ----
+// 所有内联输入共用一把交互锁：未确定/取消时禁止其他操作，避免表单重建销毁输入框、
+// Promise 永久等待；锁由两套输入框（通用 ask / 新建卡牌 askNewCard）共同遵守。
+let activeAsk = null;
+function askBusy() {
+  if (!activeAsk) return false;
+  showFormErrors([`请先确定或取消「${activeAsk.title}」输入，再进行其他操作。`]);
+  guiDebug('input.blocked', activeAsk.title);
+  return true;
+}
+function storageBusy() {
+  if (!pendingStorageWrites) return false;
+  showFormErrors(['上一次本地写盘尚未完成，请稍候再进行其他操作。']);
+  guiDebug('storage.blocked', `pending=${pendingStorageWrites}`);
+  return true;
+}
+function beginAsk(title) {
+  if (askBusy() || storageBusy()) return false;
+  activeAsk = {title};
+  guiDebug('input.open', title);
+  return true;
+}
+function endAsk() {
+  if (activeAsk) guiDebug('input.close', activeAsk.title);
+  activeAsk = null;
+}
+document.addEventListener('click', ev => {
+  if (activeAsk) {
+    if (document.getElementById('c-ask').contains(ev.target)) return;
+    ev.preventDefault(); ev.stopImmediatePropagation(); askBusy();
+    return;
+  }
+  if (pendingStorageWrites) {
+    ev.preventDefault(); ev.stopImmediatePropagation(); storageBusy();
+  }
+}, true);
 // 通用内联输入条：标题 + 文本框 + 可选下拉（selDefault 默认选中），确定/取消
 function ask({title, value = '', options = null, selDefault = null, target}) {
   return new Promise(resolve => {
+    if (!beginAsk(title)) { resolve(null); return; }
     const box = document.getElementById('c-ask');
     document.getElementById(target).appendChild(box);
     box.innerHTML = '';
@@ -745,7 +832,11 @@ function ask({title, value = '', options = null, selDefault = null, target}) {
     row.appendChild(ok); row.appendChild(cancel);
     box.appendChild(row);
     input.focus(); input.select();
+    let settled = false;
     const done = v => {
+      if (settled) return;
+      settled = true;
+      endAsk();
       document.getElementById('c-ask-home').appendChild(box);
       box.style.display = 'none'; box.innerHTML = ''; resolve(v);
     };
@@ -827,13 +918,15 @@ function uniqueStem(base) {
 // 新建卡牌专用对话框：类型六项 + 卡名 + 按类型的所属式神选择（不走通用 ask，项目场景还在用）
 function askNewCard(target) {
   const MANUAL = '（手动填写）';
+  const title = '新建卡牌（卡名 + 类型）';
   return new Promise(resolve => {
+    if (!beginAsk(title)) { resolve(null); return; }
     const box = document.getElementById('c-ask');
     document.getElementById(target).appendChild(box);
     box.innerHTML = '';
     box.style.display = 'block';
     const t = document.createElement('div');
-    t.textContent = '新建卡牌（卡名 + 类型）';
+    t.textContent = title;
     box.appendChild(t);
     const nameInput = document.createElement('input');
     nameInput.type = 'text'; nameInput.placeholder = '卡名';
@@ -887,7 +980,11 @@ function askNewCard(target) {
     row.appendChild(ok); row.appendChild(cancel);
     box.appendChild(row);
     nameInput.focus();
+    let settled = false;
     const done = v => {
+      if (settled) return;
+      settled = true;
+      endAsk();
       document.getElementById('c-ask-home').appendChild(box);
       box.style.display = 'none'; box.innerHTML = ''; resolve(v);
     };
@@ -1316,25 +1413,35 @@ async function createNewVersion() {
   if (r === null) return;
   const dateStr = r.text.trim();
   if (!validDateStr(dateStr) || !dateStr) { showFormErrors(['版本日期须为合法 YYYYMMDD（8 位数字）']); return; }
-  const isMech = !!curMech;
+  const isMech = !!curMech, seq = selectSeq;
   const url = isMech ? `/api/mechanisms/${enc(curMech)}/new_version`
     : `/api/projects/${enc(curProject)}/cards/${enc(curCard)}/new_version`;
   const resp = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({date: dateStr})});
-  if (!resp.ok) { showFormErrors(await parseErrorDetail(resp)); return; }
+  if (!resp.ok) {
+    const detail = await parseErrorDetail(resp);
+    if (seq === selectSeq) showFormErrors(detail);
+    return;
+  }
   const res = await resp.json();
+  if (seq !== selectSeq) return;
   if (isMech) { mDirty = false; await loadMechs(res.stem); }
   else { cDirty = false; await loadCards(res.stem); }
 }
 async function deleteCurrentVersion() {
-  const isMech = !!curMech;
+  const isMech = !!curMech, seq = selectSeq;
   const stem = curMech || curCard;
   if (!stem) return;
   if (!confirm(`删除当前版本「${stem}」？（同组其他版本不受影响）`)) return;
   const url = isMech ? `/api/mechanisms/${enc(stem)}`
     : `/api/projects/${enc(curProject)}/cards/${enc(stem)}`;
   const resp = await fetch(url, {method: 'DELETE'});
-  if (!resp.ok) { showFormErrors(await parseErrorDetail(resp)); return; }
+  if (!resp.ok) {
+    const detail = await parseErrorDetail(resp);
+    if (seq === selectSeq) showFormErrors(detail);
+    return;
+  }
+  if (seq !== selectSeq) return;
   const remaining = currentVersions().filter(v => v.stem !== stem);
   const next = remaining.length ? remaining[0].stem : null;  // versions 降序，首个=剩余最新版
   if (isMech) {
@@ -1399,6 +1506,7 @@ function appendEntityForm(div) {
 
 // ---- 右栏卡牌表单：按类型动态显隐字段，即时校验 + 防抖预览 ----
 function buildForm() {
+  if (activeAsk) return;  // 防止键盘/程序化变更绕过点击锁后销毁未完成输入框
   const div = document.getElementById('c-form');
   div.innerHTML = '';
   if (!formData) { div.textContent = '未选中卡牌'; return; }
@@ -1479,17 +1587,30 @@ function buildForm() {
   upBtn.textContent = '上传卡图';
   upBtn.onclick = () => fileInput.click();
   fileInput.onchange = async () => {
-    if (!curProject || !curCard) return;
+    if (!curProject || !curCard || askBusy() || storageBusy()) return;
     const f = fileInput.files[0];
     if (!f) return;
+    guiDebug('artwork.upload.start', `${f.name} (${f.size} bytes, ${f.type || 'unknown'})`);
     if (!await confirmFallbackNaming()) { fileInput.value = ''; return; }
+    const seq = selectSeq, project = curProject, stem = curCard, targetForm = formData;
+    const uploadId = formData.id ?? '';
     let resp;
     try {
-      resp = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/artwork?filename=${enc(f.name)}&id=${enc(formData.id ?? '')}`,
+      resp = await fetch(`/api/projects/${enc(project)}/cards/${enc(stem)}/artwork?filename=${enc(f.name)}&id=${enc(uploadId)}`,
         {method: 'POST', headers: {'Content-Type': 'application/octet-stream'}, body: f});
-    } catch (e) { showFormErrors(['上传请求失败: ' + e]); return; }
-    if (!resp.ok) { showFormErrors(await parseErrorDetail(resp)); return; }
+    } catch (e) {
+      if (seq === selectSeq) showFormErrors(['上传请求失败: ' + e]);
+      return;
+    }
+    if (!resp.ok) {
+      guiDebug('artwork.upload.failed', `HTTP ${resp.status}`);
+      const detail = await parseErrorDetail(resp);
+      if (seq === selectSeq) showFormErrors(detail);
+      return;
+    }
     const res = await resp.json();
+    guiDebug('artwork.upload.saved', res.path);
+    if (seq !== selectSeq || formData !== targetForm) return;  // 旧上传不得污染新卡/已撤回表单
     // 上传已写盘：把 artwork 路径并进表单数据（不置脏），避免后续保存用旧值覆盖
     ensureArtFirst().path = res.path;
     buildForm();  // 重建表单：立即出现卡图定位输入框（原先仅表单构建时按旧 path 条件渲染）
@@ -1881,6 +2002,7 @@ function validateCardJS(d) {
     if (t === '法术' && !evolve) { errors.push(`字段 ${f}：仅觉醒法术牌（evolve: true）可携带数值`); continue; }
     if (!Number.isInteger(d[f])) errors.push(`字段 ${f}：必须是整数`);
     else if (!SIGNED_STATS.includes(f) && d[f] < 0) errors.push(`字段 ${f}：必须是非负整数`);
+    else if (Math.abs(d[f]) > 999999999999) errors.push(`字段 ${f}：数值位数不得超过 12 位`);
   }
   // [[关键字]] 括号不校验：未匹配括号按字面文本显示（口径对齐渲染层 parse_keyword_segments）
   return errors;
@@ -1888,22 +2010,40 @@ function validateCardJS(d) {
 
 // ---- 保存：422 错误按三结构解析显示在表单侧 ----
 async function saveCard() {
+  if (askBusy() || storageBusy()) return false;
+  guiDebug('save.card.start', curCard || '');
   const errs = validateCardJS(formData);
   if (errs.length) { showFormErrors(errs); return false; }
   if (!await confirmFallbackNaming()) return false;
+  const seq = selectSeq, rev = contentRev, project = curProject, stem = curCard;
+  const payload = deepCopy(formData);
   let r;
   try {
-    r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}`, {method: 'PUT',
-      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(formData)});
-  } catch (e) { showFormErrors(['保存请求失败: ' + e]); return false; }
-  if (!r.ok) { showFormErrors(await parseErrorDetail(r)); return false; }
-  cardData = deepCopy(formData);
+    r = await fetch(`/api/projects/${enc(project)}/cards/${enc(stem)}`, {method: 'PUT',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+  } catch (e) {
+    if (seq === selectSeq) showFormErrors(['保存请求失败: ' + e]);
+    return false;
+  }
+  if (!r.ok) {
+    const detail = await parseErrorDetail(r);
+    if (seq === selectSeq) showFormErrors(detail);
+    return false;
+  }
+  const res = await r.json();
+  if (seq !== selectSeq) return true;  // 已切卡：旧响应不得改写新卡表单/选中态
+  if (res.stem) curCard = res.stem;
+  cardData = deepCopy(payload);
+  if (rev !== contentRev) {  // 保存期间又有编辑：保留新编辑与脏标记，不以旧快照覆盖
+    cDirty = true;
+    cStatusEl.textContent = '已保存；此后修改仍未保存';
+    return true;
+  }
   cDirty = false;
   resetUndo();  // 保存后撤回基准=已保存状态，清空撤回栈
   const d = document.getElementById('c-dirty');
   if (d) d.textContent = '';
   showFormErrors([]);
-  const res = await r.json();
   cStatusEl.textContent = '已保存';
   if (res.updated && res.updated.length) {
     // 式神卡改名：服务端已联动同项目卡的所属式神引用，列表显示名随之刷新
@@ -1911,7 +2051,6 @@ async function saveCard() {
   }
   // 无 id 卡改名时服务端已重命名配置文件（res.stem 为新文件名）；
   // 总是刷新左侧栏（卡名/文件名变化即时体现）并重新选中当前卡（表单/预览随刷新）
-  if (res.stem) curCard = res.stem;
   await loadCards(curCard);
   return true;
 }
@@ -2007,6 +2146,7 @@ function buildMechList() {
     div.appendChild(d);
   }
   fitListHeight(div);
+  syncDeleteButtons();
 }
 async function loadMechs(selectName = null) {
   let r;
@@ -2046,6 +2186,7 @@ async function selectMech(name, force = false) {
 // ---- 机制表单：关键字名 / 框类型 / 角标（仅 seal 框）/ 描述 ----
 function setMechField(k, v) { mechForm[k] = v; afterMechEdit(); }
 function afterMechEdit(rebuild = false) {
+  contentRev++;
   mDirty = true;
   if (rebuild) buildMechForm();  // 框类型切换影响角标下拉显隐，整表重建
   else {
@@ -2056,6 +2197,7 @@ function afterMechEdit(rebuild = false) {
   scheduleMechPreview();
 }
 function buildMechForm() {
+  if (activeAsk) return;
   const div = document.getElementById('c-form');
   div.innerHTML = '';
   if (!mechForm) { div.textContent = '未选中机制'; return; }
@@ -2138,18 +2280,35 @@ async function mechPreview(withForm) {
 
 // ---- 机制保存：关键字名即机制名，改名随保存联动（服务端重命名文件，同卡牌口径） ----
 async function saveMech() {
+  if (askBusy() || storageBusy()) return;
+  guiDebug('save.mechanism.start', curMech || '');
   const errs = validateMechJS(mechForm);
   if (errs.length) { showFormErrors(errs); return; }
   if (!await confirmFallbackNaming()) return;
-  const oldName = curMech;
+  const seq = selectSeq, rev = contentRev, oldName = curMech;
+  const payload = deepCopy(mechForm);
   let r;
   try {
     r = await fetch(`/api/mechanisms/${enc(oldName)}`, {method: 'PUT',
-      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(mechForm)});
-  } catch (e) { showFormErrors(['保存请求失败: ' + e]); return; }
-  if (!r.ok) { showFormErrors(await parseErrorDetail(r)); return; }
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+  } catch (e) {
+    if (seq === selectSeq) showFormErrors(['保存请求失败: ' + e]);
+    return;
+  }
+  if (!r.ok) {
+    const detail = await parseErrorDetail(r);
+    if (seq === selectSeq) showFormErrors(detail);
+    return;
+  }
   const res = await r.json();
-  mechData = deepCopy(mechForm);
+  if (seq !== selectSeq) return;
+  if (res.stem) curMech = res.stem;  // 改名已写盘时即使后续有编辑，也须指向新文件
+  mechData = deepCopy(payload);
+  if (rev !== contentRev) {
+    mDirty = true;
+    cStatusEl.textContent = '已保存；此后修改仍未保存';
+    return;
+  }
   mDirty = false;
   cStatusEl.textContent = '已保存';
   await loadMechs(res.stem || oldName);  // 按最终文件名重选（改名/改日期会重命名文件）

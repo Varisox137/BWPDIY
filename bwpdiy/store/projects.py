@@ -6,7 +6,7 @@
     library/<项目名>/images/                       卡图原图
     library/mechanisms/<机制名>[@<版本日期>].yaml  机制描述框（全局共享池，不属任何项目）
 
-多版本（v1.6.0）：每版本一个 yaml 文件，「新版本」创建的文件名为 基础stem@YYYY-MM-DD
+多版本（v1.6.0）：每版本一个 yaml 文件，「新版本」创建的文件名为 基础stem@YYYYMMDD
 （无 @ 的旧文件=单版本，不强制迁移命名）。version_date 保存时校验合法日期、留空填当天。
 卡牌按 id+name 均相同归组（id 缺省按空串），机制按 name 归组；数量限制按组数计。
 同组各版本共享 layout 与 artwork（同图同设置）：保存任一版本后同步到组内其他版本。
@@ -159,12 +159,15 @@ def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = Fal
     """(路径, 数据|None) → 分组条目：stem=最新版本（date 最大、并列取 stem 大者；
     缺日期视为最旧），versions 按日期降序，count=版本数；损坏文件单列不合并。
     include_stats 时附最新基础力量/生命，供觉醒小卡查找所属式神默认值。
-    version_meta 时逐版本附稀有度/所属式神，供 GUI 校验每个日期的卡组快照。
-    机制复用：_group_key 的 id 恒空、name=机制名，天然按名归组。"""
+    version_meta 时逐版本附类型/稀有度/所属式神，供 GUI 校验每个日期的卡组快照。
+    机制复用：_group_key 的 id 恒空、name=机制名，天然按名归组。name/id 非字符串
+    （或缺失）的手改损坏数据按损坏文件单列，不让 unhashable 值拖垮整个列表。"""
     groups: dict[tuple[str, str], list[tuple[Path, dict]]] = {}
     out = []
     for path, data in items:
-        if data is None:
+        malformed = data is not None and any(
+            not isinstance(data.get(key), (str, type(None))) for key in ("id", "name"))
+        if data is None or malformed:
             out.append({"stem": path.stem, "name": None, "id": None,
                         "versions": [{"stem": path.stem, "date": ""}], "count": 1,
                         "shikigami": None, "shikigami1": None, "shikigami2": None})
@@ -175,7 +178,8 @@ def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = Fal
         for p, d in versions:
             version = {"stem": p.stem, "date": _norm_date(d.get("version_date")) or ""}
             if version_meta:
-                version.update(rarity=d.get("rarity"), shikigami=d.get("shikigami"),
+                version.update(type=d.get("type"), rarity=d.get("rarity"),
+                               shikigami=d.get("shikigami"),
                                shikigami1=d.get("shikigami1"), shikigami2=d.get("shikigami2"))
             vs.append(version)
         vs.sort(key=lambda v: (v["date"], v["stem"]))
@@ -200,7 +204,7 @@ def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = Fal
 
 
 def _checked_new_date(value) -> str:
-    """新版本日期：留空取当天；否则须合法 YYYY-MM-DD。"""
+    """新版本日期：留空取当天；否则须合法 YYYYMMDD。"""
     vd = value or date.today().strftime("%Y%m%d")
     errors = _validate_version_date(vd)
     if errors:
@@ -366,15 +370,40 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
             raise SchemaError([f"版本日期「{data['version_date']}」对应的文件 {target.name} 已存在，"
                                f"无法重命名；请更换日期"])
         rename_to = target
-    # 改名联动：旧盘内容（式神卡）name 变化时，改写全项目其他卡的式神引用
-    if (sub == "shikigami" and isinstance(old_name, str) and old_name
-            and old.get("type") == "式神" and old_name != data["name"]):
-        updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
-    _dump_yaml(path, data)
-    if rename_to is not None and rename_to != path:
-        os.replace(path, rename_to)
-        path = rename_to
-    _propagate_shared(pdir, sub, path, data)
+    # 联动引用/主文件/重命名/共享段是一个逻辑事务：先备份所有可能被改写的文件，
+    # 任一步失败都尽力回滚，避免主卡旧名未改而其他卡已指向新名等半完成状态。
+    affected = {path}
+    if rename_to is not None:
+        affected.add(rename_to)
+    renaming_shiki = (sub == "shikigami" and isinstance(old_name, str) and old_name
+                      and old.get("type") == "式神" and old_name != data["name"])
+    if renaming_shiki:
+        for group in ("shikigami", "cards"):
+            cdir = pdir / group
+            for p in cdir.glob("*.yaml") if cdir.is_dir() else []:
+                other_data = _read_yaml(p)
+                if other_data and any(other_data.get(f) == old_name for f in _REF_FIELDS):
+                    affected.add(p)
+    affected.update(p for p, _ in _card_group(pdir, sub, _group_key(data)))
+    backups = {p: p.read_bytes() if p.is_file() else None for p in affected}
+    try:
+        if renaming_shiki:
+            updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
+        _dump_yaml(path, data)
+        if rename_to is not None and rename_to != path:
+            os.replace(path, rename_to)
+            path = rename_to
+        _propagate_shared(pdir, sub, path, data)
+    except BaseException:
+        for p, content in backups.items():
+            try:
+                if content is None:
+                    p.unlink(missing_ok=True)
+                else:
+                    p.write_bytes(content)
+            except OSError:
+                pass  # 保留原异常；回滚失败须由用户从备份/版本控制恢复
+        raise
     return path, updated
 
 
@@ -453,21 +482,26 @@ def cleanup_unused_images(library: Path) -> list[str]:
     """删除各项目 images/ 下未被任何卡牌版本引用的图片（png/jpg/jpeg/webp）。
 
     引用=所有版本 artwork.images[].path；无显式 path 时缺省 <id 或卡名>.png 也算
-    使用（与渲染回退口径一致）。返回删除文件的相对路径列表（供运行日志）。
+    使用（与渲染回退口径一致）。路径先 resolve 再比较，避免 sub/../a.png 被误判。
+    任一 YAML 不可读时跳过整个项目，绝不把损坏文件的卡图当作孤儿删除；images/
+    为指向别处的符号链接时同样跳过。返回删除文件的相对路径列表（供运行日志）。
     """
     library = Path(library)
     deleted = []
     for project in list_projects(library):
         pdir = library / project
         images_dir = pdir / "images"
-        if not images_dir.is_dir():
+        if (not images_dir.is_dir() or images_dir.is_symlink()
+                or images_dir.resolve().parent != pdir.resolve()):
             continue
         used: set[Path] = set()
+        unreadable = False
         for sub in ("shikigami", "cards"):
             cdir = pdir / sub
             for path in cdir.glob("*.yaml") if cdir.is_dir() else []:
                 data = _read_yaml(path)
                 if not data:
+                    unreadable = True
                     continue
                 artwork = data.get("artwork")
                 images = artwork.get("images") if isinstance(artwork, dict) else None
@@ -476,11 +510,15 @@ def cleanup_unused_images(library: Path) -> list[str]:
                 raw = ref.get("path")
                 name = raw if isinstance(raw, str) and raw else f"{data.get('id') or data.get('name', '')}.png"
                 ref_path = Path(name)
-                used.add(ref_path if ref_path.is_absolute() else images_dir / ref_path)
+                used.add((ref_path if ref_path.is_absolute() else images_dir / ref_path).resolve())
+        if unreadable:
+            continue
         for img in images_dir.rglob("*"):
-            if not img.is_file() or img.suffix.lower() not in _IMAGE_EXTS or img in used:
+            if not img.is_file() or img.suffix.lower() not in _IMAGE_EXTS:
                 continue
             try:
+                if img.resolve() in used:
+                    continue
                 img.unlink()
                 deleted.append(str(img.relative_to(library)))
             except OSError:
@@ -561,7 +599,7 @@ def save_mechanism(library: Path, name: str, data: dict) -> Path:
     if errors:
         raise SchemaError(errors)
     if not data.get("version_date"):
-        data["version_date"] = date.today().isoformat()
+        data["version_date"] = date.today().strftime("%Y%m%d")
     mdir = _mech_dir(library)
     mdir.mkdir(parents=True, exist_ok=True)
     path = mdir / f"{name}.yaml"
@@ -587,6 +625,8 @@ def new_mechanism_version(library: Path, name: str, version_date) -> Path:
     与同组已有版本重复则拒绝。返回新文件路径。"""
     _check_name(name, "机制名")
     current = load_mechanism(library, name)  # 不存在 → not_found
+    if not isinstance(current.get("name"), str) or not current["name"].strip():
+        raise StoreError(f"机制文件缺少有效名称，无法创建新版本：{name}", code="invalid_data")
     mdir = _mech_dir(library)
     group = []
     for p in sorted(mdir.glob("*.yaml")):

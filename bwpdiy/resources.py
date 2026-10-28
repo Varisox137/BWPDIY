@@ -1,7 +1,7 @@
 """运行期资源路径解析：兼容 PyInstaller onefile（sys._MEIPASS）。
 
 frozen 时内嵌资源（assets/、包内数据文件）解包到 _MEIPASS 临时目录；
-用户数据（library/）不内嵌，放 exe 同级目录。
+用户数据（library/）不内嵌，放 exe 同级目录；全局布局另存 $HOME/.bwpdiy/layout.json。
 """
 
 import sys
@@ -21,6 +21,15 @@ def resource_root() -> Path:
 
 def default_assets_dir() -> Path:
     return resource_root() / "assets"
+
+
+def layout_config_path(assets_dir: Path) -> Path:
+    """开发版读写项目 assets；正式版读写 $HOME/.bwpdiy/layout.json。"""
+    if is_frozen():
+        path = Path.home() / ".bwpdiy"
+        path.mkdir(parents=True, exist_ok=True)
+        return path / "layout.json"
+    return Path(assets_dir) / "layout.json"
 
 
 def default_library_dir() -> Path:

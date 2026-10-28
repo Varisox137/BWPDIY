@@ -133,6 +133,24 @@ def test_put_layout_roundtrip(client, assets_dir, tmp_path):
     assert '\n  "战斗"' in raw
 
 
+def test_frozen_put_layout_writes_home_not_packaged_assets(assets_dir, tmp_path, monkeypatch):
+    from bwpdiy import resources
+
+    home = tmp_path / "home"
+    monkeypatch.setattr(resources, "is_frozen", lambda: True)
+    monkeypatch.setattr(resources.Path, "home", lambda: home)
+    client = TestClient(create_app(assets_dir, library_dir=tmp_path / "library"))
+    before = (assets_dir / "layout.json").read_bytes()
+    layouts = client.get("/api/layout").json()
+    layouts["战斗"]["elements"]["name"]["pos"] = [9, 10]
+
+    assert client.put("/api/layout", json=layouts).status_code == 200
+    config = home / ".bwpdiy" / "layout.json"
+    assert config.is_file()
+    assert client.get("/api/layout").json()["战斗"]["elements"]["name"]["pos"] == [9, 10]
+    assert (assets_dir / "layout.json").read_bytes() == before
+
+
 def test_put_layout_frame_variant_sparse_roundtrip(client, assets_dir):
     import json
 
@@ -828,72 +846,14 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_propagate_style_keys_only(tmp_path):
-    """保存传播只镜像样式键白名单；kind/field/icon/icon_neg/pos/enabled 不跨类型覆盖。"""
+def test_frame_variant_layout_independence_and_sparse_payload(tmp_path):
     script = _script()
-    import re
-    style_keys = re.search(r"const STYLE_KEYS = .*?;", script, re.S).group(0)
-    propagate = _extract_js(script, "function propagateFromCurrentType()")
-    driver = f"""
-const assert = require('node:assert');
-const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
-let curType = "战斗", entityLayoutMode = false, layoutFrameVariant = "norm";
-{style_keys}
-{propagate}
-const layouts = {{
-  "战斗": {{elements: {{
-    power: {{kind: "stat", field: "power+", icon: "ll", pos: [138, 484],
-            icon_size: 64, num_offset: [8, -2], font_size: 52}},
-    shield: {{kind: "stat", field: "shield+", icon: "hj", icon_neg: "pj", pos: [377, 482],
-             icon_size: 56, num_offset: [13, -2], font_size: 52}},
-    level: {{kind: "level_badge", pos: [120, 60], base_size: 52, star_size: 68, num_size: 40,
-            enabled: false}},
-  }}}},
-  "法术": {{elements: {{
-    power: {{kind: "stat", field: "power+", icon: "ll", pos: [160, 485],
-            icon_size: 32, num_offset: [22, 0], font_size: 30}},
-    health: {{kind: "stat", field: "health+", icon: "sm", pos: [360, 485],
-             icon_size: 32, num_offset: [22, 0], font_size: 30}},
-    shield: {{kind: "stat", field: "shield+", icon: "hj", pos: [360, 485],
-             icon_size: 32, num_offset: [22, 0], font_size: 30}},
-    level: {{kind: "level_badge", pos: [120, 65], base_size: 50, star_size: 68, num_size: 40,
-            enabled: true}},
-  }}}},
-  "形态": {{elements: {{
-    power: {{kind: "stat", field: "power", icon: "zl", pos: [160, 485],
-            icon_size: 32, num_offset: [22, 0], font_size: 30}},
-  }}}},
-}};
-function globalTypeLayout(t) {{ return layouts[t]; }}
-function typeLayout() {{ return layouts[curType]; }}
-propagateFromCurrentType();
-// 样式键镜像
-assert.strictEqual(layouts["法术"].elements.power.icon_size, 64);
-assert.deepStrictEqual(layouts["法术"].elements.power.num_offset, [8, -2]);
-assert.strictEqual(layouts["形态"].elements.power.font_size, 52);
-assert.strictEqual(layouts["法术"].elements.level.base_size, 52);
-// 内容/结构键不镜像（field 跨类型污染回归）
-assert.strictEqual(layouts["形态"].elements.power.field, "power");
-assert.strictEqual(layouts["法术"].elements.health.field, "health+");
-assert.strictEqual(layouts["形态"].elements.power.icon, "zl");
-assert.strictEqual(layouts["法术"].elements.shield.icon, "hj");
-assert.ok(!("icon_neg" in layouts["法术"].elements.shield));
-assert.deepStrictEqual(layouts["法术"].elements.power.pos, [160, 485]);
-assert.strictEqual(layouts["法术"].elements.level.enabled, true);
-console.log("OK");
-"""
-    _run_node(tmp_path, driver)
-
-
-@pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_frame_variant_layout_sync_and_sparse_payload(tmp_path):
-    script = _script()
+    for removed in ("syncElemField", "syncRegionField", "propagateFromCurrentType", "STYLE_KEYS"):
+        assert removed not in script
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function globalTypeLayout(t, variant = layoutFrameVariant)",
         "function layoutForRender(layout)",
         "function typeLayout()",
-        "function syncElemField(name, key, val)",
-        "function propagateFromCurrentType()",
         "function diffLayout(eff, base)",
         "function layoutSavePayload()",
         "function singleGlobalLayout()",
@@ -911,16 +871,18 @@ let layoutFrameVariant = 'black', curType = '战斗';
 let entityLayoutMode = false, cardLayoutMode = null, singleLayout = null;
 let formData = {{type: '战斗', frame_variant: 'black'}};
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
-const STYLE_KEYS = new Set(['icon_size']);
 {functions}
 assert.strictEqual(typeLayout(), layouts['战斗'].frame_variants.black);
-syncElemField('power', 'icon_size', 64);
-propagateFromCurrentType();
+typeLayout().elements.power.icon_size = 64;
+typeLayout().text_regions.desc.width = 99;
 for (const t of TYPES) {{
   assert.strictEqual(layouts[t].elements.power.icon_size, 16, `${{t}} norm`);
   if (t !== '协战') {{
-    assert.strictEqual(layouts[t].frame_variants.black.elements.power.icon_size, 64, `${{t}} black`);
+    const expected = t === '战斗' ? 64 : 16;
+    assert.strictEqual(layouts[t].frame_variants.black.elements.power.icon_size, expected, `${{t}} black`);
     assert.strictEqual(layouts[t].frame_variants.blue.elements.power.icon_size, 16, `${{t}} blue`);
+    assert.strictEqual(layouts[t].frame_variants.black.text_regions.desc.width,
+                       t === '战斗' ? 99 : 20, `${{t}} desc`);
   }}
 }}
 assert.strictEqual(singleGlobalLayout().elements.power.icon_size, 64);
@@ -928,8 +890,10 @@ assert.strictEqual(singleGlobalLayout().frame_variants, undefined);
 assert.strictEqual(layoutForRender(layouts['战斗']).frame_variants, undefined);
 const payload = layoutSavePayload();
 assert.strictEqual(payload['战斗'].frame_variants.black.elements.power.icon_size, 64);
+assert.strictEqual(payload['战斗'].frame_variants.black.text_regions.desc.width, 99);
 assert.strictEqual(payload['战斗'].frame_variants.blue, undefined);
 assert.strictEqual(payload['战斗'].frame_variants.red, undefined);
+assert.strictEqual(payload['法术'].frame_variants, undefined);
 assert.strictEqual(payload['协战'].frame_variants, undefined);
 assert.strictEqual(layouts['战斗'].frame_variants.black.elements.power.icon_size, 64);
 console.log('OK');
@@ -1105,8 +1069,6 @@ def test_entity_layout_mode_isolated_from_card_types(tmp_path):
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function typeLayout()",
-        "function syncElemField(name, key, val)",
-        "function syncRegionField(name, key, val)",
         "function selectType(t)",
         "function selectMechLayout()",
         "function selectEntityLayout()",
@@ -1116,9 +1078,6 @@ def test_entity_layout_mode_isolated_from_card_types(tmp_path):
         "function buildTypes()",
         "function buildProps()",
     ))
-    import re
-    style_keys = re.search(r"const STYLE_KEYS = .*?;", script, re.S).group(0)
-    propagate = _extract_js(script, "function propagateFromCurrentType()")
     driver = f"""
 const assert = require('node:assert');
 const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
@@ -1157,18 +1116,11 @@ const document = {{
   querySelectorAll: () => [],
   createElement: element,
 }};
-{style_keys}
-{propagate}
 let activeAsk = null;
 function globalTypeLayout(t) {{ return layouts[t]; }}
 {functions}
 entityLayoutMode = true;
 assert.strictEqual(typeLayout(), layouts['对局式神']);
-const before = deepCopy(layouts);
-syncElemField('power', 'icon_size', 99);
-syncRegionField('desc', 'width', 99);
-propagateFromCurrentType();
-assert.deepStrictEqual(layouts, before);
 selectType('战斗');
 assert(!entityLayoutMode && !mechLayoutMode);
 selectEntityLayout();

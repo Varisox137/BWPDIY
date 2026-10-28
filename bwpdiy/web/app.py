@@ -33,7 +33,7 @@ from bwpdiy.render.layout import (
     get_type_layout, load_layouts, merge_card_layout)
 from bwpdiy.render.mech import MECH_FRAMES, render_mechanism
 from bwpdiy.render.pipeline import ARTWORK_MAX_PIXELS, TYPE_FRAME_CODE, render_card
-from bwpdiy.resources import default_library_dir
+from bwpdiy.resources import default_library_dir, layout_config_path
 from bwpdiy.store import (
     SchemaError,
     StoreError,
@@ -210,7 +210,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                     if section in variant_layout and not isinstance(variant_layout[section], dict):
                         raise HTTPException(
                             422, f"布局形状非法: {card_type}/{variant}.{section} 必须是对象")
-        path = assets_dir / "layout.json"
+        path = layout_config_path(assets_dir)
         data = json.dumps(request, ensure_ascii=False, indent=2)
         try:
             if path.is_file():

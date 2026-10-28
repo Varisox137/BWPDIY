@@ -1,5 +1,4 @@
 import json
-import warnings
 from pathlib import Path
 
 import pytest
@@ -34,6 +33,25 @@ def test_assets_layout_takes_precedence(tmp_path):
     assert layouts["战斗"]["elements"]["rarity"]["pos"] == [1, 2]
 
 
+def test_frozen_layout_uses_home_config(tmp_path, monkeypatch):
+    from bwpdiy import resources
+
+    home = tmp_path / "home"
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    local = {"战斗": {"elements": {"name": {"pos": [1, 2]}}, "text_regions": {}}}
+    user = {"战斗": {"elements": {"name": {"pos": [9, 10]}}, "text_regions": {}}}
+    (assets / "layout.json").write_text(json.dumps(local), encoding="utf-8")
+    config = home / ".bwpdiy" / "layout.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(json.dumps(user), encoding="utf-8")
+    monkeypatch.setattr(resources, "is_frozen", lambda: True)
+    monkeypatch.setattr(resources.Path, "home", lambda: home)
+
+    assert resources.layout_config_path(assets) == config
+    assert layout.load_layouts(assets)["战斗"]["elements"]["name"]["pos"] == [9, 10]
+
+
 def test_entity_layout_backfilled(tmp_path):
     (tmp_path / "layout.json").write_text(
         '{"式神": {"elements": {}, "text_regions": {}}}', encoding="utf-8")
@@ -49,14 +67,11 @@ def test_entity_layout_backfilled(tmp_path):
     assert "text_regions" not in entity
 
 
-def test_independent_layouts_not_size_normalized(tmp_path):
+def test_entity_layout_independent_from_card_types(tmp_path):
     custom = {t: {"elements": {"power": _stat(30)}, "text_regions": {}} for t in TYPES}
     custom["对局式神"] = {"version": 2, "elements": {"power": _stat(18)}}
     (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        layouts = layout.load_layouts(tmp_path)
-    assert not [w for w in caught if issubclass(w.category, UserWarning)]
+    layouts = layout.load_layouts(tmp_path)
     assert layouts["对局式神"]["elements"]["power"]["font_size"] == 18
     assert all(layouts[t]["elements"]["power"]["font_size"] == 30 for t in TYPES)
 
@@ -118,7 +133,7 @@ EXPECTED_STAT_FIELDS = {
 
 
 def test_shipped_layout_stat_fields():
-    """出厂与包内默认布局 stat 元素 field 按类型钉死（propagate 误覆盖 field 污染回归）。"""
+    """出厂与包内默认布局的 stat 元素 field 按类型钉死。"""
     for path in (Path("assets"), Path("bwpdiy/render")):
         layouts = layout.load_layouts(path)
         for t in TYPES:
@@ -127,92 +142,33 @@ def test_shipped_layout_stat_fields():
             assert fields == EXPECTED_STAT_FIELDS[t], f"{path}/{t}: {fields}"
 
 
-def test_normalize_size_fields_majority_wins(tmp_path):
-    """跨类型同名元素尺寸类字段不一致：多数值归一 + 告警；pos 不归一。"""
-    custom = {t: {"elements": {"power": _stat(30)}, "text_regions": {}} for t in TYPES}
-    custom["法术"]["elements"]["power"]["font_size"] = 24  # 1:5，多数值 30 胜
-    custom["法术"]["elements"]["power"]["pos"] = [200, 400]  # pos 允许按类型不同
+def test_card_layout_fields_independent_across_types(tmp_path):
+    custom = {t: {
+        "elements": {"power": _stat(30)},
+        "text_regions": {"desc": {
+            "center": [256, 426], "width": 252, "height": 80,
+            "font_range": [22, 12], "wrap": True, "font": "desc", "icon_scale": 1.0,
+        }},
+    } for t in TYPES}
+    custom["法术"]["elements"]["power"].update(font_size=24, num_offset=[30, 0])
+    custom["法术"]["text_regions"]["desc"].update(
+        width=300, font_range=[18, 10], icon_scale=1.25)
     (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
-    with pytest.warns(UserWarning, match="font_size"):
-        layouts = layout.load_layouts(tmp_path)
-    for t in TYPES:
-        assert layouts[t]["elements"]["power"]["font_size"] == 30
-    assert layouts["法术"]["elements"]["power"]["pos"] == [200, 400]
+    layouts = layout.load_layouts(tmp_path)
 
-
-def test_normalize_size_fields_tie_takes_first(tmp_path):
-    """平票时取布局表中先出现的类型的值。"""
-    custom = {"战斗": {"elements": {"power": _stat(30)}, "text_regions": {}},
-              "法术": {"elements": {"power": _stat(24)}, "text_regions": {}}}
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
-    with pytest.warns(UserWarning):
-        layouts = layout.load_layouts(tmp_path)
-    assert layouts["战斗"]["elements"]["power"]["font_size"] == 30
-    assert layouts["法术"]["elements"]["power"]["font_size"] == 30
-
-
-def test_normalize_list_fields(tmp_path):
-    """num_offset/font_range 等列表型尺寸字段同样归一。"""
-    custom = {t: {"elements": {"power": _stat(30)},
-                  "text_regions": {"desc": {"center": [256, 426], "width": 252, "height": 80,
-                                            "font_range": [22, 12], "wrap": True, "font": "desc"}}}
-              for t in TYPES}
-    custom["幻境"]["elements"]["power"]["num_offset"] = [30, 0]
-    custom["幻境"]["text_regions"]["desc"]["font_range"] = [18, 10]
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
-    with pytest.warns(UserWarning):
-        layouts = layout.load_layouts(tmp_path)
-    for t in TYPES:
-        assert layouts[t]["elements"]["power"]["num_offset"] == [22, 0]
-        assert layouts[t]["text_regions"]["desc"]["font_range"] == [22, 12]
-
-
-def test_normalize_mixed_types_no_crash(tmp_path):
-    """手改出混合类型值（int vs list）时告警不得 TypeError，仍完成归一。"""
-    custom = {"战斗": {"elements": {"power": _stat(30)}, "text_regions": {}},
-              "法术": {"elements": {"power": _stat(30)}, "text_regions": {}}}
-    custom["法术"]["elements"]["power"]["font_size"] = [30]  # 畸形：list 与 int 混合
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
-    with pytest.warns(UserWarning):
-        layouts = layout.load_layouts(tmp_path)
-    assert layouts["战斗"]["elements"]["power"]["font_size"] == 30
-    assert layouts["法术"]["elements"]["power"]["font_size"] == [30]  # 归一写回保持原形态
-
-
-def test_group_offset_not_normalized(tmp_path):
-    """group_offset 是 per-type 键：跨类型不一致不归一、不告警。"""
-    custom = {t: {"elements": {"power": _stat(30)}, "text_regions": {}} for t in TYPES}
-    custom["战斗"]["elements"]["power"]["group_offset"] = [5, -3]
-    custom["法术"]["elements"]["power"]["group_offset"] = [-4, 2]
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        layouts = layout.load_layouts(tmp_path)
-    assert not [w for w in caught if issubclass(w.category, UserWarning)]
-    assert layouts["战斗"]["elements"]["power"]["group_offset"] == [5, -3]
-    assert layouts["法术"]["elements"]["power"]["group_offset"] == [-4, 2]
-
-
-def test_normalize_skips_bool_fields(tmp_path):
-    """bool 是 int 子类：新增 bool 内容字段不得被误当尺寸类归一。"""
-    custom = {t: {"elements": {"power": dict(_stat(30), bold=(t != "法术"))},
-                  "text_regions": {}} for t in TYPES}
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        layouts = layout.load_layouts(tmp_path)
-    assert not [w for w in caught if issubclass(w.category, UserWarning)]
-    assert layouts["法术"]["elements"]["power"]["bold"] is False
-    assert layouts["战斗"]["elements"]["power"]["bold"] is True
-
-
-def test_shipped_layouts_already_normalized():
-    """出厂与包内默认布局不得触发归一告警（数据已一致）。"""
-    for path in (Path("assets"), Path("bwpdiy/render")):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            layout.load_layouts(path)
-        assert not [w for w in caught if issubclass(w.category, UserWarning)]
+    assert layouts["法术"]["elements"]["power"]["font_size"] == 24
+    assert layouts["法术"]["elements"]["power"]["num_offset"] == [30, 0]
+    assert layouts["法术"]["text_regions"]["desc"]["width"] == 300
+    assert layouts["法术"]["text_regions"]["desc"]["font_range"] == [18, 10]
+    assert layouts["法术"]["text_regions"]["desc"]["icon_scale"] == 1.25
+    for card_type in TYPES:
+        if card_type == "法术":
+            continue
+        assert layouts[card_type]["elements"]["power"]["font_size"] == 30
+        assert layouts[card_type]["elements"]["power"]["num_offset"] == [22, 0]
+        assert layouts[card_type]["text_regions"]["desc"]["width"] == 252
+        assert layouts[card_type]["text_regions"]["desc"]["font_range"] == [22, 12]
+        assert layouts[card_type]["text_regions"]["desc"]["icon_scale"] == 1.0
 
 
 def test_frame_variant_sparse_layout_merges_without_polluting_norm(tmp_path):
@@ -233,7 +189,7 @@ def test_frame_variant_sparse_layout_merges_without_polluting_norm(tmp_path):
     assert "frame_variants" not in norm and "frame_variants" not in black
 
 
-def test_frame_variant_size_normalization_is_independent(tmp_path):
+def test_frame_variant_layout_independent_across_types(tmp_path):
     custom = {}
     for card_type in layout.FRAME_LAYOUT_TYPES:
         custom[card_type] = {
@@ -241,19 +197,18 @@ def test_frame_variant_size_normalization_is_independent(tmp_path):
             "text_regions": {},
             "frame_variants": {"black": {"elements": {"power": {"font_size": 24}}}},
         }
+    custom["法术"]["frame_variants"]["black"]["elements"]["power"]["font_size"] = 18
     custom["战斗"]["frame_variants"]["black"]["elements"]["power"]["pos"] = [8, 9]
     (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        layouts = layout.load_layouts(tmp_path)
+    layouts = layout.load_layouts(tmp_path)
 
-    assert not caught
     for card_type in layout.FRAME_LAYOUT_TYPES:
         assert layout.get_type_layout(layouts, card_type)["elements"]["power"]["font_size"] == 30
         assert layout.get_type_layout(
             layouts, card_type, "blue")["elements"]["power"]["font_size"] == 30
+        expected = 18 if card_type == "法术" else 24
         assert layout.get_type_layout(
-            layouts, card_type, "black")["elements"]["power"]["font_size"] == 24
+            layouts, card_type, "black")["elements"]["power"]["font_size"] == expected
     assert layout.get_type_layout(
         layouts, "战斗", "black")["elements"]["power"]["pos"] == [8, 9]
 

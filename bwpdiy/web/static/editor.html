@@ -221,11 +221,11 @@
     <h4>机制描述框</h4>
     <div>左栏「机制」为全局共享列表（不随项目切换，所有项目可复用），用于制作灵咒/关键字/加护蚀印等机制说明图：新建时选框类型（默认关键字）、填名称与描述即可，框高按内容行数自动伸缩（最少 2 行：名称+空行；名称与描述之间空一行，超过 5 行时框体按行高拼接加长，不缩小字号）。描述逐行左对齐，同样支持 <code>[[关键字]]</code> 高亮与 <code>#xx</code> 内嵌小图标（唯一/瞬发等标记直接写进描述即可）；加护蚀印框可选「加护/蚀印」圆形角标（名称自动右移避让）。「导出描述框」把当前机制（含未保存修改）下载为 PNG。</div>
     <h4>框品</h4>
-    <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。卡牌库与布局设置均在中央预览上方以四个按钮切换；全局布局可按框品分别调整，单卡布局叠加在该卡实际框品的全局配置上。</div>
+    <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。卡牌库与布局设置均在中央预览上方以四个按钮切换；全部元素和文本区按卡牌类型、框品独立调整，单卡布局叠加在该卡实际框品的全局配置上。正式版布局保存于用户目录 .bwpdiy/layout.json，开发版为项目 assets/layout.json。</div>
     <h4>协战双式神框</h4>
     <div>协战卡可勾选「双式神框」，在牌框左上外侧渲染双菱形头像框；头像自动取所属式神卡的卡图（式神缺卡图则该槽位留空菱形），派系小标随式神派系。</div>
     <h4>扩展选项</h4>
-    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「全局布局设置」页，按卡牌类型微调各元素位置/字号/文本区（保存时样式类改动跨类型同步），第七类「机制」页三画布（灵咒/关键字/加护蚀印）同屏调整机制描述框：字号类三类共用，文本区域（偏移/宽度）各框独立，浅绿框按实际文本块标示；并在卡牌库右栏开放「调整单卡元素布局」，对当前卡单独覆盖布局（只把与全局不同的项写进该卡，还原/保存互不影响全局）；<b>标记扩展</b>——稀有度下拉开放 N 与「无」（衍生牌）；等级下拉开放 0（无等级）与勾玉六色（黄/青/紫/红/蓝/棕）；式神开放派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
+    <div>顶栏「扩展选项」可自行启用：<b>手动调整布局</b>——开放「全局布局设置」页，按卡牌类型与框品独立微调各元素位置/字号/文本区，第七类「机制」页三画布（灵咒/关键字/加护蚀印）同屏调整机制描述框：字号类三类共用，文本区域（偏移/宽度）各框独立，浅绿框按实际文本块标示；并在卡牌库右栏开放「调整单卡元素布局」，对当前卡单独覆盖布局（只把与全局不同的项写进该卡，还原/保存互不影响全局）；<b>标记扩展</b>——稀有度下拉开放 N 与「无」（衍生牌）；等级下拉开放 0（无等级）与勾玉六色（黄/青/紫/红/蓝/棕）；式神开放派系样式（1-3，默认 2）；各数值旁开放变色（白=常态/红=debuff或受伤/绿=buff/紫=中毒，正负号跟随变色）。取消勾选只隐藏控件，已写入卡牌的颜色/样式不回退。</div>
   </div>
 </div>
 
@@ -2593,27 +2593,6 @@ function schedulePreview() {
   previewTimer = setTimeout(refreshPreview, 300);
 }
 
-// 尺寸类字段只在同一框品内跨类型同步（pos 与内容类字段不同步）；
-// 单卡与对局式神模式均无跨类型同步（只改各自独立布局段）
-function syncElemField(name, key, val) {
-  if (cardLayoutMode || entityLayoutMode) return;
-  for (const t of TYPES) {
-    if (t === '协战' && layoutFrameVariant !== 'norm') continue;
-    const layout = globalTypeLayout(t);
-    const el = layout && layout.elements && layout.elements[name];
-    if (el && key in el) el[key] = val;
-  }
-}
-function syncRegionField(name, key, val) {
-  if (cardLayoutMode || entityLayoutMode) return;
-  for (const t of TYPES) {
-    if (t === '协战' && layoutFrameVariant !== 'norm') continue;
-    const layout = globalTypeLayout(t);
-    const r = layout && layout.text_regions && layout.text_regions[name];
-    if (r && key in r) r[key] = val;
-  }
-}
-
 // 类型 tab（单卡模式：替换为大标题 + 单个「还原更改」按钮）
 function buildTypes() {
   const div = document.getElementById('l-types');
@@ -3072,12 +3051,10 @@ function pick(mx, my) {
     if (e.kind === 'stat') {
       const np = [e.pos[0] + e.num_offset[0], e.pos[1] + e.num_offset[1]];
       if (near(...np)) return { sel: {kind: 'element', name},
-        // num_offset 是尺寸类字段：拖拽数字锚点同样跨类型广播（与属性面板 num_dx/num_dy 一致）
-        set: (x, y) => { e.num_offset = [x - e.pos[0], y - e.pos[1]];
-          syncElemField(name, 'num_offset', [...e.num_offset]); } };
+        set: (x, y) => { e.num_offset = [x - e.pos[0], y - e.pos[1]]; } };
     }
     if (e.kind === 'duo_frame') {
-      // 双式神框拖拽点（仅协战有该元素，偏移键无需跨类型同步）：
+      // 双式神框拖拽点（仅协战有该元素）：
       // 派系标偏移上下共通（拖任一槽位的点改共享偏移）；内框偏移上下各自；
       // 下框底图竖直对齐（只改 dy）
       const dy = e.slot2_dy ?? 74;
@@ -3131,10 +3108,10 @@ function buildProps() {
     numRow(div, '位置 x', e.pos[0], v => { e.pos[0] = v; draw(); });
     numRow(div, '位置 y', e.pos[1], v => { e.pos[1] = v; draw(); });
     if (e.kind === 'stat') {
-      numRow(div, '图标尺寸', e.icon_size, v => { e.icon_size = v; syncElemField(sel.name, 'icon_size', v); });
-      numRow(div, '数字偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
-      numRow(div, '数字偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
-      numRow(div, '字号', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
+      numRow(div, '图标尺寸', e.icon_size, v => e.icon_size = v);
+      numRow(div, '数字偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; draw(); });
+      numRow(div, '数字偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; draw(); });
+      numRow(div, '字号', e.font_size, v => e.font_size = v);
       // 图标由数值字段自动推导 stats/{stem}.png（力量/生命全类型共用；负护甲换破甲），不提供手动选择
       const n = document.createElement('div');
       n.className = 'note';
@@ -3144,42 +3121,39 @@ function buildProps() {
         // 符号类控件仅四类带符号数值（战斗 力量/护甲、法术觉醒 力量/生命）提供；
         // 式神/形态/幻境无符号，不显示符号偏移/加减号尺寸/整体偏移编辑项
         e.sign_offset ??= [0, 0];
-        numRow(div, '符号偏移 x', e.sign_offset[0], v => { e.sign_offset[0] = v; syncElemField(sel.name, 'sign_offset', [...e.sign_offset]); draw(); });
-        numRow(div, '符号偏移 y', e.sign_offset[1], v => { e.sign_offset[1] = v; syncElemField(sel.name, 'sign_offset', [...e.sign_offset]); draw(); });
-        numRow(div, '加号尺寸', e.sign_size_plus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => { e.sign_size_plus = v; syncElemField(sel.name, 'sign_size_plus', v); });
-        numRow(div, '减号尺寸', e.sign_size_minus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => { e.sign_size_minus = v; syncElemField(sel.name, 'sign_size_minus', v); });
-        // 符号+数字整体相对角标的额外偏移：per-type 键，四类带符号数值各自微调，不跨类型同步
+        numRow(div, '符号偏移 x', e.sign_offset[0], v => { e.sign_offset[0] = v; draw(); });
+        numRow(div, '符号偏移 y', e.sign_offset[1], v => { e.sign_offset[1] = v; draw(); });
+        numRow(div, '加号尺寸', e.sign_size_plus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => e.sign_size_plus = v);
+        numRow(div, '减号尺寸', e.sign_size_minus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => e.sign_size_minus = v);
         e.group_offset ??= [0, 0];
         numRow(div, '符号数字整体偏移 x', e.group_offset[0], v => { e.group_offset[0] = v; draw(); });
         numRow(div, '符号数字整体偏移 y', e.group_offset[1], v => { e.group_offset[1] = v; draw(); });
       }
-      numRow(div, '描边宽度', e.stroke_width ?? 2, v => { e.stroke_width = v; syncElemField(sel.name, 'stroke_width', v); });
+      numRow(div, '描边宽度', e.stroke_width ?? 2, v => e.stroke_width = v);
       if (curType === '战斗' && e.field === 'shield+') {
-        // 破甲（负护甲）与护甲分离的四个键：坐标/图标大小/数字偏移/符号偏移；
-        // 坐标为 per-type 不同步，其余三个尺寸偏移类跨类型同步（仅战斗有该元素，同步无实际对象）
         div.appendChild(title('破甲（负护甲）'));
         selRow(div, '破甲样式', ['1', '2'], String(e.fragile_variant ?? 2),
-          v => { e.fragile_variant = parseInt(v, 10); syncElemField(sel.name, 'fragile_variant', e.fragile_variant); });
+          v => e.fragile_variant = parseInt(v, 10));
         e.fragile_pos ??= [...e.pos];
         numRow(div, '破甲位置 x', e.fragile_pos[0], v => { e.fragile_pos[0] = v; draw(); });
         numRow(div, '破甲位置 y', e.fragile_pos[1], v => { e.fragile_pos[1] = v; draw(); });
         e.fragile_icon_size ??= e.icon_size;
-        numRow(div, '破甲图标尺寸', e.fragile_icon_size, v => { e.fragile_icon_size = v; syncElemField(sel.name, 'fragile_icon_size', v); });
+        numRow(div, '破甲图标尺寸', e.fragile_icon_size, v => e.fragile_icon_size = v);
         e.fragile_num_offset ??= [...e.num_offset];
-        numRow(div, '破甲数字偏移 x', e.fragile_num_offset[0], v => { e.fragile_num_offset[0] = v; syncElemField(sel.name, 'fragile_num_offset', [...e.fragile_num_offset]); draw(); });
-        numRow(div, '破甲数字偏移 y', e.fragile_num_offset[1], v => { e.fragile_num_offset[1] = v; syncElemField(sel.name, 'fragile_num_offset', [...e.fragile_num_offset]); draw(); });
+        numRow(div, '破甲数字偏移 x', e.fragile_num_offset[0], v => { e.fragile_num_offset[0] = v; draw(); });
+        numRow(div, '破甲数字偏移 y', e.fragile_num_offset[1], v => { e.fragile_num_offset[1] = v; draw(); });
         e.fragile_sign_offset ??= [0, 0];
-        numRow(div, '破甲符号偏移 x', e.fragile_sign_offset[0], v => { e.fragile_sign_offset[0] = v; syncElemField(sel.name, 'fragile_sign_offset', [...e.fragile_sign_offset]); draw(); });
-        numRow(div, '破甲符号偏移 y', e.fragile_sign_offset[1], v => { e.fragile_sign_offset[1] = v; syncElemField(sel.name, 'fragile_sign_offset', [...e.fragile_sign_offset]); draw(); });
+        numRow(div, '破甲符号偏移 x', e.fragile_sign_offset[0], v => { e.fragile_sign_offset[0] = v; draw(); });
+        numRow(div, '破甲符号偏移 y', e.fragile_sign_offset[1], v => { e.fragile_sign_offset[1] = v; draw(); });
       }
     }
     if (e.kind === 'rarity_flank') {
-      numRow(div, '默认间距', e.gap, v => { e.gap = v; syncElemField(sel.name, 'gap', v); });
-      numRow(div, '卡名间距', e.margin ?? 12, v => { e.margin = v; syncElemField(sel.name, 'margin', v); });
-      numRow(div, '尺寸', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
+      numRow(div, '默认间距', e.gap, v => e.gap = v);
+      numRow(div, '卡名间距', e.margin ?? 12, v => e.margin = v);
+      numRow(div, '尺寸', e.size, v => e.size = v);
     }
     if (e.kind === 'faction') {
-      numRow(div, '尺寸', e.size, v => { e.size = v; syncElemField(sel.name, 'size', v); });
+      numRow(div, '尺寸', e.size, v => e.size = v);
       selRow(div, '样式', ['1', '2', '3'], String(e.style || 2), v => e.style = parseInt(v, 10));
     }
     if (e.kind === 'duo_frame') {
@@ -3187,11 +3161,11 @@ function buildProps() {
       // 框大小 + 上/下内框偏移（相对各自底图中心）+ 上/下外框偏移 y（相对各自底图中心）
       // + 派系标大小/偏移（大小与派系标偏移上下两框共通；仅协战有此元素）
       e.back_size ??= 62;
-      numRow(div, '底图大小', e.back_size, v => { e.back_size = v; syncElemField(sel.name, 'back_size', v); });
+      numRow(div, '底图大小', e.back_size, v => e.back_size = v);
       e.slot2_dy ??= 74;
       numRow(div, '下框间距', e.slot2_dy, v => { e.slot2_dy = v; draw(); });
       e.frame_size ??= 70;
-      numRow(div, '框大小', e.frame_size, v => { e.frame_size = v; syncElemField(sel.name, 'frame_size', v); });
+      numRow(div, '框大小', e.frame_size, v => e.frame_size = v);
       e.frame_offset ??= [0, 0];
       numRow(div, '上内框偏移 x', e.frame_offset[0], v => { e.frame_offset[0] = v; draw(); });
       numRow(div, '上内框偏移 y', e.frame_offset[1], v => { e.frame_offset[1] = v; draw(); });
@@ -3203,27 +3177,27 @@ function buildProps() {
       e.highlight_dy_2 ??= 0;
       numRow(div, '下外框偏移 y', e.highlight_dy_2, v => { e.highlight_dy_2 = v; draw(); });
       e.faction_size ??= 43;
-      numRow(div, '派系标大小', e.faction_size, v => { e.faction_size = v; syncElemField(sel.name, 'faction_size', v); });
+      numRow(div, '派系标大小', e.faction_size, v => e.faction_size = v);
       e.faction_offset ??= [6, 31];
       numRow(div, '派系标偏移 x', e.faction_offset[0], v => { e.faction_offset[0] = v; draw(); });
       numRow(div, '派系标偏移 y', e.faction_offset[1], v => { e.faction_offset[1] = v; draw(); });
     }
     if (e.kind === 'level_badge') {
       // 等级组件是否绘制由卡面等级决定（等级 0=无等级不绘制），不再提供启用开关
-      numRow(div, '底座尺寸', e.base_size, v => { e.base_size = v; syncElemField(sel.name, 'base_size', v); });
+      numRow(div, '底座尺寸', e.base_size, v => e.base_size = v);
       if (!entityLayoutMode) {
-        numRow(div, '星标尺寸', e.star_size, v => { e.star_size = v; syncElemField(sel.name, 'star_size', v); });
+        numRow(div, '星标尺寸', e.star_size, v => e.star_size = v);
         e.star_offset ??= [0, 0];
-        numRow(div, '星标偏移 x', e.star_offset[0], v => { e.star_offset[0] = v; syncElemField(sel.name, 'star_offset', [...e.star_offset]); draw(); });
-        numRow(div, '星标偏移 y', e.star_offset[1], v => { e.star_offset[1] = v; syncElemField(sel.name, 'star_offset', [...e.star_offset]); draw(); });
+        numRow(div, '星标偏移 x', e.star_offset[0], v => { e.star_offset[0] = v; draw(); });
+        numRow(div, '星标偏移 y', e.star_offset[1], v => { e.star_offset[1] = v; draw(); });
       }
-      numRow(div, '勾玉尺寸', e.num_size, v => { e.num_size = v; syncElemField(sel.name, 'num_size', v); });
+      numRow(div, '勾玉尺寸', e.num_size, v => e.num_size = v);
       e.num_offset ??= [0, 0];
-      numRow(div, '勾玉偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
-      numRow(div, '勾玉偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; syncElemField(sel.name, 'num_offset', [...e.num_offset]); draw(); });
+      numRow(div, '勾玉偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; draw(); });
+      numRow(div, '勾玉偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; draw(); });
     }
     if (e.kind === 'text') {
-      numRow(div, '字号', e.font_size, v => { e.font_size = v; syncElemField(sel.name, 'font_size', v); });
+      numRow(div, '字号', e.font_size, v => e.font_size = v);
       selRow(div, '字体', FONTS, e.font || 'name', v => e.font = v, disp);
     }
   } else {
@@ -3241,20 +3215,17 @@ function buildProps() {
     div.appendChild(title(`${disp(sel.name)} 文本区`));
     numRow(div, '中心 x', r.center[0], v => { r.center[0] = v; draw(); });
     numRow(div, '中心 y', r.center[1], v => { r.center[1] = v; draw(); });
-    // 居中锚点偏移：per-type 键不跨类型同步；区域边界/行宽不变，只移动视觉居中基准
     r.center_offset ??= [0, 0];
     numRow(div, '居中点偏移 x', r.center_offset[0], v => { r.center_offset[0] = v; draw(); });
     numRow(div, '居中点偏移 y', r.center_offset[1], v => { r.center_offset[1] = v; draw(); });
-    numRow(div, '宽度', r.width, v => { r.width = v; syncRegionField(sel.name, 'width', v); draw(); });
-    numRow(div, '高度', r.height, v => { r.height = v; syncRegionField(sel.name, 'height', v); draw(); });
-    numRow(div, '字号上限', r.font_range[0], v => { r.font_range[0] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
-    numRow(div, '字号下限', r.font_range[1], v => { r.font_range[1] = v; syncRegionField(sel.name, 'font_range', [...r.font_range]); });
+    numRow(div, '宽度', r.width, v => { r.width = v; draw(); });
+    numRow(div, '高度', r.height, v => { r.height = v; draw(); });
+    numRow(div, '字号上限', r.font_range[0], v => r.font_range[0] = v);
+    numRow(div, '字号下限', r.font_range[1], v => r.font_range[1] = v);
     checkRow(div, '自动换行', r.wrap, v => r.wrap = v);
     selRow(div, '字体', FONTS, r.font, v => r.font = v, disp);
-    // 内嵌图标相对文字大小（高=字号×系数）：尺寸类字段，跨类型同步
     r.icon_scale ??= 1.0;
-    floatRow(div, '小图标相对文字大小', r.icon_scale,
-             v => { r.icon_scale = v; syncRegionField(sel.name, 'icon_scale', v); });
+    floatRow(div, '小图标相对文字大小', r.icon_scale, v => r.icon_scale = v);
   }
 }
 function title(t) { const h = document.createElement('h4'); h.textContent = t; return h; }
@@ -3298,34 +3269,8 @@ function selRow(div, label, opts, val, set, map = null) {
   l.appendChild(s); div.appendChild(l);
 }
 
-// 保存时以当前类型为准传播：同名元素的样式键只在同一框品内镜像（缺键不删、各自保留）。
-// 内容/结构键（kind/field/pos 等）一律不镜像——field 曾被跨类型覆盖
-// 造成数据污染（式神/形态 power→power+、法术 health+→health），只同步白名单内样式键。
-// 编辑期 syncElemField 调用点同样只传样式键（num_offset/sign_offset/sign_size_plus/
-// sign_size_minus/stroke_width/icon_size/font_size/gap/margin/size/base_size/star_size/
-// num_size/star_offset），与本能保持同口径。
-const STYLE_KEYS = new Set(["size", "icon_size", "font_size", "num_offset", "sign_offset",
-                            "sign_size_plus", "sign_size_minus", "stroke_width", "gap", "star_offset",
-                            "fragile_icon_size", "fragile_num_offset", "fragile_sign_offset", "fragile_variant",
-                            "margin", "base_size", "star_size", "num_size", "font", "style"]);
-function propagateFromCurrentType() {
-  if (entityLayoutMode) return;
-  const cur = typeLayout().elements || {};
-  for (const [name, el] of Object.entries(cur)) {
-    for (const t of TYPES) {
-      if (t === curType || (t === '协战' && layoutFrameVariant !== 'norm')) continue;
-      const layout = globalTypeLayout(t);
-      const other = layout && layout.elements && layout.elements[name];
-      if (!other) continue;
-      for (const k of STYLE_KEYS) {
-        if (k in el) other[k] = JSON.parse(JSON.stringify(el[k]));
-      }
-    }
-  }
-}
-
 // ---- 单卡布局模式：进入/退出/保存 ----
-// 深合并：卡面 layout 稀疏覆盖段叠加到该类型全局布局（与 render/layout.py merge_card_layout 同口径）
+// 深合并：卡面 layout 稀疏覆盖段叠加到该卡类型与框品的全局布局
 function mergeLayoutJS(base, override) {
   const merged = deepCopy(base);
   if (!override || typeof override !== 'object') return merged;
@@ -3404,7 +3349,6 @@ async function saveCardLayout() {
 // 保存
 document.getElementById('l-btn-save').onclick = async () => {
   if (cardLayoutMode) return saveCardLayout();
-  propagateFromCurrentType();
   let r;
   try {
     r = await fetch('/api/layout', {method: 'PUT',

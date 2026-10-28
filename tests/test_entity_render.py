@@ -117,6 +117,26 @@ def test_entity_native_size_and_zero_stats(assets_dir, sample_art, monkeypatch):
     assert digits == ["0", "0"]
 
 
+def test_entity_stat_digits_share_card_spacing(assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+    from bwpdiy.render.badges import _DIGIT_GAP
+
+    calls = []
+    original = entity._render_digits
+
+    def tracked(text, font, stroke_width, color=None, gap=_DIGIT_GAP):
+        calls.append((text, gap))
+        return original(text, font, stroke_width, color, gap)
+
+    monkeypatch.setattr(entity, "_render_digits", tracked)
+    render_entity(make_card(sample_art),
+                  {"power": 41, "health": 22, "combat_power": 31, "shield": 12},
+                  assets_dir)
+
+    assert calls == [("41", _DIGIT_GAP), ("22", _DIGIT_GAP),
+                     ("31", _DIGIT_GAP), ("12", _DIGIT_GAP)]
+
+
 @pytest.mark.parametrize("field", ["power", "health", "combat_power", "shield"])
 def test_entity_stat_colors_render_with_shared_gradient(assets_dir, sample_art, field):
     """四个小卡数值均接受 <field>_color，并复用大卡的红/绿/紫渐变。"""

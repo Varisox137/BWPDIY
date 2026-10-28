@@ -9,7 +9,8 @@ from PIL import Image, ImageChops, ImageDraw
 from bwpdiy.render.artwork import (
     ARTWORK_MAX_PIXELS, artwork_ref, fit_artwork, load_card_artwork)
 from bwpdiy.render.assets import AssetLibrary, get_library
-from bwpdiy.render.badges import STAT_COLORS, TYPE_FRAME_CODE, _paste_element, _render_digits
+from bwpdiy.render.badges import (
+    _DIGIT_GAP, STAT_COLORS, TYPE_FRAME_CODE, _paste_element, _render_digits)
 from bwpdiy.render.pipeline import _normalize_frame
 from bwpdiy.render.size import fit_target_canvas, resolve_target_size, scale_layout
 
@@ -339,7 +340,7 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
             continue
         digits = _render_digits(str(abs(value)), lib.font("name", elem["font_size"]),
                                 round(elem.get("stroke_width", 1)), state[f"{field}_color"],
-                                elem.get("_digit_gap", 3))
+                                elem.get("_digit_gap", _DIGIT_GAP))
         prepared_digits[field] = digits
         if digits is None:
             continue
@@ -400,7 +401,7 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
         entity_layout = scale_layout(entity_layout, factor)
         for elem in (entity_layout.get("elements") or {}).values():
             if elem.get("kind") == "stat":
-                elem["_digit_gap"] = 3 * factor
+                elem["_digit_gap"] = _DIGIT_GAP * factor
     window = entity_layout.get("art_window", _DEFAULT_LAYOUT["art_window"])
     validate_entity_art_window(window)
     elements = entity_layout.get("elements")

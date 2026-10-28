@@ -382,6 +382,58 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_sidebar_list_height_caps_at_eight_items(tmp_path):
+    """各栏目八项内不限制高度，第九项起只显示前八项并内部滚动。"""
+    fit = _extract_js(_script(), "function fitListHeight(div)")
+    driver = f"""
+const assert = require('node:assert');
+{fit}
+function list(count) {{
+  return {{style: {{}}, children: Array.from({{length: count}}, (_, i) =>
+    ({{offsetTop: i * 22, offsetHeight: 22}}))}};
+}}
+for (const count of [0, 1, 8]) assert.strictEqual(fitListHeight(list(count)).maxHeight, 'none');
+assert.strictEqual(fitListHeight(list(9)).maxHeight, '176px');
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_shiki_deck_valid_checks_every_date_and_ignores_assist(tmp_path):
+    """每个日期快照均须 8 张非协战卡且 4R/3SR/1SSR；允许同日期对调稀有度。"""
+    valid = _extract_js(_script(), "function shikiDeckValid(shikiName, groups)")
+    driver = f"""
+const assert = require('node:assert');
+{valid}
+function v(date, rarity, shiki = '甲', assist = false) {{
+  return {{date, rarity, shikigami: assist ? null : shiki,
+    shikigami1: assist ? shiki : null, shikigami2: assist ? '乙' : null}};
+}}
+function card(name, versions) {{ return {{name, versions}}; }}
+const base = ['R', 'R', 'R', 'R', 'SR', 'SR', 'SR', 'SSR'].map((rarity, i) =>
+  card('卡' + i, [v('20260101', rarity)]));
+assert.strictEqual(shikiDeckValid('甲', base), true);
+assert.strictEqual(shikiDeckValid('甲', base.slice(1)), false);
+assert.strictEqual(shikiDeckValid('甲', base.map((g, i) => i === 0
+  ? card(g.name, [v('20260101', 'SSR')]) : g)), false);
+const swapped = base.map((g, i) => {{
+  if (i === 0) return card(g.name, [v('20260201', 'SR'), ...g.versions]);
+  if (i === 4) return card(g.name, [v('20260201', 'R'), ...g.versions]);
+  return g;
+}});
+assert.strictEqual(shikiDeckValid('甲', swapped), true);
+const oneChanged = base.map((g, i) => i === 0
+  ? card(g.name, [v('20260201', 'SR'), ...g.versions]) : g);
+assert.strictEqual(shikiDeckValid('甲', oneChanged), false);
+assert.strictEqual(shikiDeckValid('甲', [...base,
+  card('协战', [v('20260101', 'R', '甲', true)])]), true);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_new_derived_shikigami_uses_main_owner_and_card_slot(tmp_path):
     """卡牌栏新建式神沿用当前主要式神，对话框放在卡牌栏而不是左栏底部。"""
     ask_new_card = _extract_js(_script(), "function askNewCard(")

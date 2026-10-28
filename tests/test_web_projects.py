@@ -58,9 +58,13 @@ def with_today(card):
     return {**card, "version_date": TODAY}
 
 
-def entry(stem, name, vd=TODAY, shiki=None, stats=False):
+def entry(stem, name, vd=TODAY, shiki=None, stats=False, rarity="R"):
+    version = {"stem": stem, "date": vd}
+    if shiki is not None or stats:
+        version.update(rarity=None if stats else rarity, shikigami=shiki,
+                       shikigami1=None, shikigami2=None)
     data = {"stem": stem, "name": name, "id": None,
-            "versions": [{"stem": stem, "date": vd}], "count": 1,
+            "versions": [version], "count": 1,
             "shikigami": shiki, "shikigami1": None, "shikigami2": None}
     if stats:
         data.update(power=3, health=4)
@@ -176,7 +180,7 @@ def test_derived_shikigami_is_card_not_main_shikigami(client, project):
     assert r.status_code == 200
     assert client.get(f"/api/projects/{project}/cards").json() == {
         "shikigami": [_SHIKI_ENTRY],
-        "cards": [entry("召唤物", "召唤物", shiki="测试式神")],
+        "cards": [entry("召唤物", "召唤物", shiki="测试式神", rarity=None)],
     }
     assert client.get(f"/api/projects/{project}/cards/召唤物").json() == with_today(card)
 

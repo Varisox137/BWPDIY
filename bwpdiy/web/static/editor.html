@@ -27,6 +27,7 @@
   #c-portrait, #c-entity { display: block; margin: 0; background: #222; }
   .item { padding: 3px 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 4px; font-size: 13px; }
   .item .meta { font-weight: normal; opacity: .7; }
+  .item .meta.deck-invalid { color: #c0392b; font-weight: bold; opacity: 1; }
   .item.active { background: #d9b96a; }
   .item.shiki { font-weight: bold; }
   .item.broken { color: #c0392b; }
@@ -521,6 +522,12 @@ async function loadProjects(selectStem = null) {
   if (curProject) await loadCards(selectStem);
   else { cards = {shikigami: [], cards: []}; buildCardList(); if (!curMech) clearCard(); }  // 机制编辑态不抢占右栏
 }
+function fitListHeight(div) {
+  const items = div.children;
+  div.style.maxHeight = items.length > 8
+    ? `${items[7].offsetTop + items[7].offsetHeight - items[0].offsetTop}px` : 'none';
+  return div.style;
+}
 function buildProjectList() {
   document.getElementById('c-proj-secs').style.display = curProject ? '' : 'none';  // 未选中项目时不显示式神/卡牌栏
   const div = document.getElementById('c-projects');
@@ -532,6 +539,7 @@ function buildProjectList() {
     d.onclick = () => selectProject(p);
     div.appendChild(d);
   }
+  fitListHeight(div);
 }
 async function selectProject(p) {
   if (p === curProject || !await confirmDiscard()) return;
@@ -570,6 +578,25 @@ function shikigamiNames() {
 let mainShiki = null;   // 当前主要式神名（筛选上下文）
 let neutralMode = false;
 function shikiGroupByName(name) { return cards.shikigami.find(g => g.name === name) || null; }
+function shikiDeckValid(shikiName, groups) {
+  const owned = groups.filter(g => g.name != null && (g.versions || []).some(v =>
+    [v.shikigami, v.shikigami1, v.shikigami2].includes(shikiName)));
+  const dates = [...new Set(owned.flatMap(g => (g.versions || [])
+    .map(v => v.date).filter(Boolean)))].sort();
+  if (!dates.length) dates.push('');
+  for (const date of dates) {
+    const rarities = [];
+    for (const group of owned) {
+      const version = (group.versions || []).find(v => !v.date || !date || v.date <= date);
+      if (!version || version.shikigami1 || version.shikigami2 || version.shikigami !== shikiName) continue;
+      rarities.push(version.rarity);
+    }
+    if (rarities.length !== 8 || rarities.filter(r => r === 'R').length !== 4
+        || rarities.filter(r => r === 'SR').length !== 3
+        || rarities.filter(r => r === 'SSR').length !== 1) return false;
+  }
+  return true;
+}
 function buildCardList() {
   const shikiDiv = document.getElementById('c-shikigami');
   const div = document.getElementById('c-cards');
@@ -587,6 +614,7 @@ function buildCardList() {
   document.getElementById('c-card-count').textContent = (neutralMode || mainShiki)
     ? `${cards.cards.length}/299（筛选：${visible.length}）` : `${cards.cards.length}/299`;
   document.getElementById('c-neutral').textContent = neutralMode ? '显示全部卡牌' : '显示中立牌';
+  fitListHeight(shikiDiv); fitListHeight(div);
 }
 function entryItem(c, activeStem) {
   // 分组条目（v1.6.0）：卡名(id)（id 空不显示）+ 右侧非加粗 (版本数)；
@@ -617,7 +645,14 @@ function entryItem(c, activeStem) {
 }
 function cardItem(c, isShiki) {
   const d = entryItem(c, curCard);
-  if (isShiki && c.name != null) d.classList.add('shiki');  // 主要式神独立栏位加粗（meta 不加粗）
+  if (isShiki && c.name != null) {
+    d.classList.add('shiki');
+    if (!shikiDeckValid(c.name, cards.cards)) {
+      const count = d.lastElementChild;
+      count.classList.add('deck-invalid');
+      count.title = '卡组校验未通过：每个版本日期均须有 8 张非协战卡，且为 4R/3SR/1SSR';
+    }
+  }
   d.onclick = () => selectCard(c.stem);
   return d;
 }
@@ -1971,6 +2006,7 @@ function buildMechList() {
     d.onclick = () => selectMech(m.stem);
     div.appendChild(d);
   }
+  fitListHeight(div);
 }
 async function loadMechs(selectName = null) {
   let r;

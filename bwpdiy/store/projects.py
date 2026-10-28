@@ -155,10 +155,11 @@ def _card_group(pdir: Path, sub: str, key: tuple[str, str]) -> list[tuple[Path, 
 
 
 def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = False,
-                   include_stats: bool = False) -> list[dict]:
+                   include_stats: bool = False, version_meta: bool = False) -> list[dict]:
     """(路径, 数据|None) → 分组条目：stem=最新版本（date 最大、并列取 stem 大者；
     缺日期视为最旧），versions 按日期降序，count=版本数；损坏文件单列不合并。
     include_stats 时附最新基础力量/生命，供觉醒小卡查找所属式神默认值。
+    version_meta 时逐版本附稀有度/所属式神，供 GUI 校验每个日期的卡组快照。
     机制复用：_group_key 的 id 恒空、name=机制名，天然按名归组。"""
     groups: dict[tuple[str, str], list[tuple[Path, dict]]] = {}
     out = []
@@ -170,8 +171,14 @@ def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = Fal
         else:
             groups.setdefault(_group_key(data), []).append((path, data))
     for (cid, name), versions in groups.items():
-        vs = sorted(({"stem": p.stem, "date": _norm_date(d.get("version_date")) or ""}
-                     for p, d in versions), key=lambda v: (v["date"], v["stem"]))
+        vs = []
+        for p, d in versions:
+            version = {"stem": p.stem, "date": _norm_date(d.get("version_date")) or ""}
+            if version_meta:
+                version.update(rarity=d.get("rarity"), shikigami=d.get("shikigami"),
+                               shikigami1=d.get("shikigami1"), shikigami2=d.get("shikigami2"))
+            vs.append(version)
+        vs.sort(key=lambda v: (v["date"], v["stem"]))
         latest_data = next(d for p, d in versions if p.stem == vs[-1]["stem"])
         entry = {"stem": vs[-1]["stem"], "name": name or None, "id": cid or None,
                  "versions": list(reversed(vs)), "count": len(vs),
@@ -243,6 +250,7 @@ def delete_project(library: Path, project: str) -> None:
 def list_cards(library: Path, project: str) -> dict[str, list[dict]]:
     """项目内全部卡（按 id+name 归组）：{"shikigami": [...], "cards": [...]}，
     条目 {stem(最新版本), name, id, versions:[{stem,date}] 降序, count}；组按 name 排序。
+    卡牌逐版本另附 rarity/shikigami 引用，供 GUI 逐日期校验 4R/3SR/1SSR。
     式神条目另附最新 power/health，供 GUI 计算觉醒小卡默认数值。
     """
     pdir = _require_project(library, project)
@@ -250,7 +258,8 @@ def list_cards(library: Path, project: str) -> dict[str, list[dict]]:
     for sub in ("shikigami", "cards"):
         cdir = pdir / sub
         items = [(p, _read_yaml(p)) for p in cdir.glob("*.yaml")] if cdir.is_dir() else []
-        result[sub] = _group_entries(items, sort_by_id=True, include_stats=sub == "shikigami")
+        result[sub] = _group_entries(items, sort_by_id=True, include_stats=sub == "shikigami",
+                                     version_meta=True)
     return result
 
 

@@ -30,10 +30,14 @@ def with_today(card):
     return {**card, "version_date": TODAY}
 
 
-def entry(stem, name, cid=None, vd=TODAY, shiki=None, stats=False):
+def entry(stem, name, cid=None, vd=TODAY, shiki=None, stats=False, rarity="R"):
     """单版本分组条目（list_cards/list_mechanisms 口径；stats=附式神基础值）。"""
+    version = {"stem": stem, "date": vd}
+    if shiki is not None or stats:
+        version.update(rarity=None if stats else rarity, shikigami=shiki,
+                       shikigami1=None, shikigami2=None)
     data = {"stem": stem, "name": name, "id": cid,
-            "versions": [{"stem": stem, "date": vd}], "count": 1,
+            "versions": [version], "count": 1,
             "shikigami": shiki, "shikigami1": None, "shikigami2": None}
     if stats:
         data.update(power=3, health=4)
@@ -193,7 +197,7 @@ def test_list_cards_reads_name_and_sorts(lib):
     assert listed["shikigami"] == [entry("100307", "山风", stats=True)]
     assert listed["cards"] == [
         entry("10030701", "斩", shiki="山风"),
-        entry("10030702", "烈", shiki="山风"),
+        entry("10030702", "烈", shiki="山风", rarity="SR"),
         entry("坏", None, vd=""),
     ]
 
@@ -742,6 +746,19 @@ def test_list_cards_groups_by_id_and_name(lib):
     assert group["stem"] == "10030701@20260201" and group["count"] == 2
     assert [v["stem"] for v in group["versions"]] == ["10030701@20260201", "10030701"]
     assert [v["date"] for v in group["versions"]] == ["20260201", "20260101"]
+
+
+def test_list_cards_versions_carry_deck_snapshot_metadata(lib):
+    """历史卡组校验需要逐版本的稀有度和所属式神，不能只看最新版本。"""
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", {**FIGHT, "version_date": "20260101"})
+    save_card(lib, "山风", "斩@20260201",
+              {**FIGHT, "rarity": "SR", "shikigami": "薰", "version_date": "20260201"})
+    versions = list_cards(lib, "山风")["cards"][0]["versions"]
+    assert versions[0] == {"stem": "斩@20260201", "date": "20260201", "rarity": "SR",
+                           "shikigami": "薰", "shikigami1": None, "shikigami2": None}
+    assert versions[1] == {"stem": "斩", "date": "20260101", "rarity": "R",
+                           "shikigami": "山风", "shikigami1": None, "shikigami2": None}
 
 
 def test_save_propagates_shared_layout_and_artwork(lib):

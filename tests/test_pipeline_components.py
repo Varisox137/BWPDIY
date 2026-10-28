@@ -205,7 +205,7 @@ RARITY_TYPES = ["战斗", "法术", "形态", "幻境", "协战"]
 def test_rarity_flank_double_marks(card_type):
     e = elem(card_type, "rarity")
     cx, y = e["pos"]
-    offset = max(e["gap"], e.get("margin", 8))  # ctx.name_width=0 → 静态 gap 位
+    offset = max(e["gap"], e.get("margin", 12))  # ctx.name_width=0 → 静态 gap 位
     img = render_one(card_type, "rarity")
     half = e["size"] / 2 + 2
     assert ink(img, cx - offset, y, half, half) > 0  # 左标

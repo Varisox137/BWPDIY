@@ -60,6 +60,10 @@ def test_validate_entity_state_defaults_and_discards_unknown_keys():
         "combat_power": 0,
         "shield": 0,
         "art_scale": 1.0,
+        "power_color": None,
+        "health_color": None,
+        "combat_power_color": None,
+        "shield_color": None,
     }
     assert state == original
 
@@ -73,6 +77,8 @@ def test_validate_entity_state_defaults_and_discards_unknown_keys():
     ("combat_power", 1.5), ("shield", "2"),
     ("level", 4), ("level", 1.0),
     ("level_color", "orange"), ("level_color", None),
+    ("power_color", "orange"), ("health_color", 1),
+    ("combat_power_color", False), ("shield_color", "white"),
     ("art_scale", 0), ("art_scale", -1),
     ("art_scale", math.nan), ("art_scale", math.inf),
     ("art_scale", "2"),
@@ -109,6 +115,29 @@ def test_entity_native_size_and_zero_stats(assets_dir, sample_art, monkeypatch):
     assert image.mode == "RGBA"
     assert "power" in badges and "health" in badges
     assert digits == ["0", "0"]
+
+
+@pytest.mark.parametrize("field", ["power", "health", "combat_power", "shield"])
+def test_entity_stat_colors_render_with_shared_gradient(assets_dir, sample_art, field):
+    """四个小卡数值均接受 <field>_color，并复用大卡的红/绿/紫渐变。"""
+    card = make_card(sample_art)
+    state = {"power": 3, "health": 4, "combat_power": 2, "shield": 2}
+    base = render_entity(card, state, assets_dir, crop=False)
+    for color in ("red", "green", "purple"):
+        colored_state = {**state, f"{field}_color": color}
+        assert validate_entity_state(colored_state)[f"{field}_color"] == color
+        colored = render_entity(card, colored_state, assets_dir, crop=False)
+        assert not images_equal(base, colored)
+
+
+def test_entity_stat_color_inherited_from_card(assets_dir, sample_art):
+    """state 未指定颜色时继承卡牌同名字段；显式 state 颜色覆盖卡牌。"""
+    card = make_card(sample_art, power_color="red")
+    inherited = render_entity(card, {"power": 3}, assets_dir, crop=False)
+    explicit = render_entity(card, {"power": 3, "power_color": "red"}, assets_dir, crop=False)
+    overridden = render_entity(card, {"power": 3, "power_color": "green"}, assets_dir, crop=False)
+    assert images_equal(inherited, explicit)
+    assert not images_equal(inherited, overridden)
 
 
 @pytest.mark.parametrize("value, expected", [

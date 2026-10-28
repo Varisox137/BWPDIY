@@ -9,7 +9,7 @@ from PIL import Image, ImageChops, ImageDraw
 from bwpdiy.render.artwork import (
     ARTWORK_MAX_PIXELS, artwork_ref, fit_artwork, load_card_artwork)
 from bwpdiy.render.assets import AssetLibrary, get_library
-from bwpdiy.render.badges import TYPE_FRAME_CODE, _paste_element, _render_digits
+from bwpdiy.render.badges import STAT_COLORS, TYPE_FRAME_CODE, _paste_element, _render_digits
 from bwpdiy.render.pipeline import _normalize_frame
 from bwpdiy.render.size import fit_target_canvas, resolve_target_size, scale_layout
 
@@ -161,6 +161,8 @@ def validate_entity_state(state: dict) -> dict:
         "shield": state.get("shield", 0),
         "art_scale": state.get("art_scale", 1.0),
     }
+    for field in ("power", "health", "combat_power", "shield"):
+        normalized[f"{field}_color"] = state.get(f"{field}_color")
     for field in ("power", "health", "combat_power", "shield", "level"):
         if not _is_int(normalized[field]):
             raise ValueError(f"{field} 必须是整数")
@@ -170,6 +172,9 @@ def validate_entity_state(state: dict) -> dict:
     for field in ("power", "health", "combat_power", "shield"):
         if abs(normalized[field]) > max_value:
             raise ValueError(f"{field} 数值位数不得超过 {ENTITY_MAX_STAT_DIGITS} 位")
+        color = normalized[f"{field}_color"]
+        if color is not None and (not isinstance(color, str) or color not in STAT_COLORS):
+            raise ValueError(f"{field}_color 非法")
     if normalized["level"] not in (0, 1, 2, 3):
         raise ValueError("level 必须是 0、1、2 或 3")
     color = normalized["level_color"]
@@ -197,6 +202,11 @@ def _card_state(card: dict, state: dict) -> dict:
     if "level_color" not in state:
         normalized["level_color"] = (
             color if isinstance(color, str) and color in LEVEL_COLORS else "yellow")
+    for field in ("power", "health", "combat_power", "shield"):
+        key = f"{field}_color"
+        color = card.get(key)
+        if key not in state and isinstance(color, str) and color in STAT_COLORS:
+            normalized[key] = color
     return normalized
 
 
@@ -328,7 +338,7 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         if field in ("combat_power", "shield") and value == 0:
             continue
         digits = _render_digits(str(abs(value)), lib.font("name", elem["font_size"]),
-                                round(elem.get("stroke_width", 1)), None,
+                                round(elem.get("stroke_width", 1)), state[f"{field}_color"],
                                 elem.get("_digit_gap", 3))
         prepared_digits[field] = digits
         if digits is None:

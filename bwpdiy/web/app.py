@@ -421,10 +421,11 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     @app.post("/api/projects/{project}/cards/{card}/portrait_preview")
     async def portrait_preview(project: str, card: str, request: dict = Body(None)):
-        """式神头像预览：双式神框单槽位（底图+头像+斜方框+派系标），按布局 2 倍渲染。
+        """主要式神头像预览：双式神框单槽位（底图+头像+斜方框+派系标），按布局 2 倍渲染。
 
         变换取表单/落盘的 portrait 段（缺省 0/0/1/0）；派系标随式神 faction；
         缺卡图只画空槽位。布局取当前 assets/layout.json 协战 duo_frame 元素。
+        衍生物式神不使用头像预览/导出。
         """
         card_data = load_card(library_dir, project, card)
         override = (request or {}).get("card")
@@ -434,6 +435,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             card_data = copy.deepcopy(override)
         if card_data.get("type") != "式神":
             raise HTTPException(400, "头像预览仅适用于式神卡")
+        if card_data.get("shikigami"):
+            raise HTTPException(400, "衍生物式神不使用头像预览")
         elem = load_layouts(Path(assets_dir)).get("协战", {}).get(
             "elements", {}).get("duo_frame")
         if elem is None:

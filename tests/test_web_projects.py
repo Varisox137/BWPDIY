@@ -176,7 +176,7 @@ def test_card_save_and_load_roundtrip(client, project):
 def test_derived_shikigami_is_card_not_main_shikigami(client, project):
     """有所属式神的式神是衍生物，进入 cards/；主要式神仍只有无所属式神者。"""
     card = {"type": "式神", "name": "召唤物", "shikigami": "测试式神",
-            "faction": "红莲", "power": 1, "health": 2, "description": ""}
+            "special_type": "召唤", "faction": "红莲", "power": 1, "health": 2, "description": ""}
     r = client.put(f"/api/projects/{project}/cards/召唤物", json=card)
     assert r.status_code == 200
     assert client.get(f"/api/projects/{project}/cards").json() == {
@@ -747,6 +747,16 @@ def test_portrait_preview_rejects_non_shikigami(client, project):
     assert r.status_code == 400
     assert client.post(f"/api/projects/{project}/cards/不存在/portrait_preview",
                        json={}).status_code == 404
+
+
+def test_portrait_preview_rejects_derived_shikigami(client, project):
+    """衍生物式神不请求头像预览/导出；主要式神仍保持可用。"""
+    card = {**_shikigami_card("召唤物"), "shikigami": "测试式神", "special_type": "召唤"}
+    client.put(f"/api/projects/{project}/cards/召唤物", json=card)
+    r = client.post(f"/api/projects/{project}/cards/召唤物/portrait_preview", json={})
+    assert r.status_code == 400 and "衍生物" in r.json()["detail"]
+    assert client.post(f"/api/projects/{project}/cards/shikigami/portrait_preview",
+                       json={}).status_code == 200
 
 
 def test_portrait_preview_frame_toggle(client, project, library_dir):

@@ -421,6 +421,36 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_derived_shikigami_skips_portrait_preview(tmp_path):
+    """衍生物式神不显示头像预览也不发请求；主要式神仍符合头像预览条件。"""
+    script = _script()
+    eligible = _extract_js(script, "function isMainShikigami(card)")
+    preview = _extract_js(script, "async function cPreviewPortrait(withForm)")
+    driver = f"""
+const assert = require('node:assert');
+let curProject = 'P', curCard = 'C';
+let formData = {{type: '式神', shikigami: '基础'}};
+let cPortraitSeq = 0, cPortraitAppliedSeq = 0;
+const cPortraitImg = {{style: {{display: 'block'}}}};
+let syncs = 0;
+function syncSubpreviews() {{ syncs++; }}
+function fetch() {{ throw new Error('衍生物不得请求头像预览'); }}
+{eligible}
+{preview}
+(async () => {{
+  assert.strictEqual(isMainShikigami(formData), false);
+  assert.strictEqual(isMainShikigami({{type: '式神'}}), true);
+  await cPreviewPortrait(true);
+  assert.strictEqual(cPortraitImg.style.display, 'none');
+  assert.strictEqual(cPortraitAppliedSeq, 1);
+  assert.strictEqual(syncs, 1);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_sidebar_list_height_caps_at_eight_items(tmp_path):
     """各栏目八项内不限制高度，第九项起只显示前八项并内部滚动。"""
     fit = _extract_js(_script(), "function fitListHeight(div)")
@@ -1415,6 +1445,7 @@ def test_entity_subpreviews_dom_order_and_visibility(tmp_path):
     mid = html.split('<div id="c-mid">', 1)[1].split('<div id="c-right">', 1)[0]
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function entityEligible(card)",
+        "function isMainShikigami(card)",
         "function syncSubpreviews()",
         "async function cPreviewPortrait(withForm)",
         "async function entityPreview()",
@@ -1595,6 +1626,7 @@ def test_ineligible_subpreview_invalidates_pending_blob(tmp_path):
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function entityEligible(card)",
+        "function isMainShikigami(card)",
         "async function cHandleEntityPreviewResponse(r, seq)",
         "async function entityPreview()",
         "async function cPreviewPortrait(withForm)",
@@ -2183,6 +2215,7 @@ def test_preview_urls_released_on_replace_and_clear_without_onload(tmp_path):
     """三通道连续两次换图均立即释放旧 URL，清卡释放最后一张，不依赖 onload。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function isMainShikigami(card)",
         "async function cHandlePreviewResponse(r, seq)",
         "async function cHandleEntityPreviewResponse(r, seq)",
         "async function cPreviewPortrait(withForm)",

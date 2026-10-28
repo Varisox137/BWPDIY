@@ -1182,12 +1182,13 @@ document.getElementById('c-btn-refresh').onclick = () => {
   else cPreviewProject();
 };
 
-// ---- 式神头像预览（双式神框单槽位 2 倍渲染）：仅编辑式神卡时显示 ----
+// ---- 式神头像预览（双式神框单槽位 2 倍渲染）：仅主要式神显示，衍生物式神不显示 ----
+function isMainShikigami(card) { return !!card && card.type === '式神' && !card.shikigami; }
 const cPortraitImg = document.getElementById('c-portrait');
 let cPortraitTimer = null, cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
 async function cPreviewPortrait(withForm) {
   const seq = ++cPortraitSeq;
-  if (!curProject || !curCard || !formData || formData.type !== '式神') {
+  if (!curProject || !curCard || !isMainShikigami(formData)) {
     cPortraitAppliedSeq = seq;
     cPortraitImg.style.display = 'none';
     syncSubpreviews();
@@ -1281,7 +1282,7 @@ function artMouseChannel(img) {
   if (!formData || curMech) return null;
   const art = formData.artwork && Array.isArray(formData.artwork.images) ? formData.artwork.images[0] : null;
   const isPortrait = img === cPortraitImg;
-  if (isPortrait && formData.type !== '式神') return null;
+  if (isPortrait && !isMainShikigami(formData)) return null;
   const get = k => {
     const src = isPortrait
       ? (formData.portrait && typeof formData.portrait === 'object' ? formData.portrait : {})
@@ -1525,7 +1526,10 @@ function buildForm() {
       v => { if (v === 'norm') delete formData.frame_variant; else formData.frame_variant = v; afterEdit(); },
       v => FRAME_VARIANTS.find(([val]) => val === v)[1]);
     if (extOptions.marker) levelColorRow(div);  // 标记扩展：式神等级/勾玉颜色（框品与力量之间）
-    if (formData.shikigami) infoRow(div, '所属式神', formData.shikigami);  // 衍生物式神
+    if (formData.shikigami) {
+      infoRow(div, '所属式神', formData.shikigami);  // 衍生物式神
+      textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
+    }
   } else {
     if (extOptions.marker) levelColorRow(div);  // 标记扩展：等级（含 0=无）+ 勾玉颜色并排
     else selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
@@ -1625,22 +1629,22 @@ function buildForm() {
   curArtRow.textContent = `当前卡图：${curArt || `（缺省 ${formData.name ?? curCard}.png）`}`;
   div.appendChild(curArtRow);
   // 卡图定位：dx/dy/scale/旋转数字输入（旋转绕图片中心、画布自动扩展；亦可在预览画布上拖拽/滚轮/右键滚轮操作，双向同步），改动走保存按钮；
-  // 式神卡每项右侧并排「头像」设置（portrait 段，协战双式神框引用本卡图作头像时使用）
+  // 主要式神每项右侧并排「头像」设置（portrait 段，协战双式神框引用本卡图作头像时使用）
   {
     const artFirst = (formData.artwork && Array.isArray(formData.artwork.images) &&
       formData.artwork.images[0]) || {};
     const setArt = (k, v) => { ensureArtFirst()[k] = v; afterEdit(); };
-    const isShiki = t === '式神';
-    const port = (isShiki && formData.portrait && typeof formData.portrait === 'object') ? formData.portrait : {};
+    const withPortrait = isMainShikigami(formData);
+    const port = (withPortrait && formData.portrait && typeof formData.portrait === 'object') ? formData.portrait : {};
     const setPort = (k, v) => { formData.portrait = {...(formData.portrait || {}), [k]: v}; afterEdit(); };
-    const pv = k => isShiki ? (port[k] ?? (k === 'scale' ? 1 : 0)) : null;
-    const ps = k => isShiki ? (v => setPort(k, v)) : null;
+    const pv = k => withPortrait ? (port[k] ?? (k === 'scale' ? 1 : 0)) : null;
+    const ps = k => withPortrait ? (v => setPort(k, v)) : null;
     artRow(div, '卡图偏移X', artFirst.offset_x ?? 0, v => setArt('offset_x', v), pv('offset_x'), ps('offset_x'), 1, null, ['art-offset_x', 'portrait-offset_x']);
     artRow(div, '卡图偏移Y', artFirst.offset_y ?? 0, v => setArt('offset_y', v), pv('offset_y'), ps('offset_y'), 1, null, ['art-offset_y', 'portrait-offset_y']);
     artRow(div, '卡图缩放', artFirst.scale ?? 1, v => setArt('scale', v), pv('scale'), ps('scale'), 0.05, 0.01, ['art-scale', 'portrait-scale']);
     artRow(div, '卡图旋转(°)', artFirst.rotate ?? 0, v => setArt('rotate', v), pv('rotate'), ps('rotate'), 5, null, ['art-rotate', 'portrait-rotate']);
   }
-  if (t === '式神') {
+  if (isMainShikigami(formData)) {
     // 头像框开关（portrait.frame，缺省画框）：勾选才在头像预览/导出头像中绘制斜方框与派系标
     const pf = (formData.portrait && typeof formData.portrait === 'object') ? formData.portrait.frame : undefined;
     checkRowC(div, '头像框', pf !== false, v => {
@@ -1682,7 +1686,7 @@ function buildForm() {
   expBtn.style.marginLeft = '6px';
   expBtn.onclick = openExport;
   row.appendChild(btn); row.appendChild(expBtn);
-  if (t === '式神') {
+  if (isMainShikigami(formData)) {
     const expP = document.createElement('button');
     expP.textContent = '导出头像';
     expP.style.marginLeft = '6px';
@@ -1916,7 +1920,7 @@ function validateCardJS(d) {
   const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color', 'layout', 'version_date']);
   if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYYMMDD 日期（8 位数字，可留空）');
   (STATS_BY_TYPE[t] || []).forEach(f => allowed.add(`${f}_color`));  // 数值变色伴随字段
-  if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', 'portrait', 'shikigami', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
+  if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', 'portrait', 'shikigami', 'special_type', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {
     // 协战白名单：shikigami 移除，改为可选 shikigami1/shikigami2（与 store schema 同口径）
     const base = ['level', 'rarity', 'special_type', ...STATS_BY_TYPE[t]];
@@ -1952,7 +1956,9 @@ function validateCardJS(d) {
     if ('faction_style' in d && (!Number.isInteger(d.faction_style) || !FACTION_STYLES.includes(d.faction_style))) {
       errors.push(`字段 faction_style：派系样式必须是整数 ${FACTION_STYLES.join('/')} 之一`);
     }
-    if ('description' in d && typeof d.description !== 'string') errors.push('字段 description：必须是字符串');
+    for (const f of ['special_type', 'description']) {
+      if (f in d && typeof d[f] !== 'string') errors.push(`字段 ${f}：必须是字符串`);
+    }
     if ('portrait' in d) {
       if (!d.portrait || typeof d.portrait !== 'object' || Array.isArray(d.portrait)) {
         errors.push('字段 portrait：头像设置必须是映射');
@@ -2113,7 +2119,7 @@ async function exportEntity() {
 
 // ---- 导出头像：按当前头像预览（含头像框开关与未保存 portrait 修改）直接下载 PNG ----
 async function exportPortrait() {
-  if (!formData || !curProject || !curCard || formData.type !== '式神') return;
+  if (!curProject || !curCard || !isMainShikigami(formData)) return;
   const errEl = document.getElementById('c-form-errors');
   const base = String(formData.name || curCard).replace(/[<>:"/\\|?*]/g, '').trim() || 'card';
   let r;

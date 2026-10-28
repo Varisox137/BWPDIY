@@ -313,3 +313,55 @@ def test_layout_extreme_values_clamped(assets_dir):
                                    "icon_scale": 1e9,
                                    "frames": {"seal": {"badge_size": 10**6}}})
     assert img.height <= 35 + 14 * 200 + 10  # 上限行数×上限行距 + 边帽
+
+
+@pytest.mark.parametrize("frame", ["invocation", "skill", "seal"])
+def test_render_width_center_crops_and_extends_frame(assets_dir, frame):
+    """最终宽度只居中裁除/拼接框体中段，三类框的左右边缘均不重采样。"""
+    base = render_mechanism(_mech(frame=frame), assets_dir)
+    narrow = render_mechanism(_mech(frame=frame), assets_dir, width=base.width - 40)
+    wide = render_mechanism(_mech(frame=frame), assets_dir, width=base.width + 40)
+    assert narrow.width == base.width - 40 and narrow.height == base.height
+    assert wide.width == base.width + 40 and wide.height == base.height
+    left = (base.width - narrow.width) // 2
+    assert list(narrow.crop((0, 0, narrow.width, 8)).getdata()) == list(
+        base.crop((left, 0, left + narrow.width, 8)).getdata())
+    assert list(wide.crop((0, 0, 20, 8)).getdata()) == list(base.crop((0, 0, 20, 8)).getdata())
+    assert list(wide.crop((wide.width - 20, 0, wide.width, 8)).getdata()) == list(
+        base.crop((base.width - 20, 0, base.width, 8)).getdata())
+
+
+def test_render_width_updates_text_region_without_changing_pitch(assets_dir):
+    """框宽变化平移文本左缘并增减可用宽度，不改变行距和文本块高度。"""
+    base_info, narrow_info, wide_info = {}, {}, {}
+    base = render_mechanism(_mech(), assets_dir, info=base_info)
+    narrow = render_mechanism(_mech(), assets_dir, width=base.width - 40, info=narrow_info)
+    wide = render_mechanism(_mech(), assets_dir, width=base.width + 40, info=wide_info)
+    assert narrow_info["text_x"] == base_info["text_x"] - 20
+    assert wide_info["text_x"] == base_info["text_x"] + 20
+    assert narrow_info["text_width"] == base_info["text_width"] - 40
+    assert wide_info["text_width"] == base_info["text_width"] + 40
+    assert narrow_info["text_height"] == wide_info["text_height"] == base_info["text_height"]
+
+
+def test_render_font_scale_changes_text_and_frame_pitch(assets_dir):
+    """字号倍率作用于文字、行距及框高；缺省倍率保持默认逐像素输出。"""
+    base_info, scaled_info = {}, {}
+    base = render_mechanism(_mech(), assets_dir, info=base_info)
+    scaled = render_mechanism(_mech(), assets_dir, font_scale=1.5, info=scaled_info)
+    assert scaled_info["text_height"] == base_info["text_height"] * 1.5
+    assert scaled.height == 35 + 3 * 36  # 非原生行距沿用 5 行素材的 35px 顶底帽边距
+    assert scaled_info["text_x"] == base_info["text_x"]
+    assert scaled_info["text_width"] == base_info["text_width"]
+    again = render_mechanism(_mech(), assets_dir, font_scale=1)
+    assert list(again.getdata()) == list(base.getdata()) and again.size == base.size
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"width": 0}, {"width": -1}, {"width": 1.5}, {"width": True}, {"width": 8193},
+    {"font_scale": 0}, {"font_scale": -1}, {"font_scale": True},
+    {"font_scale": float("nan")}, {"font_scale": float("inf")}, {"font_scale": 1e9},
+])
+def test_render_size_parameters_validated(assets_dir, kwargs):
+    with pytest.raises(ValueError):
+        render_mechanism(_mech(), assets_dir, **kwargs)

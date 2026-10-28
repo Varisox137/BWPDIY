@@ -22,13 +22,17 @@
   _draw_styled_line）；正文颜色按框体（浅框深字/黑框浅字，TEXT_FILL）；
   黑框（skill）派系图标用 _black 变体。
 - 软上限 MAX_LINES 行（描述行数），超过抛 ValueError 防爆图。
+- 可选 width 为最终宽度（居中裁除/拼接中段并同步调整文本区域，字号不变）；
+  font_scale 为字号倍率（同步调整机制名/正文/图标与框行高，不改布局偏移和角标）。
 """
 
+import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 from bwpdiy.render.assets import AssetLibrary, get_library
+from bwpdiy.render.size import MAX_RENDER_PIXELS, MAX_RENDER_SIDE, _dimension
 from bwpdiy.render.text import (
     _draw_styled_line,
     _icon_widths,
@@ -189,6 +193,23 @@ def _resize_mid(img: Image.Image, band_y: int, delta: int, pitch: int) -> Image.
     return img.copy()
 
 
+def _resize_frame_width(img: Image.Image, width: int) -> Image.Image:
+    """居中裁除或拼接框体中段到最终宽度，左右边缘不做横向重采样。"""
+    if width == img.width:
+        return img.copy()
+    if width < img.width:
+        left = (img.width - width) // 2
+        return img.crop((left, 0, left + width, img.height))
+    center = img.width // 2
+    added = width - img.width
+    out = Image.new("RGBA", (width, img.height))
+    out.paste(img.crop((0, 0, center, img.height)), (0, 0))
+    middle = img.crop((center, 0, center + 1, img.height))
+    out.paste(middle.resize((added, img.height), Image.NEAREST), (center, 0))
+    out.paste(img.crop((center, 0, img.width, img.height)), (center + added, 0))
+    return out
+
+
 def _wrap_items(items: list[tuple[str, str, bool]], font, lib: AssetLibrary,
                 width: float, icon_variant: str | None,
                 icon_scale: float = 1.0) -> list[list]:
@@ -217,17 +238,25 @@ def _wrap_items(items: list[tuple[str, str, bool]], font, lib: AssetLibrary,
 
 
 def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
-                     info: dict | None = None) -> Image.Image:
-    """渲染机制描述框，返回按最紧 alpha box 裁剪的 PNG 图。
+                     info: dict | None = None, width: int | None = None,
+                     font_scale: float = 1.0) -> Image.Image:
+    """渲染机制描述框，默认返回按最紧 alpha box 裁剪的 PNG 图。
 
     mech 字段：name 关键字名、frame（invocation/skill/seal）、text 多行描述、
     badge（bless/eclipse，仅 seal 框合法，贴框左上角）。
     layout：机制布局配置（assets/layout.json「机制」段），缺省/缺键回退 DEFAULT_LAYOUT。
     info：传入 dict 时回填实际文本块矩形（裁剪后坐标系）
     {text_x, text_top, text_width, text_height}，供 GUI 画文本区域轮廓。
+    width：最终框宽，居中裁除/拼接中段，文本左缘与可用宽度同步调整，字号不变。
+    font_scale：机制名/正文字号与行高倍率，不改变布局偏移和角标尺寸。
     """
     lib = get_library(Path(assets_dir))
     cfg = _mech_layout(layout)
+    if width is not None:
+        _dimension(width, "宽度")
+    if (isinstance(font_scale, bool) or not isinstance(font_scale, (int, float))
+            or not math.isfinite(font_scale) or font_scale <= 0):
+        raise ValueError("font_scale 必须是有限正数")
     frame = mech.get("frame")
     if frame not in MECH_FRAMES:
         raise ValueError(f"未知机制框类型: {frame}")
@@ -243,20 +272,32 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     if not isinstance(text, str):
         raise ValueError("机制描述（text）必须是字符串")
 
-    pitch = cfg["text_size"]  # 行距 = 正文字号
+    pitch = max(1, round(cfg["text_size"] * font_scale))  # 行距 = 正文字号
+    name_size = max(1, round(cfg["name_size"] * font_scale))
+    if pitch > MAX_RENDER_SIDE or name_size > MAX_RENDER_SIDE:
+        raise ValueError(f"字号超过边长上限 {MAX_RENDER_SIDE}")
     font = lib.font("desc", pitch)
-    name_font = lib.font("desc", cfg["name_size"])
+    name_font = lib.font("desc", name_size)
     icon_variant = "black" if frame == "skill" else None
-    region = cfg["frames"][frame]           # 本框独立文本区域
-    text_x = region["text_x"]               # 文本（关键字名+描述）左缘
+    region = cfg["frames"][frame]
+    source_name = "frame_seal" if frame == "seal" else f"frame_{frame}_3"
+    natural_width = lib.mech(source_name).width
+    final_width = natural_width if width is None else width
+    width_delta = final_width - natural_width
+    text_x = region["text_x"] + width_delta / 2
+    text_width = max(20, region["width"] + width_delta)
     items = parse_items(_normalize_newlines(text))
-    lines = _wrap_items(items, font, lib, region["width"],
-                        icon_variant, cfg["icon_scale"])
+    lines = _wrap_items(items, font, lib, text_width, icon_variant, cfg["icon_scale"])
     if len(lines) > MAX_LINES:
         raise ValueError(f"机制描述行数 {len(lines)} 超软上限 {MAX_LINES} 行")
 
     total_rows = len(lines) + 2  # 关键字名 + 空行 + 描述行
-    img = build_frame(lib, frame, total_rows, pitch)
+    estimated_height = 35 + max(total_rows, _MIN_ROWS) * pitch
+    if estimated_height > MAX_RENDER_SIDE:
+        raise ValueError(f"目标高度超过边长上限 {MAX_RENDER_SIDE}")
+    if final_width * estimated_height > MAX_RENDER_PIXELS:
+        raise ValueError(f"目标尺寸超过像素上限 {MAX_RENDER_PIXELS}")
+    img = _resize_frame_width(build_frame(lib, frame, total_rows, pitch), final_width)
 
     # 文本块竖直居中于框中心 + 本框 text_dy
     y0 = (img.height - total_rows * pitch) / 2 + region["text_dy"]
@@ -287,11 +328,13 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
                           cfg["icon_scale"])
 
     if info is not None:  # 实际文本块矩形（关键字名+空行+描述行）：左缘/顶/换行宽/行数×行距
-        info.update(text_x=text_x, text_top=y0, text_width=region["width"],
+        info.update(text_x=text_x, text_top=y0, text_width=text_width,
                     text_height=total_rows * pitch)
     bbox = out.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
     if not bbox:
         return out
+    if width is not None:  # 显式最终宽度不受透明边裁剪影响，仅纵向裁齐
+        bbox = (0, bbox[1], out.width, bbox[3])
     if info is not None:  # 换算到裁剪后坐标系
         info["text_x"] -= bbox[0]
         info["text_top"] -= bbox[1]

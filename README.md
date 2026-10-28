@@ -27,7 +27,7 @@ PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产�
 
 ## 进度
 
-- 已完成 M1~M3：渲染管线、卡牌库与 WebGUI 编辑器；当前为 v1.7.2。
+- 已完成 M1~M3：渲染管线、卡牌库与 WebGUI 编辑器；当前为 v1.7.3。
 - 支持多种卡面与机制框、多版本项目、布局编辑、卡图/头像/对局小卡导出、原生尺寸渲染及 exe 自动更新；侧栏提供逐历史日期的卡组数量与稀有度分布校验。
 - 历史更新请查看工具内「最近更新」或 [GitHub Releases](https://github.com/Varisox137/BWPDIY/releases)。
 - 后续：M4（HTTP API + BWPro 集成文档）、二期多牌框版型。

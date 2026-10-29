@@ -2170,15 +2170,24 @@ function buildMechList() {
   fitListHeight(div);
   syncDeleteButtons();
 }
-async function loadMechs(selectName = null) {
+async function loadMechs(selectName = null, reportError = true) {
   let r;
   try { r = await fetch('/api/mechanisms'); }
-  catch (e) { listErr(['机制列表请求失败: ' + e]); return; }
-  if (!r.ok) { listErr(await parseErrorDetail(r)); return; }
+  catch (e) { if (reportError) listErr(['机制列表请求失败: ' + e]); return false; }
+  if (!r.ok) {
+    const errors = await parseErrorDetail(r);
+    if (reportError) listErr(errors);
+    return false;
+  }
   mechs = await r.json();
   if (curMech && !mechs.some(m => (m.versions || []).some(v => v.stem === curMech))) { exitMech(); clearCard(); }  // 机制已被外部删除：退出编辑态
   buildMechList();
   if (selectName && mechs.some(m => (m.versions || []).some(v => v.stem === selectName))) await selectMech(selectName, true);
+  return true;
+}
+async function bootMechs(attempt = 0) {
+  if (await loadMechs(null, attempt >= 3)) return;
+  if (attempt < 3) setTimeout(() => bootMechs(attempt + 1), 1000);
 }
 function exitMech() {  // 离开机制编辑态（脏守卫由调用方先行，见 confirmDiscard）
   curMech = null; mechData = null; mechForm = null; mDirty = false;
@@ -3394,7 +3403,7 @@ fetch('/api/version').then(r => r.json()).then(v => {
 }).catch(() => {});
 applyExtOptions();  // 扩展选项恢复（含布局 navtab 显隐）
 loadProjects();
-loadMechs();  // 机制全局列表（不随项目切换）
+bootMechs();  // 机制全局列表（不随项目切换）；启动瞬间服务未就绪时有限重试
 // 自动更新检查：有新版出横幅；exe 一键更新（下载后程序退出替换重启），开发模式仅给下载链接
 // 页面加载即查一次，此后每 1min 复查（下载/更新进行中暂停复查，避免覆盖进度提示）
 let updateApplying = false;

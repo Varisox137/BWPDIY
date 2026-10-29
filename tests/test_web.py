@@ -821,6 +821,47 @@ async function sessionConfirm(message, kind) {{ return kind === 'naming'; }}
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_mechanism_startup_retries_transient_failure(tmp_path):
+    """启动时服务尚未就绪不得让已有机制永久空列表；有限重试成功后正常显示。"""
+    script = _script()
+    load = _extract_js(script, "async function loadMechs(selectName = null, reportError = true)")
+    boot = _extract_js(script, "async function bootMechs(attempt = 0)")
+    driver = f"""
+const assert = require('node:assert');
+let mechs = [], curMech = null, built = 0, errors = [], attempts = 0;
+const timers = [];
+function setTimeout(fn, delay) {{ timers.push(fn); return timers.length; }}
+function listErr(msgs) {{ errors = msgs; }}
+function buildMechList() {{ built = mechs.length; }}
+function exitMech() {{ curMech = null; }}
+function clearCard() {{}}
+async function selectMech() {{}}
+async function parseErrorDetail() {{ return ['bad']; }}
+async function fetch(url) {{
+  assert.strictEqual(url, '/api/mechanisms');
+  attempts++;
+  if (attempts === 1) throw new Error('服务尚未就绪');
+  return {{ok: true, json: async () => [{{stem: '不屈', name: '不屈',
+    versions: [{{stem: '不屈', date: '20191212'}}], count: 1}}]}};
+}}
+{load}
+{boot}
+(async () => {{
+  await bootMechs();
+  assert.strictEqual(mechs.length, 0);
+  assert.strictEqual(timers.length, 1);
+  await timers.shift()();
+  assert.strictEqual(attempts, 2);
+  assert.strictEqual(mechs[0].name, '不屈');
+  assert.strictEqual(built, 1);
+  assert.deepStrictEqual(errors, []);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_reserved_project_name_warns_before_request(tmp_path):
     """mechanisms 大小写变体均被前端拦截并弹窗说明，不发送项目请求。"""
     script = _script()

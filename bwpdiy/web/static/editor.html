@@ -719,6 +719,10 @@ async function selectCard(stem, force = false) {
   cPreviewSeq++; cPreviewAppliedSeq = cPreviewSeq;
   cEntitySeq++; cEntityAppliedSeq = cEntitySeq;
   cPortraitSeq++; cPortraitAppliedSeq = cPortraitSeq;
+  cPortraitImg.style.display = 'none';
+  cPortraitImg.removeAttribute('src');
+  if (cPortraitUrl) { URL.revokeObjectURL(cPortraitUrl); cPortraitUrl = null; }
+  syncSubpreviews();
   curCard = stem;
   const sg = cards.shikigami.find(e => (e.versions || []).some(v => v.stem === stem));
   if (sg) mainShiki = sg.name;
@@ -1202,8 +1206,6 @@ async function cPreviewPortrait(withForm) {
     syncSubpreviews();
     return;
   }
-  cPortraitImg.style.display = 'block';
-  syncSubpreviews();
   let r;
   try {
     r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/portrait_preview`, {
@@ -1222,6 +1224,8 @@ async function cPreviewPortrait(withForm) {
   const prev = cPortraitUrl;
   cPortraitUrl = url;
   cPortraitImg.src = url;
+  cPortraitImg.style.display = 'block';
+  syncSubpreviews();
   if (prev) URL.revokeObjectURL(prev);
 }
 

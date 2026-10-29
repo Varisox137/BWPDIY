@@ -22,7 +22,8 @@
   _draw_styled_line）；正文颜色按框体（浅框深字/黑框浅字，TEXT_FILL）；
   黑框（skill）派系图标用 _black 变体。
 - 软上限 MAX_LINES 行（描述行数），超过抛 ValueError 防爆图。
-- 可选 width 为最终宽度（居中裁除/拼接中段并同步调整文本区域，字号不变）；
+- 可选 width 为最终宽度（居中裁除/拼接中段并同步调整文本区域，字号不变，
+  文本区始终限制在框内；过长机制名自动缩字号，最小 8px 仍放不下则报错）；
   font_scale 为字号倍率（同步调整机制名/正文/图标与框行高，不改布局偏移和角标）。
 """
 
@@ -289,7 +290,11 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     if final_width > MAX_RENDER_SIDE:
         raise ValueError(f"目标宽度超过边长上限 {MAX_RENDER_SIDE}")
     text_x = region["text_x"] + width_delta / 2
-    text_width = max(20, region["width"] + width_delta)
+    text_width = min(max(20, region["width"] + width_delta), final_width)
+    if text_x < 0:
+        text_x = 0
+    else:
+        text_width = min(text_width, final_width - 2 * text_x)
     items = parse_items(_normalize_newlines(text))
     lines = _wrap_items(items, font, lib, text_width, icon_variant, cfg["icon_scale"])
     if len(lines) > MAX_LINES:
@@ -318,8 +323,14 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
         out.paste(icon, tuple(region["badge_pos"]), icon)
     name_x = (text_x if not badge else
               region["badge_pos"][0] + region["badge_size"] + BADGE_NAME_GAP)
+    available_name_width = img.width - name_x - max(0, text_x)
+    while name_size > 8 and name_font.getlength(name) > available_name_width:
+        name_size -= 1
+        name_font = lib.font("desc", name_size)
+    if name_font.getlength(name) > available_name_width:
+        raise ValueError("机制关键字名过长，无法放入框内")
     # 关键字名：框内左上角左对齐（左缘与描述一致 = text_x，不单独偏移）、
-    # 金色、字号略大于正文
+    # 金色、字号略大于正文；过长时缩字号避免越出右框缘
     draw.text((name_x, y0 + pitch / 2), name, font=name_font,
               anchor="lm", fill=NAME_FILL)
     # 描述：与关键字名之间空一行，逐行左对齐（同行左缘 = 区域左缘；[[关键字]] 金色

@@ -12,11 +12,8 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 
 @pytest.fixture()
-def assets_dir(tmp_path) -> Path:
-    """真实 assets/ 的临时拷贝：PUT 用例会写 layout.json，不能污染仓库。"""
-    dst = tmp_path / "assets"
-    shutil.copytree(ASSETS, dst)
-    return dst
+def assets_dir(web_assets_dir) -> Path:
+    return web_assets_dir
 
 
 @pytest.fixture()
@@ -1580,6 +1577,7 @@ let cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
 let cEntitySeq = 0, cEntityAppliedSeq = 0, cEntityUrl = null;
 const cErrorEl = {{textContent: ''}};
 const URL = {{createObjectURL: () => 'blob:new', revokeObjectURL() {{}}}};
+function enc(value) {{ return value; }}
 async function fetch() {{ return {{ok: true, blob: async () => ({{kind: 'png'}})}}; }}
 async function cHandleEntityPreviewResponse(r, seq) {{ cEntityImg.src = 'blob:entity'; }}
 let activeAsk = null;
@@ -2157,6 +2155,11 @@ let cPreviewSeq = 0, cEntitySeq = 0, cPortraitSeq = 0;
 let cPreviewAppliedSeq = 0, cEntityAppliedSeq = 0, cPortraitAppliedSeq = 0;
 let cards = {{shikigami: [], cards: []}}, builds = 0, previews = 0;
 const cStatusEl = {{textContent: ''}};
+const cPortraitImg = {{src: 'blob:old', style: {{display: 'block'}},
+  removeAttribute() {{ this.src = ''; }}}};
+let cPortraitUrl = 'blob:old', subpreviewSyncs = 0;
+function syncSubpreviews() {{ subpreviewSyncs++; }}
+const URL = {{revokeObjectURL() {{}}}};
 function confirmDiscard() {{ return true; }}
 function buildCardList() {{}}
 function listErr() {{}}
@@ -2175,6 +2178,11 @@ let activeAsk = null;
 {functions}
 (async () => {{
   const a = selectCard('A');
+  await Promise.resolve();  // confirmDiscard 的 await 让出一次微任务后，旧头像即应清除
+  assert.strictEqual(cPortraitImg.style.display, 'none');  // 慢请求期间也不得闪旧主要式神头像
+  assert.strictEqual(cPortraitImg.src, '');
+  assert.strictEqual(cPortraitUrl, null);
+  assert.strictEqual(subpreviewSyncs, 1);
   while (!pending.A) await Promise.resolve();
   const b = selectCard('B');
   while (!pending.B) await Promise.resolve();
@@ -2236,6 +2244,7 @@ function resetUndo() {{}}
 function syncCardFrameButtons() {{}}
 function buildForm() {{ builds++; }}
 function cPreviewProject() {{ previews++; }}
+function syncSubpreviews() {{}}
 let resolveA;
 async function fetch() {{
   return {{ok: true, json: () => new Promise(resolve => {{ resolveA = resolve; }})}};
@@ -2494,6 +2503,7 @@ function resetUndo() {{}}
 function syncCardFrameButtons() {{}}
 function buildForm() {{}}
 function cPreviewProject() {{}}
+function syncSubpreviews() {{}}
 async function fetch() {{ return {{ok: true, json: async () => ({{type: '形态', name: '新', power: 3, health: 4}})}}; }}
 let activeAsk = null;
 {functions}
@@ -2515,7 +2525,7 @@ let activeAsk = null;
   assert.strictEqual(cPreviewUrl, null);
   assert.strictEqual(cPortraitUrl, null);
   assert.strictEqual(cEntityUrl, null);
-  assert.deepStrictEqual(removed, ['main', 'portrait', 'entity']);
+  assert.deepStrictEqual(removed, ['portrait', 'main', 'portrait', 'entity']);
   assert.strictEqual(cSubpreviews.style.display, 'none');
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});

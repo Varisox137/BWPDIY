@@ -4,6 +4,7 @@
 from pathlib import Path
 
 import pytest
+from PIL import ImageDraw
 
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.mech import (
@@ -352,17 +353,38 @@ def test_render_width_center_crops_and_extends_frame(assets_dir, frame):
         base.crop((base.width - 20, 0, base.width, 8)).getdata())
 
 
-def test_render_width_updates_text_region_without_changing_pitch(assets_dir):
-    """框宽变化平移文本左缘并增减可用宽度，不改变行距和文本块高度。"""
+def test_render_width_updates_text_region_without_overflow(assets_dir):
+    """显式宽窄框均保持文本区在底框内，行距和文本块高度不变。"""
     base_info, narrow_info, wide_info = {}, {}, {}
     base = render_mechanism(_mech(), assets_dir, info=base_info)
     narrow = render_mechanism(_mech(), assets_dir, width=base.width - 40, info=narrow_info)
     wide = render_mechanism(_mech(), assets_dir, width=base.width + 40, info=wide_info)
-    assert narrow_info["text_x"] == base_info["text_x"] - 20
+    assert narrow_info["text_x"] == 0
     assert wide_info["text_x"] == base_info["text_x"] + 20
     assert narrow_info["text_width"] == base_info["text_width"] - 40
-    assert wide_info["text_width"] == base_info["text_width"] + 40
+    assert wide_info["text_width"] == base_info["text_width"]
+    for image, info in ((base, base_info), (narrow, narrow_info), (wide, wide_info)):
+        assert info["text_x"] >= 0
+        assert info["text_x"] + info["text_width"] <= image.width
     assert narrow_info["text_height"] == wide_info["text_height"] == base_info["text_height"]
+
+
+def test_long_name_shrinks_to_fit_explicit_width(assets_dir, monkeypatch):
+    """长机制名在字号倍率与显式宽度下也不得被右框缘裁断。"""
+    name = "超长机制名称" * 4
+    captured = {}
+    original = ImageDraw.ImageDraw.text
+
+    def tracked(draw, xy, text, *args, **kwargs):
+        if text == name:
+            captured.update(x=xy[0], font=kwargs["font"])
+        return original(draw, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", tracked)
+    img = render_mechanism(_mech(name=name), assets_dir, width=400, font_scale=2)
+    assert captured["font"].size < 52
+    assert captured["x"] >= 0
+    assert captured["x"] + captured["font"].getlength(name) <= img.width
 
 
 def test_render_font_scale_changes_text_and_frame_pitch(assets_dir):

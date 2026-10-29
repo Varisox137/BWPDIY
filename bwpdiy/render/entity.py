@@ -293,9 +293,10 @@ def _render_stat(canvas: Image.Image, lib: AssetLibrary, elem: dict,
 
 
 def _entity_work_bounds(lib: AssetLibrary, elements: dict,
-                        state: dict) -> tuple[tuple[int, int, int, int], dict]:
+                        state: dict, factor: float = 1.0) -> tuple[tuple[int, int, int, int], dict]:
     _validate_entity_elements(elements, state)
-    rects = [(0, 0, *ENTITY_SIZE)]
+    rects = [(0, 0, max(1, round(ENTITY_SIZE[0] * factor)),
+              max(1, round(ENTITY_SIZE[1] * factor)))]
     prepared_digits = {}
 
     def add_centered(pos, size):
@@ -409,7 +410,7 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
         elements = {}
     lib = get_library(assets_dir)
     (left, top, right, bottom), prepared_digits = _entity_work_bounds(
-        lib, elements, state)
+        lib, elements, state, factor)
     ref = artwork_ref(card)
     window_width, window_height = window["width"], window["height"]
     inner_size = (max(1, round(window_width)), max(1, round(window_height)))

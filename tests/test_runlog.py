@@ -15,6 +15,7 @@ def clean_root_logger():
     root = logging.getLogger()
     saved_handlers = root.handlers[:]
     saved_level = root.level
+    saved_pil_level = logging.getLogger("PIL").level
     saved_hooks = sys.excepthook, threading.excepthook
     runlog._LOG_PATH = None
     yield
@@ -23,6 +24,7 @@ def clean_root_logger():
             h.close()
     root.handlers[:] = saved_handlers
     root.setLevel(saved_level)
+    logging.getLogger("PIL").setLevel(saved_pil_level)
     sys.excepthook, threading.excepthook = saved_hooks
     runlog._LOG_PATH = None
 
@@ -33,11 +35,13 @@ def test_run_log_writes_file_and_idempotent(tmp_path):
     assert path.stem.endswith(f"-{runlog.os.getpid()}")  # 同秒多实例不共用日志文件
     logging.getLogger("bwpdiy.test").info("你好，单次运行记录")
     logging.getLogger("bwpdiy.gui").debug("按钮与数值调试事件")
+    logging.getLogger("PIL.PngImagePlugin").debug("STREAM b'IHDR' 冗余字节流")
     for h in logging.getLogger().handlers:
         h.flush()
     text = path.read_text(encoding="utf-8")
     assert "BWPDIY v" in text and "你好，单次运行记录" in text  # 版本行 + 模块日志均落盘
     assert "DEBUG bwpdiy.gui: 按钮与数值调试事件" in text
+    assert "冗余字节流" not in text
     file_handler = next(h for h in logging.getLogger().handlers
                         if getattr(h, "baseFilename", None) == str(path))
     console_handler = next(h for h in logging.getLogger().handlers

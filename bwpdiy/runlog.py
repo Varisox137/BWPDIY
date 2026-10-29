@@ -4,6 +4,7 @@
 目录、开发取 cwd；不可写回退系统临时目录 bwpdiy-logs/），同时保留控制台输出；
 最多保留最近 10 次运行日志，启动时同时删除超过 7 天的旧日志。文件记录 DEBUG
 及以上（GUI 按钮/字段变更、上传/保存与本地写操作），控制台只显示 INFO 及以上；
+PIL 的 PNG 字节流 DEBUG 屏蔽，PIL 自身 INFO 及以上保留。
 另有版本/启动参数、uvicorn 服务日志（access 降级 WARNING）、更新全过程与未捕获异常。
 纯本地工具无账号体系；文本正文不写入日志，字段文本变更只记录长度，写操作记录
 资源路径与 HTTP 结果。
@@ -91,6 +92,7 @@ def setup_run_logging(log_dir: Path | None = None) -> Path:
     root.addHandler(file_handler)
     root.addHandler(console)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)  # 每次预览一条，刷屏
+    logging.getLogger("PIL").setLevel(logging.INFO)  # PNG 字节流 DEBUG 对排查无帮助
 
     def log_exception(exc_type, exc, tb, hook):
         logging.getLogger("bwpdiy").critical("未捕获异常", exc_info=(exc_type, exc, tb))

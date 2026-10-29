@@ -27,7 +27,7 @@ PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产�
 
 ## 进度
 
-- 已完成 M1~M3：渲染管线、卡牌库与 WebGUI 编辑器；当前为 v1.7.5。
+- 已完成 M1~M3：渲染管线、卡牌库与 WebGUI 编辑器；当前为 v1.7.6。
 - 支持多种卡面与机制框、多版本项目、按框品独立布局、卡图/头像/对局小卡导出、原生尺寸渲染及 exe 自动更新；侧栏提供逐历史日期的卡组数量与稀有度分布校验。
 - 历史更新请查看工具内「最近更新」或 [GitHub Releases](https://github.com/Varisox137/BWPDIY/releases)。
 - 后续：M4（HTTP API + BWPro 集成文档）、二期多牌框版型。
@@ -42,7 +42,7 @@ PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产�
 
 ## 运行日志与问题反馈
 
-每次启动会在运行目录 `logs/` 写一份单次运行日志 `bwpdiy-<日期时间>-<PID>.log`（保留最近 10 次，并自动删除超过 7 天的旧日志；目录不可写时回退系统临时目录 `bwpdiy-logs/`），记录版本、启动参数、服务与自动更新全过程；文件另含按钮、字段变更及写盘 DEBUG 事件，控制台仍只显示 INFO 及以上。反馈问题（尤其更新失败/卡死）时请附上该次运行的日志文件。
+每次启动会在运行目录 `logs/` 写一份单次运行日志 `bwpdiy-<日期时间>-<PID>.log`（保留最近 10 次，并自动删除超过 7 天的旧日志；目录不可写时回退系统临时目录 `bwpdiy-logs/`），记录版本、启动参数、服务与自动更新全过程；文件另含按钮、字段变更及写盘 DEBUG 事件（PIL 的 PNG 字节流 DEBUG 不记录），控制台仍只显示 INFO 及以上。反馈问题（尤其更新失败/卡死）时请附上该次运行的日志文件。
 
 ## 安全说明
 

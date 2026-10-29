@@ -127,6 +127,8 @@ def test_entity_native_size_and_level_zero(assets_dir, sample_art):
     assert same.tobytes() == base.tobytes()
     doubled = render_entity(card, state, assets_dir, height=base.height * 2)
     assert doubled.size == (base.width * 2, base.height * 2)
+    assert doubled.getpixel((doubled.width // 2, doubled.height - 2))[3] > 0
+    assert doubled.getpixel((doubled.width - 2, doubled.height // 2))[3] > 0
     with pytest.raises(ValueError, match="比例不一致"):
         render_entity(card, state, assets_dir, width=base.width, height=base.height * 2)
 

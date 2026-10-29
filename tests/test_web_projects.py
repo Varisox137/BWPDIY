@@ -1,6 +1,6 @@
 """web 层项目/卡牌 REST API 测试：CRUD 全路径、错误映射、项目卡预览、卡图上传（id/卡名命名）。
 
-fixture 用 tmp_path 的 library_dir + assets 拷贝，不碰真实 library/ 与 assets/layout.json。
+fixture 用 tmp_path 的 library_dir + 共享 assets 拷贝（逐用例恢复布局），不碰真实用户数据。
 存储模型：library/<项目>/{shikigami,cards}/<任意文件名>.yaml + images/；
 文件名（stem）与卡名（name 字段）脱钩；list_cards 按 id+name 归组返回
 {stem(最新版本), name, id, versions, count}；保存时 version_date 留空填当天。
@@ -20,15 +20,12 @@ from PIL import Image
 from bwpdiy.render.entity import _DEFAULT_LAYOUT
 from bwpdiy.web.app import create_app
 
-ASSETS = Path(__file__).resolve().parent.parent / "assets"
 SAMPLE_ART = Path(__file__).resolve().parent / "fixtures" / "sample_art.png"
 
 
 @pytest.fixture()
-def assets_dir(tmp_path) -> Path:
-    dst = tmp_path / "assets"
-    shutil.copytree(ASSETS, dst)
-    return dst
+def assets_dir(web_assets_dir) -> Path:
+    return web_assets_dir
 
 
 @pytest.fixture()

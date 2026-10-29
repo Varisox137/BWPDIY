@@ -64,7 +64,7 @@ BADGE_NAME_GAP = 6   # 角标存在时关键字名与角标右缘的间距
 # 机制布局默认配置（assets/layout.json「机制」段覆盖；GUI 布局设置「机制」页编辑）。
 # 字号/小图标三类框共用；文本区域完全分框独立（frames.<框>），无共用基础偏移；
 # 加护/蚀印角标仅 seal 框合法，其尺寸/坐标配置在 frames.seal 区域下。
-_DEFAULT_REGION = {"text_x": MARGIN_X, "text_dy": 0, "width": 245}
+_DEFAULT_REGION = {"text_x": MARGIN_X, "text_dy": 0, "width": 288}
 _SEAL_REGION = {**_DEFAULT_REGION, "badge_size": 30, "badge_pos": list(BADGE_POS)}
 DEFAULT_LAYOUT = {
     "name_size": 26,          # 关键字名字号（略大于正文，不加粗）
@@ -127,7 +127,7 @@ def _mech_layout(layout: dict | None) -> dict:
         elif _is_num(value):
             cfg[key] = int(value)
     # 上下限兜底：字号上限防恶意/畸形 layout 撑出超大图（行距=字号，框高=行数×行距），
-    # icon_scale/badge_size 上限防超大 resize；width 只影响换行不影响画布尺寸，不设上限
+    # icon_scale/badge_size 上限防超大 resize；width 影响换行与默认框宽，最终尺寸另作上限校验
     cfg["name_size"] = min(200, max(8, cfg["name_size"]))
     cfg["text_size"] = min(200, max(8, cfg["text_size"]))
     cfg["icon_scale"] = min(4.0, cfg["icon_scale"])
@@ -247,7 +247,8 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     layout：机制布局配置（assets/layout.json「机制」段），缺省/缺键回退 DEFAULT_LAYOUT。
     info：传入 dict 时回填实际文本块矩形（裁剪后坐标系）
     {text_x, text_top, text_width, text_height}，供 GUI 画文本区域轮廓。
-    width：最终框宽，居中裁除/拼接中段，文本左缘与可用宽度同步调整，字号不变。
+    width：显式最终框宽，居中裁除/拼接中段并同步调整文本；缺省时框宽按文本区
+    适配且不小于素材原宽，文本左缘与换行宽保持布局值，字号不变。
     font_scale：机制名/正文字号与行高倍率，不改变布局偏移和角标尺寸。
     """
     lib = get_library(Path(assets_dir))
@@ -282,8 +283,11 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     region = cfg["frames"][frame]
     source_name = "frame_seal" if frame == "seal" else f"frame_{frame}_3"
     natural_width = lib.mech(source_name).width
-    final_width = natural_width if width is None else width
-    width_delta = final_width - natural_width
+    default_width = max(natural_width, region["text_x"] * 2 + region["width"])
+    final_width = default_width if width is None else width
+    width_delta = final_width - default_width
+    if final_width > MAX_RENDER_SIDE:
+        raise ValueError(f"目标宽度超过边长上限 {MAX_RENDER_SIDE}")
     text_x = region["text_x"] + width_delta / 2
     text_width = max(20, region["width"] + width_delta)
     items = parse_items(_normalize_newlines(text))

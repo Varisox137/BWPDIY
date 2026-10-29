@@ -193,6 +193,24 @@ def test_layout_region_width_wraps(assets_dir):
     assert narrow.height > wide.height
 
 
+@pytest.mark.parametrize("frame", ["invocation", "skill", "seal"])
+def test_default_region_fits_twelve_hanzi(assets_dir, frame):
+    from bwpdiy.render.layout import load_layouts
+
+    info12, info13 = {}, {}
+    img12 = render_mechanism(_mech(frame=frame, text="一" * 12), assets_dir, info=info12)
+    img13 = render_mechanism(_mech(frame=frame, text="一" * 13), assets_dir, info=info13)
+
+    assert info12["text_width"] == 288
+    assert img12.width == 324  # 内置回退：左右各 18px，288px 文本区不溢出
+    assert info12["text_height"] == 3 * 24
+    assert info13["text_height"] == 4 * 24
+    assert img13.height > img12.height
+    shipped = render_mechanism(_mech(frame=frame, text="一" * 12), assets_dir,
+                               layout=load_layouts(assets_dir)["机制"])
+    assert shipped.width == 308 and shipped.height == img12.height  # 出厂布局：左右各 10px
+
+
 def test_render_info_text_block(assets_dir):
     """info 回填实际文本块矩形（裁剪后坐标系）：左缘=text_x、高=行数×行距、
     竖直居中于框中心+text_dy；裁剪零偏移时与框坐标一致。"""
@@ -200,7 +218,7 @@ def test_render_info_text_block(assets_dir):
     img = render_mechanism(_mech(text="两行中的第一行。\n第二行。"), assets_dir,
                            info=info)
     # 2 描述行 + 关键字名 + 空行 = 4 行 × 24
-    assert info["text_width"] == 245 and info["text_height"] == 4 * 24
+    assert info["text_width"] == 288 and info["text_height"] == 4 * 24
     assert info["text_x"] == 18
     assert info["text_top"] == pytest.approx((img.height - 4 * 24) / 2)
     # 分框 text_dy 生效
@@ -318,7 +336,10 @@ def test_layout_extreme_values_clamped(assets_dir):
 @pytest.mark.parametrize("frame", ["invocation", "skill", "seal"])
 def test_render_width_center_crops_and_extends_frame(assets_dir, frame):
     """最终宽度只居中裁除/拼接框体中段，三类框的左右边缘均不重采样。"""
-    base = render_mechanism(_mech(frame=frame), assets_dir)
+    lib = AssetLibrary(assets_dir)
+    source_name = "frame_seal" if frame == "seal" else f"frame_{frame}_3"
+    base = render_mechanism(_mech(frame=frame), assets_dir,
+                            width=lib.mech(source_name).width)
     narrow = render_mechanism(_mech(frame=frame), assets_dir, width=base.width - 40)
     wide = render_mechanism(_mech(frame=frame), assets_dir, width=base.width + 40)
     assert narrow.width == base.width - 40 and narrow.height == base.height

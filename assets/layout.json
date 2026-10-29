@@ -759,17 +759,17 @@
       "invocation": {
         "text_x": 10,
         "text_dy": 0,
-        "width": 260
+        "width": 288
       },
       "skill": {
         "text_x": 10,
         "text_dy": 0,
-        "width": 260
+        "width": 288
       },
       "seal": {
         "text_x": 10,
         "text_dy": 0,
-        "width": 260,
+        "width": 288,
         "badge_size": 30,
         "badge_pos": [
           6,

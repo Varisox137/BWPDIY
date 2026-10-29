@@ -333,18 +333,29 @@ def test_entity_crop_keeps_level_overflow(assets_dir, sample_art):
     assert cropped.getchannel("A").getbbox()[3] == cropped.height
 
 
-def test_entity_level_zero_skips_badge(assets_dir, sample_art, monkeypatch):
+def test_entity_level_zero_only_renders_frame_and_artwork(
+        assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
     layout = deepcopy(_DEFAULT_LAYOUT)
-    without_level = deepcopy(layout)
-    del without_level["elements"]["level"]
+    without_elements = deepcopy(layout)
+    without_elements["elements"] = {}
     lib = get_library(assets_dir)
     monkeypatch.setattr(lib, "level_base",
                         lambda: pytest.fail("等级 0 不得读取等级底座"))
     monkeypatch.setattr(lib, "level_num",
                         lambda *args: pytest.fail("等级 0 不得读取勾玉"))
-    actual = render_entity(make_card(sample_art, level=0), {}, assets_dir, layout=layout)
-    expected = render_entity(make_card(sample_art), {"level": 0}, assets_dir,
-                             layout=without_level)
+    monkeypatch.setattr(lib, "stat_badge",
+                        lambda *args: pytest.fail("等级 0 不得读取数值图标"))
+    monkeypatch.setattr(lib, "icon",
+                        lambda *args: pytest.fail("等级 0 不得读取状态图标"))
+    monkeypatch.setattr(entity, "_render_digits",
+                        lambda *args: pytest.fail("等级 0 不得渲染数值"))
+    state = {"level": 0, "power": 12, "health": 34,
+             "combat_power": 11, "shield": -22}
+    actual = render_entity(make_card(sample_art), state, assets_dir, layout=layout)
+    expected = render_entity(make_card(sample_art), state, assets_dir,
+                             layout=without_elements)
     assert images_equal(actual, expected)
     assert validate_entity_state({"level": 0})["level"] == 0
 

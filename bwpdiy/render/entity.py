@@ -405,6 +405,8 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
     window = entity_layout.get("art_window", _DEFAULT_LAYOUT["art_window"])
     validate_entity_art_window(window)
     elements = entity_layout.get("elements")
+    if state["level"] == 0:
+        elements = {}
     lib = get_library(assets_dir)
     (left, top, right, bottom), prepared_digits = _entity_work_bounds(
         lib, elements, state)

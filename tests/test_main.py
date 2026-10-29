@@ -61,6 +61,26 @@ def test_version_line_has_blank_line_after(fakes, monkeypatch, capsys):
     assert capsys.readouterr().out.startswith(f"BWPDIY v{__version__}\n\n")
 
 
+def test_frozen_version_line_includes_utc_build_time(monkeypatch, tmp_path):
+    import bwpdiy.__main__ as m
+    from bwpdiy import __version__, resources
+    package = tmp_path / "bwpdiy"
+    package.mkdir()
+    timestamp = "2026-10-29T13:30:00Z"
+    (package / "build_time_utc.txt").write_text(timestamp + "\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(resources, "resource_root", lambda: tmp_path)
+    assert m._version_line() == f"BWPDIY v{__version__}（打包时间：{timestamp}）"
+
+
+def test_build_timestamp_is_utc_with_second_precision():
+    from datetime import datetime, timezone
+    from scripts.build_exe import _utc_build_time
+    timestamp = _utc_build_time()
+    parsed = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    assert abs((datetime.now(timezone.utc) - parsed).total_seconds()) < 2
+
+
 def test_frozen_default_port(fakes, monkeypatch):
     from pathlib import Path
     from bwpdiy import resources

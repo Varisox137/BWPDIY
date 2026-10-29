@@ -5,7 +5,7 @@
 ## 架构红线
 
 - 单包分层：`bwpdiy/render`（纯 PIL 渲染库）← `bwpdiy/store`（卡牌库+校验）← `bwpdiy/web`（FastAPI 编辑器）。**render 不得 import store/web**（BWPro 只 import `bwpdiy.render`，不能拖入 FastAPI）。`bwpdiy/updater.py`（exe 自动更新：GitHub latest release 检查 + 一键下载替换重启；GUI 加载即查一次、此后每 1min 复查）仅 web 层引用。
-- 启动端口（v1.7.1）：正式版默认 8630、源码开发版默认 8631，`--port` 可覆盖；回环端口占用时显示服务/PID，只有交互 TTY 空回车确认才 taskkill 对应进程并等待释放，非 TTY/取消不得杀进程。
+- 启动端口（v1.7.1）：正式版默认 8630、源码开发版默认 8631，`--port` 可覆盖；回环端口占用时显示服务/PID，只有交互 TTY 空回车确认才 taskkill 对应进程并等待释放，非 TTY/取消不得杀进程。正式版首行同时打印版本与包内 UTC 秒级打包时间（ISO 8601），开发版仅打印版本。
 - 原生尺寸渲染（v1.7.1）：`render_card`/`render_entity`/`render_portrait` 均可选 `width`/`height`，单参数按默认紧致输出比例推算，双参数允许取整 1px 误差、不一致抛 ValueError；正整数、边长 ≤8192、总像素 ≤6400 万。布局/字体/图标/卡图/间距按目标原生重绘，最终只透明裁齐或补边，禁止先渲染默认成品再 resize；无参数路径须保持逐像素一致。`render_mechanism` 另支持 `chars_per_line`（每行汉字数，缺省按布局文本宽，出厂 12）与 `font_scale`（字号倍率，默认 1），不要求保持比例：字数决定文本区并居中裁除/拼接框体中段；倍率同步缩放机制名/正文/内嵌图标、文本区/框宽/横向偏移与框行高，保持每行字数，不改角标。
 - 预览性能（v1.7.0）：普通卡牌框后的静态绘制命令/层序列按原顺序重放，LRU 最多 8 条，不合并成单一覆盖层，须与旧管线逐像素一致；缩放卡图中间图 LRU 总像素不超过 64,000,000。鼠标预览按 art/entity/portrait 独立 `requestAnimationFrame` 调度，每通道每帧最多一次、取最新值、互不取消，且每通道最多一个在途请求与一个最新待办（在途时合并后续操作，完成后补发，禁止排队回放轨迹），art 联动主卡与实体，mouseup 强制最终预览；响应按已处理序号防逆序覆盖，连续编辑时允许显示最新已完成画面，切卡/清空仍使旧响应失效；普通输入仍用 300ms 防抖。
 - 空闲自动终止（防占用）：web 层活动统计中间件 + 看门狗线程，连续 2h 无 HTTP 操作则进程退出（`/api/update/check` 与 `/api/update/progress` 自动轮询不计入活动；`create_app(idle_timeout=, on_idle=)` 可注入，≤0 关闭）；GUI 包装 fetch，连接级失败弹「连接已断开」说明窗。
@@ -31,4 +31,4 @@
 - 依赖用 uv（`uv add` / `uv sync`），不用 pip 直装。
 - 中文 conventional commit；每次 commit 后 `git push`（失败不阻塞，汇报即可）；rebase/reset/分支操作先问。
 - 大改动先 plan mode；批量新功能委托子代理，收尾全量测试由主上下文亲跑。
-- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`，同时生成 `<exe>.sha256` 校验文件）+ `gh release create`（exe 与 .sha256 两个资产都要上传，客户端下载后强制校验）；本地 `releases/` 保留规则：**exe 每个二级版本（前两位）只留最新版**（三级小更新发布时删去该二级版本下的过往 GitHub release 与本地旧 exe），**sha256 上传后本地一律不留**。出厂全局布局配置（`assets/layout.json`）有变更的版本，`bwpdiy/changelog.py` 该版本首条必须加粗提示「本次更新更改了全局布局配置，用户可能需要重新手动调整本地配置」（条目按 innerHTML 渲染，支持 <b> 标签）。
+- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`，同时生成 `<exe>.sha256` 校验文件，并向包内写入 UTC 秒级 `build_time_utc.txt`）+ `gh release create`（exe 与 .sha256 两个资产都要上传，客户端下载后强制校验）；本地 `releases/` 保留规则：**exe 每个二级版本（前两位）只留最新版**（三级小更新发布时删去该二级版本下的过往 GitHub release 与本地旧 exe），**sha256 上传后本地一律不留**。出厂全局布局配置（`assets/layout.json`）有变更的版本，`bwpdiy/changelog.py` 该版本首条必须加粗提示「本次更新更改了全局布局配置，用户可能需要重新手动调整本地配置」（条目按 innerHTML 渲染，支持 <b> 标签）。

@@ -12,6 +12,7 @@ import hashlib
 import os
 import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import PyInstaller.__main__
@@ -45,6 +46,10 @@ PACKAGE_DATA = [
 ASSETS_EXCLUDE_SUFFIXES = {".psd", ".bak"}
 
 
+def _utc_build_time() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _add_data(src: Path, dest: str) -> list[str]:
     return ["--add-data", f"{src}{os.pathsep}{dest}"]
 
@@ -66,6 +71,10 @@ def _datas_args() -> list[str]:
 
 
 def main() -> int:
+    build_dir = ROOT / "build"
+    build_dir.mkdir(exist_ok=True)
+    build_time_path = build_dir / "build_time_utc.txt"
+    build_time_path.write_text(_utc_build_time() + "\n", encoding="utf-8")
     args = [
         str(ROOT / "scripts" / "launcher.py"),
         "--name", EXE_NAME,
@@ -78,6 +87,7 @@ def main() -> int:
         "--specpath", str(ROOT / "build"),
     ]
     args += _datas_args()
+    args += _add_data(build_time_path, "bwpdiy")
     for module in HIDDEN_IMPORTS:
         args += ["--hidden-import", module]
 

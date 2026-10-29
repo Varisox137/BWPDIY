@@ -106,6 +106,20 @@ def _pause_exit() -> None:
     print("\n")
 
 
+def _version_line() -> str:
+    from bwpdiy import __version__
+    line = f"BWPDIY v{__version__}"
+    if not getattr(sys, "frozen", False):
+        return line
+    from bwpdiy.resources import resource_root
+    try:
+        timestamp = (resource_root() / "bwpdiy" / "build_time_utc.txt").read_text(
+            encoding="utf-8").strip()
+    except OSError:
+        return line
+    return f"{line}（打包时间：{timestamp}）" if timestamp else line
+
+
 def main() -> int:
     default_port = 8630 if getattr(sys, "frozen", False) else 8631
     ap = argparse.ArgumentParser(prog="bwpdiy")
@@ -123,12 +137,11 @@ def main() -> int:
 
     import uvicorn
 
-    from bwpdiy import __version__
     from bwpdiy.resources import default_assets_dir, default_library_dir
     from bwpdiy.runlog import setup_run_logging
     from bwpdiy.web.app import create_app
 
-    print(f"BWPDIY v{__version__}\n")
+    print(_version_line() + "\n")
     log_path = setup_run_logging()
     print(f"运行日志：{log_path}（反馈问题请附上该文件）")
     logging.getLogger("bwpdiy").info("启动参数：%s", sys.argv)

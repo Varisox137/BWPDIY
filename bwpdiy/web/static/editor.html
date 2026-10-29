@@ -219,7 +219,7 @@
     <h4>卡图定位</h4>
     <div>上传卡图后可调偏移 X/Y（正值=图像右/下移）、缩放、旋转（正角度=顺时针）；也可直接在预览画布上鼠标操作：<b>左键拖拽</b>=移动、<b>滚轮</b>=缩放、<b>按住右键+滚轮</b>=旋转（3°/档；主预览与式神头像预览均支持，与数值框双向同步），拖拽中即可实时查看精确预览，松开后强制最终刷新。「撤回上次修改/撤回全部修改」按钮可回退未保存的编辑（鼠标操作与输入框都生效，连续拖拽/滚轮按一次修改计）。平出画面的区域会留透明，可放大缩放避免露底。改动需「保存」后写盘。式神卡的卡图四项右侧另有并排的「头像」设置（同四参数），用于协战双式神框中该式神的头像裁剪，预览框以 2 倍大小实时显示在卡图预览下方；「头像框」勾选控制头像预览/导出头像是否绘制斜方框与派系标（不勾选=仅菱形裁剪的裸头像），「导出头像」按当前预览直接下载 PNG。</div>
     <h4>机制描述框</h4>
-    <div>左栏「机制」为全局共享列表（不随项目切换，所有项目可复用），用于制作灵咒/关键字/加护蚀印等机制说明图：新建时选框类型（默认关键字）、填名称与描述即可，框高按内容行数自动伸缩（最少 2 行：名称+空行；名称与描述之间空一行，超过 5 行时框体按行高拼接加长，不缩小字号）。默认文本宽 288px（默认字号约 12 个汉字一行），框宽自动适配。描述逐行左对齐，同样支持 <code>[[关键字]]</code> 高亮与 <code>#xx</code> 内嵌小图标（唯一/瞬发等标记直接写进描述即可）；加护蚀印框可选「加护/蚀印」圆形角标（名称自动右移避让）。「导出描述框」把当前机制（含未保存修改）下载为 PNG。</div>
+    <div>左栏「机制」为全局共享列表（不随项目切换，所有项目可复用），用于制作灵咒/关键字/加护蚀印等机制说明图：新建时选框类型（默认关键字）、填名称与描述即可，框高按内容行数自动伸缩（最少 2 行：名称+空行；名称与描述之间空一行，超过 5 行时框体按行高拼接加长，不缩小字号）。右栏「每行字数」可逐机制调整（默认 12），框宽随字数自动适配。描述逐行左对齐，同样支持 <code>[[关键字]]</code> 高亮与 <code>#xx</code> 内嵌小图标（唯一/瞬发等标记直接写进描述即可）；加护蚀印框可选「加护/蚀印」圆形角标（名称自动右移避让）。「导出描述框」把当前机制（含未保存修改）下载为 PNG。</div>
     <h4>框品</h4>
     <div>支持常规/琉璃/墨染/百炼四种牌框配色（协战仅常规），文字与稀有度配色随框品自动切换。卡牌库与布局设置均在中央预览上方以四个按钮切换；全部元素和文本区按卡牌类型、框品独立调整，单卡布局叠加在该卡实际框品的全局配置上。正式版布局保存于用户目录 .bwpdiy/layout.json，开发版为项目 assets/layout.json。</div>
     <h4>协战双式神框</h4>
@@ -1777,17 +1777,19 @@ function afterEdit(rebuild = false) {
   }
   scheduleCardPreview();
 }
-function numRowC(div, label, val, nonneg, set, extra = null, max = null) {
+function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null) {
   const l = document.createElement('label');
   l.textContent = label + ' ';
   const i = document.createElement('input');
   i.type = 'number'; i.value = val;
-  if (nonneg) i.min = 0;
+  if (nonneg) i.min = min ?? 0;
+  else if (min !== null) i.min = min;
   let cur = val;
   const commit = () => {
     let v = parseInt(i.value, 10);
     if (isNaN(v)) { i.value = cur; return; }
-    if (nonneg) v = Math.max(0, v);
+    if (min !== null) v = Math.max(min, v);
+    else if (nonneg) v = Math.max(0, v);
     if (max !== null) v = Math.max(-max, Math.min(max, v));
     i.value = v; cur = v; set(v);
   };
@@ -2218,7 +2220,7 @@ async function selectMech(name, force = false) {
   mechPreview(false);
 }
 
-// ---- 机制表单：关键字名 / 框类型 / 角标（仅 seal 框）/ 描述 ----
+// ---- 机制表单：关键字名 / 框类型 / 每行字数 / 角标（仅 seal 框）/ 描述 ----
 function setMechField(k, v) { mechForm[k] = v; afterMechEdit(); }
 function afterMechEdit(rebuild = false) {
   contentRev++;
@@ -2241,6 +2243,8 @@ function buildMechForm() {
   selRowC(div, '框类型', MECH_FRAMES.map(([v]) => v), mechForm.frame ?? 'invocation',
     v => { mechForm.frame = v; if (v !== 'seal') mechForm.badge = null; afterMechEdit(true); },
     v => MECH_FRAMES.find(([val]) => val === v)[1]);
+  numRowC(div, '每行字数', mechForm.chars_per_line ?? 12, true,
+    v => setMechField('chars_per_line', v), null, null, 1);
   if ((mechForm.frame ?? 'invocation') === 'seal') {  // 加护/蚀印角标仅 seal 框可用
     selRowC(div, '角标', MECH_BADGES.map(([v]) => v), mechForm.badge ?? '',
       v => { mechForm.badge = v || null; afterMechEdit(); },
@@ -2286,6 +2290,9 @@ function validateMechJS(d) {
   }
   if (d.badge && d.frame !== 'seal') errors.push('字段 badge：仅加护蚀印框可携带角标');
   if (typeof d.text !== 'string') errors.push('字段 text：必须是字符串');
+  if ('chars_per_line' in d && (!Number.isInteger(d.chars_per_line) || d.chars_per_line <= 0)) {
+    errors.push('字段 chars_per_line：必须是正整数');
+  }
   if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYYMMDD 日期（8 位数字，可留空）');
   return errors;
 }
@@ -2380,7 +2387,7 @@ document.getElementById('c-new-mech').onclick = async () => {
   const resp = await fetch('/api/mechanisms', {method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({name: r.text,
-      frame: MECH_FRAME_BY_LABEL[r.sel] || 'skill', text: '', badge: null})});
+      frame: MECH_FRAME_BY_LABEL[r.sel] || 'skill', text: '', badge: null, chars_per_line: 12})});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   listErr([]);
   await loadMechs(r.text);

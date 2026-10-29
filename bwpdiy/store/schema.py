@@ -94,7 +94,7 @@ class SchemaError(Exception):
 
 MECH_FRAMES = ("invocation", "skill", "seal")  # 灵咒框 / 关键字框 / 加护蚀印框
 MECH_BADGES = ("bless", "eclipse")             # 圆形角标（加护/蚀印），仅 seal 框可携带
-_MECH_FIELDS = ("name", "frame", "text", "badge", "version_date")
+_MECH_FIELDS = ("name", "frame", "text", "badge", "version_date", "chars_per_line")
 
 
 def validate_mechanism(data) -> list[str]:
@@ -115,6 +115,10 @@ def validate_mechanism(data) -> list[str]:
             errors.append(f"字段 {key}：机制白名单之外的字段")
     if "text" in data and not isinstance(data["text"], str):
         errors.append("字段 text：必须是字符串")
+    if "chars_per_line" in data:
+        value = data["chars_per_line"]
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            errors.append("字段 chars_per_line：必须是正整数")
     if "version_date" in data:
         errors += _validate_version_date(data["version_date"])
     if "badge" in data and data["badge"] is not None:

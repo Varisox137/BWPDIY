@@ -601,7 +601,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                 raise HTTPException(400, "mechanism 必须是对象")
             mech = copy.deepcopy(override)
         try:
-            img = render_mechanism(mech, assets_dir, layout=_saved_mech_layout())
+            img = render_mechanism(mech, assets_dir, layout=_saved_mech_layout(),
+                                   chars_per_line=mech.get("chars_per_line", 12))
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         buf = BytesIO()

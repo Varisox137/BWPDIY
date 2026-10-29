@@ -848,9 +848,19 @@ def test_mechanism_preview_png(client):
     client.post("/api/mechanisms", json=_mech())
     r = client.post("/api/mechanisms/蛊蚀/preview", json={})
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
-    assert _png_size(r)[0] > 0
+    assert _png_size(r)[0] == 312  # 未填字段的旧机制同样默认每行 12 字
     # 无 body 也可预览（渲染落盘数据）
     assert client.post("/api/mechanisms/蛊蚀/preview").status_code == 200
+
+
+def test_mechanism_preview_uses_saved_chars_per_line(client):
+    client.post("/api/mechanisms", json=_mech(text="一" * 12, chars_per_line=10))
+    saved = client.post("/api/mechanisms/蛊蚀/preview", json={})
+    assert saved.status_code == 200 and _png_size(saved)[0] == 281
+    assert client.get("/api/mechanisms/蛊蚀").json()["chars_per_line"] == 10
+    override = client.post("/api/mechanisms/蛊蚀/preview",
+                           json={"mechanism": _mech(text="一" * 12, chars_per_line=12)})
+    assert override.status_code == 200 and _png_size(override)[0] == 312
 
 
 def test_mechanism_preview_override_unsaved(client):

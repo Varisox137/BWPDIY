@@ -456,6 +456,24 @@ def _run_node(tmp_path, driver: str):
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_mech_chars_per_line_js_validation(tmp_path):
+    validate = _extract_js(_script(), "function validateMechJS(d)")
+    driver = f"""
+const assert = require('node:assert');
+const MECH_FRAMES = [['invocation', '灵咒'], ['skill', '关键字'], ['seal', '加护蚀印']];
+const MECH_BADGES = [['', '无'], ['bless', '加护'], ['eclipse', '蚀印']];
+{validate}
+const base = {{name: '示例', frame: 'skill', text: '', chars_per_line: 12}};
+assert.deepStrictEqual(validateMechJS(base), []);
+for (const value of [0, -1, 1.5, true, '12']) {{
+  assert(validateMechJS({{...base, chars_per_line: value}}).some(e => e.includes('chars_per_line')));
+}}
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_derived_shikigami_skeleton_keeps_owner(tmp_path):
     """式神骨架有所属式神时保留引用，不能在提前返回时丢弃。"""
     skeleton = _extract_js(_script(), "function skeleton(type, name, shiki = {})")
@@ -1360,7 +1378,7 @@ def test_entity_layout_sample_stat_inputs(tmp_path):
     sample = _extract_js(script, "const entityLayoutSample = {") + ";"
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function buildCardProps()",
-        "function numRowC(div, label, val, nonneg, set, extra = null, max = null)",
+        "function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null)",
     ))
     driver = f"""
 const assert = require('node:assert');
@@ -2556,7 +2574,7 @@ def test_entity_controls_append_to_normal_form_without_dirtying(tmp_path):
         "function appendEntityForm(div)",
         "function setEntityField(key, value)",
         "function selRowC(div, label, opts, val, set, map = null)",
-        "function numRowC(div, label, val, nonneg, set, extra = null, max = null)",
+        "function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null)",
         "function artRow(div, label, val, set, pval, pset, step = 1, min = null, ids = null)",
     ))
     build_form = _extract_js(script, "function buildForm()")

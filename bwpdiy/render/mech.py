@@ -22,9 +22,10 @@
   _draw_styled_line）；正文颜色按框体（浅框深字/黑框浅字，TEXT_FILL）；
   黑框（skill）派系图标用 _black 变体。
 - 软上限 MAX_LINES 行（描述行数），超过抛 ValueError 防爆图。
-- 可选 width 为最终宽度（居中裁除/拼接中段并同步调整文本区域，字号不变，
-  文本区始终限制在框内；过长机制名自动缩字号，最小 8px 仍放不下则报错）；
-  font_scale 为字号倍率（同步调整机制名/正文/图标与框行高，不改布局偏移和角标）。
+- 可选 chars_per_line 为每行汉字数（缺省按布局文本宽，出厂默认 12），框体居中
+  裁除/拼接中段并同步调整文本区域；过长机制名自动缩字号，最小 8px 仍放不下则报错；
+  font_scale 为字号倍率（同步调整机制名/正文/图标、横向布局与框行高，保持每行字数，
+  不改角标尺寸）。
 """
 
 import math
@@ -33,7 +34,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from bwpdiy.render.assets import AssetLibrary, get_library
-from bwpdiy.render.size import MAX_RENDER_PIXELS, MAX_RENDER_SIDE, _dimension
+from bwpdiy.render.size import MAX_RENDER_PIXELS, MAX_RENDER_SIDE
 from bwpdiy.render.text import (
     _draw_styled_line,
     _icon_widths,
@@ -58,7 +59,7 @@ TEXT_FILL = {
     "seal": (87, 88, 95, 255),
 }
 
-MARGIN_X = 18        # 文本左缘默认值
+MARGIN_X = 12        # 文本左缘默认值
 BADGE_POS = (6, 6)   # 加护/蚀印角标贴框左上角默认值
 BADGE_NAME_GAP = 6   # 角标存在时关键字名与角标右缘的间距
 
@@ -239,7 +240,7 @@ def _wrap_items(items: list[tuple[str, str, bool]], font, lib: AssetLibrary,
 
 
 def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
-                     info: dict | None = None, width: int | None = None,
+                     info: dict | None = None, chars_per_line: int | None = None,
                      font_scale: float = 1.0) -> Image.Image:
     """渲染机制描述框，默认返回按最紧 alpha box 裁剪的 PNG 图。
 
@@ -248,14 +249,16 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     layout：机制布局配置（assets/layout.json「机制」段），缺省/缺键回退 DEFAULT_LAYOUT。
     info：传入 dict 时回填实际文本块矩形（裁剪后坐标系）
     {text_x, text_top, text_width, text_height}，供 GUI 画文本区域轮廓。
-    width：显式最终框宽，居中裁除/拼接中段并同步调整文本；缺省时框宽按文本区
-    适配且不小于素材原宽，文本左缘与换行宽保持布局值，字号不变。
-    font_scale：机制名/正文字号与行高倍率，不改变布局偏移和角标尺寸。
+    chars_per_line：每行汉字数，覆盖布局文本宽；缺省按布局值（出厂默认 12）。
+    框宽按文本区适配且不小于素材原宽，过长机制名自动缩字号，最小 8px。
+    font_scale：机制名/正文字号、横向布局与框行高倍率，不改变每行字数和角标尺寸。
     """
     lib = get_library(Path(assets_dir))
     cfg = _mech_layout(layout)
-    if width is not None:
-        _dimension(width, "宽度")
+    if chars_per_line is not None and (isinstance(chars_per_line, bool)
+                                       or not isinstance(chars_per_line, int)
+                                       or chars_per_line <= 0):
+        raise ValueError("chars_per_line 必须是正整数或 None")
     if (isinstance(font_scale, bool) or not isinstance(font_scale, (int, float))
             or not math.isfinite(font_scale) or font_scale <= 0):
         raise ValueError("font_scale 必须是有限正数")
@@ -284,17 +287,18 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     region = cfg["frames"][frame]
     source_name = "frame_seal" if frame == "seal" else f"frame_{frame}_3"
     natural_width = lib.mech(source_name).width
-    default_width = max(natural_width, region["text_x"] * 2 + region["width"])
-    final_width = default_width if width is None else width
-    width_delta = final_width - default_width
+    base_text_width = (region["width"] if chars_per_line is None
+                       else chars_per_line * cfg["text_size"])
+    base_width = max(natural_width, region["text_x"] * 2 + base_text_width)
+    base_text_x = max(0, (base_width - base_text_width) / 2)
+    char_capacity = base_text_width / cfg["text_size"]
+    text_x = base_text_x * font_scale
+    text_width = char_capacity * pitch
+    final_width = max(1, round(base_width * font_scale),
+                      math.ceil(text_x * 2 + text_width))
     if final_width > MAX_RENDER_SIDE:
         raise ValueError(f"目标宽度超过边长上限 {MAX_RENDER_SIDE}")
-    text_x = region["text_x"] + width_delta / 2
-    text_width = min(max(20, region["width"] + width_delta), final_width)
-    if text_x < 0:
-        text_x = 0
-    else:
-        text_width = min(text_width, final_width - 2 * text_x)
+    text_width = min(text_width, final_width - text_x)
     items = parse_items(_normalize_newlines(text))
     lines = _wrap_items(items, font, lib, text_width, icon_variant, cfg["icon_scale"])
     if len(lines) > MAX_LINES:
@@ -348,7 +352,7 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     bbox = out.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
     if not bbox:
         return out
-    if width is not None:  # 显式最终宽度不受透明边裁剪影响，仅纵向裁齐
+    if chars_per_line is not None:  # 显式每行字数决定的框宽不受透明边裁剪影响，仅纵向裁齐
         bbox = (0, bbox[1], out.width, bbox[3])
     if info is not None:  # 换算到裁剪后坐标系
         info["text_x"] -= bbox[0]

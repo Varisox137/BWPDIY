@@ -127,7 +127,7 @@ def test_unknown_icon_code_raises(assets_dir):
 
 
 def test_name_top_left(assets_dir):
-    """关键字名在框内左上角左对齐（x≈name_x 默认 18）、金色；与描述之间空一行。
+    """关键字名在框内左上角左对齐（x≈name_x 默认 12）、金色；与描述之间空一行。
     不再加粗描边，墨迹左缘 = text_x + 字体左轴承（约 3px）。"""
     img = render_mechanism(_mech(), assets_dir)
     gold_xs = [x for x in range(img.width) for y in range(img.height // 3)
@@ -177,7 +177,7 @@ def test_layout_frames_region(assets_dir):
     base = _gold_min_x(render_mechanism(_mech(), assets_dir))
     moved = _gold_min_x(render_mechanism(
         _mech(), assets_dir, layout={"frames": {"skill": {"text_x": 28}}}))
-    assert moved - base == 10
+    assert moved - base == 28 - MARGIN_X
     # 其他框不受 skill 区域影响（invocation 与默认逐像素一致）
     a = render_mechanism(_mech(frame="invocation"), assets_dir)
     b = render_mechanism(_mech(frame="invocation"), assets_dir,
@@ -203,13 +203,14 @@ def test_default_region_fits_twelve_hanzi(assets_dir, frame):
     img13 = render_mechanism(_mech(frame=frame, text="一" * 13), assets_dir, info=info13)
 
     assert info12["text_width"] == 288
-    assert img12.width == 324  # 内置回退：左右各 18px，288px 文本区不溢出
+    assert info12["text_x"] == 12
+    assert img12.width == 312  # 内置回退：左右各 12px，288px 文本区不溢出
     assert info12["text_height"] == 3 * 24
     assert info13["text_height"] == 4 * 24
     assert img13.height > img12.height
     shipped = render_mechanism(_mech(frame=frame, text="一" * 12), assets_dir,
                                layout=load_layouts(assets_dir)["机制"])
-    assert shipped.width == 308 and shipped.height == img12.height  # 出厂布局：左右各 10px
+    assert shipped.width == 312 and shipped.height == img12.height  # 出厂布局：左右各 12px
 
 
 def test_render_info_text_block(assets_dir):
@@ -220,7 +221,7 @@ def test_render_info_text_block(assets_dir):
                            info=info)
     # 2 描述行 + 关键字名 + 空行 = 4 行 × 24
     assert info["text_width"] == 288 and info["text_height"] == 4 * 24
-    assert info["text_x"] == 18
+    assert info["text_x"] == 12
     assert info["text_top"] == pytest.approx((img.height - 4 * 24) / 2)
     # 分框 text_dy 生效
     info2: dict = {}
@@ -335,42 +336,49 @@ def test_layout_extreme_values_clamped(assets_dir):
 
 
 @pytest.mark.parametrize("frame", ["invocation", "skill", "seal"])
-def test_render_width_center_crops_and_extends_frame(assets_dir, frame):
-    """最终宽度只居中裁除/拼接框体中段，三类框的左右边缘均不重采样。"""
-    lib = AssetLibrary(assets_dir)
-    source_name = "frame_seal" if frame == "seal" else f"frame_{frame}_3"
-    base = render_mechanism(_mech(frame=frame), assets_dir,
-                            width=lib.mech(source_name).width)
-    narrow = render_mechanism(_mech(frame=frame), assets_dir, width=base.width - 40)
-    wide = render_mechanism(_mech(frame=frame), assets_dir, width=base.width + 40)
-    assert narrow.width == base.width - 40 and narrow.height == base.height
-    assert wide.width == base.width + 40 and wide.height == base.height
-    left = (base.width - narrow.width) // 2
-    assert list(narrow.crop((0, 0, narrow.width, 8)).getdata()) == list(
-        base.crop((left, 0, left + narrow.width, 8)).getdata())
-    assert list(wide.crop((0, 0, 20, 8)).getdata()) == list(base.crop((0, 0, 20, 8)).getdata())
-    assert list(wide.crop((wide.width - 20, 0, wide.width, 8)).getdata()) == list(
-        base.crop((base.width - 20, 0, base.width, 8)).getdata())
+def test_render_chars_per_line_extends_frame_without_resampling_edges(assets_dir, frame):
+    """每行字数只居中拼接框体中段，三类框的左右边缘均不重采样。"""
+    base = render_mechanism(_mech(frame=frame), assets_dir, chars_per_line=12)
+    narrow = render_mechanism(_mech(frame=frame), assets_dir, chars_per_line=11)
+    wide = render_mechanism(_mech(frame=frame), assets_dir, chars_per_line=13)
+    assert narrow.width == base.width - 24 and narrow.height == base.height
+    assert wide.width == base.width + 24 and wide.height == base.height
+    for image in (narrow, wide):
+        assert list(image.crop((0, 0, 20, 8)).getdata()) == list(
+            base.crop((0, 0, 20, 8)).getdata())
+        assert list(image.crop((image.width - 20, 0, image.width, 8)).getdata()) == list(
+            base.crop((base.width - 20, 0, base.width, 8)).getdata())
 
 
-def test_render_width_updates_text_region_without_overflow(assets_dir):
-    """显式宽窄框均保持文本区在底框内，行距和文本块高度不变。"""
+def test_render_chars_per_line_updates_text_region_without_overflow(assets_dir):
+    """显式每行字数保持文本区在底框内，行距和文本块高度不变。"""
     base_info, narrow_info, wide_info = {}, {}, {}
     base = render_mechanism(_mech(), assets_dir, info=base_info)
-    narrow = render_mechanism(_mech(), assets_dir, width=base.width - 40, info=narrow_info)
-    wide = render_mechanism(_mech(), assets_dir, width=base.width + 40, info=wide_info)
-    assert narrow_info["text_x"] == 0
-    assert wide_info["text_x"] == base_info["text_x"] + 20
-    assert narrow_info["text_width"] == base_info["text_width"] - 40
-    assert wide_info["text_width"] == base_info["text_width"]
+    narrow = render_mechanism(_mech(), assets_dir, chars_per_line=11, info=narrow_info)
+    wide = render_mechanism(_mech(), assets_dir, chars_per_line=13, info=wide_info)
+    assert narrow_info["text_x"] == base_info["text_x"] == wide_info["text_x"] == 12
+    assert narrow_info["text_width"] == base_info["text_width"] - 24
+    assert wide_info["text_width"] == base_info["text_width"] + 24
     for image, info in ((base, base_info), (narrow, narrow_info), (wide, wide_info)):
         assert info["text_x"] >= 0
         assert info["text_x"] + info["text_width"] <= image.width
     assert narrow_info["text_height"] == wide_info["text_height"] == base_info["text_height"]
 
 
-def test_long_name_shrinks_to_fit_explicit_width(assets_dir, monkeypatch):
-    """长机制名在字号倍率与显式宽度下也不得被右框缘裁断。"""
+def test_render_chars_per_line_keeps_natural_frame_width(assets_dir):
+    """字数较少时不裁窄原生框，文本区在框内居中且仍严格按字数换行。"""
+    info10, info11 = {}, {}
+    img = render_mechanism(_mech(text="一" * 10), assets_dir,
+                           chars_per_line=10, info=info10)
+    render_mechanism(_mech(text="一" * 11), assets_dir, chars_per_line=10, info=info11)
+    assert img.width == 281
+    assert info10["text_x"] == 20.5 and info10["text_width"] == 240
+    assert info10["text_height"] == 3 * 24
+    assert info11["text_height"] == 4 * 24
+
+
+def test_long_name_shrinks_to_fit_chars_per_line(assets_dir, monkeypatch):
+    """长机制名在字号倍率与显式每行字数下也不得被右框缘裁断。"""
     name = "超长机制名称" * 4
     captured = {}
     original = ImageDraw.ImageDraw.text
@@ -381,27 +389,41 @@ def test_long_name_shrinks_to_fit_explicit_width(assets_dir, monkeypatch):
         return original(draw, xy, text, *args, **kwargs)
 
     monkeypatch.setattr(ImageDraw.ImageDraw, "text", tracked)
-    img = render_mechanism(_mech(name=name), assets_dir, width=400, font_scale=2)
+    img = render_mechanism(_mech(name=name), assets_dir, chars_per_line=12, font_scale=2)
     assert captured["font"].size < 52
     assert captured["x"] >= 0
     assert captured["x"] + captured["font"].getlength(name) <= img.width
 
 
-def test_render_font_scale_changes_text_and_frame_pitch(assets_dir):
-    """字号倍率作用于文字、行距及框高；缺省倍率保持默认逐像素输出。"""
+def test_render_font_scale_changes_text_frame_and_pitch(assets_dir):
+    """字号倍率同步作用于文字、横向布局和框高；缺省倍率逐像素不变。"""
     base_info, scaled_info = {}, {}
     base = render_mechanism(_mech(), assets_dir, info=base_info)
     scaled = render_mechanism(_mech(), assets_dir, font_scale=1.5, info=scaled_info)
     assert scaled_info["text_height"] == base_info["text_height"] * 1.5
     assert scaled.height == 35 + 3 * 36  # 非原生行距沿用 5 行素材的 35px 顶底帽边距
-    assert scaled_info["text_x"] == base_info["text_x"]
-    assert scaled_info["text_width"] == base_info["text_width"]
+    assert scaled.width == base.width * 1.5
+    assert scaled_info["text_x"] == base_info["text_x"] * 1.5
+    assert scaled_info["text_width"] == base_info["text_width"] * 1.5
     again = render_mechanism(_mech(), assets_dir, font_scale=1)
     assert list(again.getdata()) == list(base.getdata()) and again.size == base.size
 
 
+def test_chars_per_line_survives_font_scale(assets_dir):
+    """字号倍率改变后，显式每行字数仍保持不变。"""
+    info12, info13 = {}, {}
+    img = render_mechanism(_mech(text="一" * 12), assets_dir,
+                           chars_per_line=12, font_scale=1.5, info=info12)
+    render_mechanism(_mech(text="一" * 13), assets_dir,
+                     chars_per_line=12, font_scale=1.5, info=info13)
+    assert img.width == 468
+    assert info12["text_height"] == 3 * 36
+    assert info13["text_height"] == 4 * 36
+
+
 @pytest.mark.parametrize("kwargs", [
-    {"width": 0}, {"width": -1}, {"width": 1.5}, {"width": True}, {"width": 8193},
+    {"chars_per_line": 0}, {"chars_per_line": -1}, {"chars_per_line": 1.5},
+    {"chars_per_line": True}, {"chars_per_line": 8193},
     {"font_scale": 0}, {"font_scale": -1}, {"font_scale": True},
     {"font_scale": float("nan")}, {"font_scale": float("inf")}, {"font_scale": 1e9},
 ])

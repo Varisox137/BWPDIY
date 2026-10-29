@@ -680,6 +680,7 @@ def test_mechanism_save_validates_schema(lib):
     MECH_SEAL,
     {"name": "最简", "frame": "skill"},  # text/badge 全可缺省
     {**MECH, "badge": None},             # badge 可显式留空
+    {**MECH, "chars_per_line": 12},
 ])
 def test_validate_mechanism_ok(mech):
     assert validate_mechanism(mech) == []
@@ -695,6 +696,10 @@ def test_validate_mechanism_ok(mech):
     ({**MECH, "marks": ["unique"]}, "marks"),           # marks 已移除：白名单之外
     ({**MECH_SEAL, "badge": "gold"}, "badge"),          # 非法圆形角标
     ({**MECH, "badge": "bless"}, "badge"),              # badge 仅 seal 框可携带
+    ({**MECH, "chars_per_line": 0}, "chars_per_line"),
+    ({**MECH, "chars_per_line": -1}, "chars_per_line"),
+    ({**MECH, "chars_per_line": 1.5}, "chars_per_line"),
+    ({**MECH, "chars_per_line": True}, "chars_per_line"),
     ({**MECH, "未知字段": 1}, "未知字段"),
 ])
 def test_validate_mechanism_rejects(mech, needle):

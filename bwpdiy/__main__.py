@@ -141,7 +141,7 @@ def main() -> int:
     from bwpdiy.runlog import setup_run_logging
     from bwpdiy.web.app import create_app
 
-    print(_version_line() + "\n")
+    print(_version_line() + "\n", flush=True)
     log_path = setup_run_logging()
     print(f"运行日志：{log_path}（反馈问题请附上该文件）")
     logging.getLogger("bwpdiy").info("启动参数：%s", sys.argv)

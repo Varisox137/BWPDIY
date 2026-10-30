@@ -4,11 +4,24 @@
 
 ## 1. 安装与依赖
 
-要求 Python ≥ 3.12。在 BWPro 项目根目录执行（路径按实际位置调整）：
+要求 Python ≥ 3.12。BWPro 可选择 Python 包集成或源码树集成；两种方式都必须另行确认 `assets/` 资源路径。
+
+### Python 包集成
+
+在 BWPro 项目根目录执行（路径按实际位置调整）：
 
 ```bash
 uv add --editable ../BWPDIY
 ```
+
+editable 安装只解决 Python 导入，**不会自动解决 `assets/` 路径**。标准同级目录可由 BWPro 适配层推导资源根；worktree、非同级目录或便携部署必须显式配置 BWPro 的环境变量：
+
+```bash
+BWP_DIY_ROOT='D:/Programming/BWPDIY'
+BWP_DIY_LIBRARY='D:/Programming/BWPro/library'
+```
+
+`BWP_DIY_ROOT` 指向包含 `bwpdiy/` 与 `assets/` 的仓库根；`BWP_DIY_LIBRARY` 指向 BWPro 使用的卡牌与机制配置库，不是美术资源目录。
 
 基础安装只包含渲染所需的 Pillow；不会安装 PyYAML、FastAPI 或 Uvicorn。只有需要运行 BWPDIY 卡牌库和 WebGUI 时才使用：
 
@@ -16,13 +29,24 @@ uv add --editable ../BWPDIY
 uv add --editable "../BWPDIY[web]"
 ```
 
-BWPDIY 自身的开发环境仍直接执行 `uv sync`，开发依赖组已包含 Web、测试与构建依赖。
+### 源码树集成
+
+不安装包时，BWPro 适配层可将 `BWP_DIY_ROOT` 加入 `sys.path`，并以该根的 `assets/` 作为 `assets_dir`：
 
 ```python
-from bwpdiy.render import render_card, render_entity
+import os
+import sys
+from pathlib import Path
 
-# 只加载渲染层，不导入 store、FastAPI 或 WebGUI。
+root = Path(os.environ["BWP_DIY_ROOT"])
+if str(root) not in sys.path:
+    sys.path.insert(0, str(root))
+assets = root / "assets"
+
+from bwpdiy.render import render_card, render_entity
 ```
+
+无论采用哪种方式，渲染层都只加载 `bwpdiy.render`，不导入 store、FastAPI 或 WebGUI。BWPDIY 自身的开发环境直接执行 `uv sync`，开发依赖组已包含 Web、测试与构建依赖。
 
 所有入口返回 `PIL.Image.Image`，调用方负责保存 PNG、转为字节或交给 GUI 使用。资源缺失、卡图缺失、非法字段和非法尺寸会抛出异常；库本身不会静默替换占位卡。
 
@@ -232,8 +256,103 @@ scaled = render_mechanism(mech, assets, chars_per_line=12, font_scale=2)
 - `FileNotFoundError`：美术资源或卡图不存在。
 - Pillow 解码异常：图片损坏或格式不受支持。
 
-BWPro 应在自身边界捕获并记录异常，再决定使用占位图或取消操作，不要把异常文本直接当作用户输入拼接到页面 HTML。
+BWPro 应在自身边界捕获并记录异常，再决定使用占位图或取消操作，不要把异常文本直接当作用户输入拼接到页面 HTML。调用方至少应检查：
+
+- 日志包含渲染类型、卡牌/式神 id、资源根和异常堆栈；相同失败可做有界去重，但不能静默吞掉。
+- 占位图只是显示策略，不代表渲染成功；预热、缓存状态和设置页不得把空图或占位图计为成功。
+- 失败结果不得进入可跳过后续重试的成功清单，修复资源或配置后应自动参与下一次预热。
+- `width/height` 在适配层校验为正整数，非法输入应记录并暴露原因，不能表现为无上下文的“无图”。
 
 ## 8. 缓存与资源更新
 
-`get_library(assets_dir)` 按资源根共享字体、牌框和卡图缓存。运行中替换美术资源后应重启 BWPro 进程；仅修改卡牌字典或卡图文件内容不需要重建 `AssetLibrary`，卡图缓存按路径和修改时间识别更新。
+集成中有三层独立缓存，不能把它们视为同一个失效机制：
+
+1. **BWPDIY 资源缓存**：`get_library(assets_dir)` 按资源根共享字体、牌框和卡图缓存。运行中替换美术资源后应重启 BWPro 进程；仅修改卡牌字典不需要重建 `AssetLibrary`，内部卡图缓存按路径和修改时间识别更新。
+2. **BWPro 图片缓存**：大卡、小卡和头像的磁盘或 LRU 缓存由 BWPro 适配层负责。缓存身份应覆盖卡牌负载、有效布局、配置与资源指纹、渲染器版本和目标尺寸；图片推荐使用内容 SHA-256，避免同路径、同大小且保留 mtime 的替换产生旧图。
+3. **BWPro 预热清单**：manifest 是“哪些静态结果可跳过”的成功记录，不是条目数量清单。只有实际得到非空图片的条目才能写入；失败条目必须保留下次重试所需的信息。
+
+重启 BWPDIY 编辑器或仅看到图片 mtime 变化，并不保证后两层全部失效。BWPro 应主动计算内容摘要和配置/资源指纹，并确保失败结果可重试；清理其中一层也不代表其他层已清理。
+
+## 9. 最小集成自检
+
+以下示例不启动 WebGUI，使用一张临时卡图依次检查大卡、小卡、头像和机制框。路径按实际部署调整；在 BWPro 环境已能导入 `bwpdiy` 后执行：
+
+```python
+import logging
+import tempfile
+from pathlib import Path
+
+from PIL import Image
+
+from bwpdiy.render import render_card, render_entity
+from bwpdiy.render.assets import get_library
+from bwpdiy.render.duo import render_portrait
+from bwpdiy.render.layout import load_layouts
+from bwpdiy.render.mech import render_mechanism
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("bwpro.integration")
+assets = Path("D:/Programming/BWPDIY/assets")
+
+with tempfile.TemporaryDirectory() as temp:
+    images = Path(temp)
+    art_path = images / "900001.png"
+    Image.new("RGBA", (64, 64), "#336699").save(art_path)
+    art = {
+        "path": art_path.name,
+        "offset_x": 0,
+        "offset_y": 0,
+        "scale": 1.0,
+        "rotate": 0,
+    }
+    card_data = {
+        "type": "式神",
+        "id": "900001",
+        "name": "集成自检",
+        "level": 1,
+        "rarity": "R",
+        "power": 2,
+        "health": 3,
+        "description": "己方回合开始时，获得1#ll。",
+        "_base_dir": str(images),
+        "artwork": {"images": [art]},
+    }
+    state = {
+        "level": 1,
+        "level_color": "yellow",
+        "power": 2,
+        "health": 3,
+        "combat_power": 0,
+        "shield": 0,
+        "art_scale": 1.0,
+    }
+
+    card = render_card(card_data, assets)
+    entity = render_entity(card_data, state, assets)
+    lib = get_library(assets)
+    layouts = load_layouts(assets)
+    elem = layouts["协战"]["elements"]["duo_frame"]
+    portrait_art = dict(art, path=str(art_path.resolve()))
+    portrait = render_portrait(lib, elem, portrait_art, "红莲", faction_style=2)
+    mechanism = render_mechanism({
+        "name": "集成自检",
+        "frame": "invocation",
+        "text": "[[唯一]]。\n己方回合开始时，获得1#ll。",
+    }, assets, layout=layouts["机制"], chars_per_line=12)
+
+    assert card.width > 0 and card.height > 0
+    assert entity.width > 0 and entity.height > 0
+    assert portrait.width > 0 and portrait.height > 0
+    assert mechanism.width > 0 and mechanism.height > 0
+
+    try:
+        render_card(card_data, assets, width=0)
+    except ValueError:
+        log.exception("预期的非法尺寸异常：id=%s assets=%s", card_data["id"], assets)
+    else:
+        raise AssertionError("width=0 必须抛出 ValueError")
+
+log.info("四类渲染与非法尺寸自检通过")
+```
+
+四项图片均非空且非法尺寸异常能被调用方日志定位，才说明安装、资源与基本调用链路可用。若任一失败，应保留完整堆栈并先检查 `BWP_DIY_ROOT`、`assets/` 和卡图根目录，不要把失败统一转换成空图后再继续预热。

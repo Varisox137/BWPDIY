@@ -27,6 +27,15 @@ def test_get_layout(client):
     assert "战斗" in r.json()
 
 
+def test_editor_static_assets(client):
+    """拆分后的 HTML 引用必须由真实服务提供，且不得遮蔽现有 API。"""
+    for name in ("editor.css", "editor-core.js", "editor-cards.js",
+                 "editor-mech.js", "editor-layout.js", "editor-main.js"):
+        r = client.get(f"/{name}")
+        assert r.status_code == 200 and r.content
+    assert client.get("/api/version").status_code == 200
+
+
 def test_idle_activity_tracks_requests(client, monkeypatch):
     """空闲统计：普通请求刷新活动时间；/api/update/check（前端 1min 自动轮询）不刷新。"""
     from bwpdiy import updater
@@ -431,7 +440,7 @@ def test_help_button_and_modal():
         assert needle in modal
 
 
-# --- editor.html 内嵌 JS 纯函数测试（node 驱动：抽取函数源码 + 桩驱动运行） ---
+# --- 编辑器静态 JS 纯函数测试（node 驱动：抽取函数源码 + 桩驱动运行） ---
 # 布局设置 tab 自 layout.html 迁入 editor.html，被测函数名保持不变
 
 NODE = shutil.which("node")
@@ -440,7 +449,12 @@ EDITOR_HTML = Path(__file__).resolve().parent.parent / "bwpdiy" / "web" / "stati
 
 def _script() -> str:
     html = EDITOR_HTML.read_text(encoding="utf-8")
-    return html.split("<script>", 1)[1].split("</script>", 1)[0]
+    scripts = []
+    for chunk in html.split('<script src="')[1:]:
+        src = chunk.split('"', 1)[0]
+        scripts.append((EDITOR_HTML.parent / src).read_text(encoding="utf-8"))
+    assert scripts, "editor.html 必须按依赖顺序引用静态脚本"
+    return "\n".join(scripts)
 
 
 def _extract_js(script: str, decl: str) -> str:

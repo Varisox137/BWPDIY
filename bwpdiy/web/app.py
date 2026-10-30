@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
 import logging
@@ -76,6 +77,12 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
         except OSError:
             pass
         raise
+
+
+def _png_response(img: Image.Image, headers: dict | None = None) -> Response:
+    buf = BytesIO()
+    img.save(buf, "PNG")
+    return Response(buf.getvalue(), media_type="image/png", headers=headers)
 
 
 def create_app(assets_dir: Path, static_dir: Path | None = None,
@@ -318,12 +325,9 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             img = render_card(card, assets_dir, layout=request["layout"], info=info)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
-        buf = BytesIO()
-        img.save(buf, "PNG")
         # 紧致裁剪图 + 裁剪原点响应头（卡面空间，与布局坐标同系）：布局页覆盖层/鼠标据此换算
         ox, oy = info["crop_origin"]
-        return Response(buf.getvalue(), media_type="image/png",
-                        headers={"X-Crop-Offset": f"{ox},{oy}"})
+        return _png_response(img, headers={"X-Crop-Offset": f"{ox},{oy}"})
 
     @app.post("/api/entity-preview")
     async def entity_preview(request: dict = Body(...)):
@@ -356,11 +360,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             img = render_entity(card, state, assets_dir, layout=entity_layout, info=info)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
-        buf = BytesIO()
-        img.save(buf, "PNG")
         ox, oy = info["crop_origin"]
-        return Response(buf.getvalue(), media_type="image/png",
-                        headers={"X-Crop-Offset": f"{ox},{oy}"})
+        return _png_response(img, headers={"X-Crop-Offset": f"{ox},{oy}"})
 
     # ---------- 项目/卡牌 REST ----------
 
@@ -436,11 +437,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             img = render_card(card_data, assets_dir, layout=req_layout, info=info)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
-        buf = BytesIO()
-        img.save(buf, "PNG")
         ox, oy = info["crop_origin"]
-        return Response(buf.getvalue(), media_type="image/png",
-                        headers={"X-Crop-Offset": f"{ox},{oy}"})
+        return _png_response(img, headers={"X-Crop-Offset": f"{ox},{oy}"})
 
     @app.post("/api/projects/{project}/cards/{card}/portrait_preview")
     async def portrait_preview(project: str, card: str, request: dict = Body(None)):
@@ -478,9 +476,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                                   with_frame=with_frame)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
-        buf = BytesIO()
-        img.save(buf, "PNG")
-        return Response(buf.getvalue(), media_type="image/png")
+        return _png_response(img)
 
     _ART_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -613,9 +609,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                                    chars_per_line=mech.get("chars_per_line", 12))
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
-        buf = BytesIO()
-        img.save(buf, "PNG")
-        return Response(buf.getvalue(), media_type="image/png")
+        return _png_response(img)
 
     @app.post("/api/mech-preview")
     async def mech_layout_preview(request: dict):
@@ -642,14 +636,13 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             img = render_mechanism(mech, assets_dir, layout=layout, info=info)
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
-        buf = BytesIO()
-        img.save(buf, "PNG")
         # 实际文本块矩形（裁剪后坐标系）随响应头返回，GUI 据此画浅绿区域轮廓
         rect = ",".join(str(round(info[k])) for k in
                         ("text_x", "text_top", "text_width", "text_height"))
-        return Response(buf.getvalue(), media_type="image/png",
-                        headers={"X-Text-Rect": rect})
+        return _png_response(img, headers={"X-Text-Rect": rect})
 
+    # 所有 API/页面路由之后挂载：根路径仍由 editor_page 处理，静态文件按文件名提供。
+    app.mount("/", StaticFiles(directory=static_dir), name="static")
     return app
 
 

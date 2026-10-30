@@ -1,0 +1,88 @@
+body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
+  #topnav { display: flex; align-items: center; background: #26221c; padding: 6px 10px; position: relative; }
+  #topnav .brand { color: #d9b96a; font-weight: bold; position: absolute; left: 50%; transform: translateX(-50%); }
+  #topnav .brand a { color: inherit; }
+  .navtab { padding: 4px 14px; margin-right: 6px; cursor: pointer; border: 1px solid #999; background: #fff; }
+  .navtab.active { background: #d9b96a; }
+  #app-shutdown { margin-right: 6px; padding: 4px 10px; cursor: pointer; border: 1px solid #a63d24; background: #d45535; color: #fff; }
+  #ext-options { margin-left: auto; color: #d9b96a; font-size: 12px; }
+  #ext-options label { margin-left: 10px; cursor: pointer; }
+  .tabpage { display: none; flex: 1; min-height: 0; }
+  .tabpage.active { display: flex; }
+
+  /* ---- 卡牌库 tab ---- */
+  #c-left { width: 250px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
+  #c-left h4.cat { font-size: 15px; margin: 4px 0; }
+  #c-left hr.cat-sep { border: none; border-top: 1px solid #c9c2b2; margin: 10px 0 6px; }
+  #c-projects, #c-shikigami, #c-cards, #c-mechs { max-height: 180px; overflow-y: auto; scrollbar-width: thin; }
+  #c-mid { flex: 1; display: flex; flex-direction: column; align-items: center; background: #3a3a3a; padding-top: 8px; overflow-y: auto; }
+  #c-right { width: 300px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
+  #c-preview { margin-top: 10px; background: #222; max-width: 512px; max-height: 512px; }  /* 紧致原尺寸显示（卡图高 512 宽按内容、机制框原宽），不拉伸 */
+  #c-subpreviews { display: none; flex-direction: row; justify-content: center; align-items: center; gap: 16px; margin: 16px 0 12px; }
+  #c-portrait, #c-entity { display: block; margin: 0; background: #222; }
+  .item { padding: 3px 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 4px; font-size: 13px; }
+  .item .meta { font-weight: normal; opacity: .7; }
+  .item .meta.deck-invalid { color: #c0392b; font-weight: bold; opacity: 1; }
+  .item.active { background: #d9b96a; }
+  .item.shiki { font-weight: bold; }
+  .item.broken { color: #c0392b; }
+  .btnrow { margin: 4px 0 10px; }
+  .btnrow button { margin: 2px 4px 2px 0; font-size: 12px; }
+  #c-status { color: #ffd77a; margin-left: 8px; }
+  #c-error { color: #ff9a9a; font-size: 12px; max-width: 512px; white-space: pre-line; margin-top: 4px; }
+  #c-list-error { color: #c0392b; font-size: 12px; white-space: pre-line; margin-top: 6px; }
+  #c-ask { border: 1px solid #999; background: #fffbe9; padding: 6px; margin-top: 6px; display: none; font-size: 12px; }
+  #c-ask input, #c-ask select { width: 100%; margin: 4px 0; box-sizing: border-box; }
+  #c-form label { display: block; font-size: 12px; margin-top: 8px; }
+  #c-form input[type="text"] { width: 150px; }
+  #c-form input[type="number"] { width: 75px; }
+  #c-form textarea { width: 100%; height: 110px; font-size: 12px; box-sizing: border-box; }
+  #c-form .readonly { color: #666; font-size: 12px; margin-top: 4px; }
+  #c-form-errors { color: #c0392b; font-size: 12px; white-space: pre-line; margin-top: 8px; }
+  #c-dirty { color: #a00; font-size: 12px; margin-left: 8px; }
+
+  /* ---- 布局设置 tab（沿用原 layout.html 样式约定） ---- */
+  #l-sidebar, #l-props { width: 220px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
+  #l-main { flex: 1; display: flex; flex-direction: column; align-items: center; background: #3a3a3a; }
+  #l-main button { margin: 4px; }
+  #l-preview { margin-top: 12px; cursor: crosshair; background: #222; }
+  .tab { padding: 4px 10px; margin: 2px; cursor: pointer; border: 1px solid #999; background: #fff; }
+  .tab.active { background: #d9b96a; }
+  #l-props label { display: block; font-size: 12px; margin-top: 6px; }
+  #l-props input, #l-props select { width: 90px; }
+  #l-props input[type="number"] { width: 45px; }
+  #l-cardprops label { display: block; font-size: 12px; margin-top: 4px; }
+  #l-cardprops input { width: 100px; }
+  #l-cardprops input[type="number"] { width: 50px; }
+  #l-cardprops textarea { width: 195px; height: 64px; font-size: 12px; }
+  .note { font-size: 11px; color: #777; }
+  #l-status { color: #ffd77a; margin-left: 8px; }
+  #l-frame-variants, #c-frame-variants { color: #d9b96a; font-size: 12px; margin: 4px 0; }
+  #l-frame-variants .fv, #c-frame-variants .fv { margin: 0 3px; font-size: 12px; }
+  #l-frame-variants .fv.active, #c-frame-variants .fv.active { background: #d9b96a; }
+  /* 机制布局：三类框体三画布同屏预览 */
+  #l-mech { flex-wrap: wrap; gap: 16px; justify-content: center; align-items: flex-start; margin-top: 12px; overflow-y: auto; }
+  #l-mech .mech-view h4 { color: #d9b96a; font-size: 12px; margin: 0 0 4px; text-align: center; }
+  #l-mech .mech-view canvas { display: block; }
+  #l-props textarea { width: 195px; height: 64px; font-size: 12px; }
+
+  /* ---- 更新横幅 ---- */
+  #update-banner { display: none; background: #fff3cd; color: #664d03; padding: 5px 10px; font-size: 13px; text-align: center; }
+  #update-banner button { margin-left: 8px; font-size: 12px; }
+
+  /* ---- 使用说明 / 最近更新 / 服务失联 / 导出弹窗 ---- */
+  #help-modal, #changelog-modal, #server-down-modal, #export-modal, #session-confirm-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100; }
+  #help-box, #changelog-box, #server-down-box { background: #fff; width: 580px; max-height: 80vh; overflow-y: auto; margin: 8vh auto; padding: 14px 20px; border-radius: 4px; font-size: 13px; line-height: 1.7; }
+  #export-box, #session-confirm-box { background: #fff; width: 340px; margin: 20vh auto; padding: 14px 20px; border-radius: 4px; font-size: 13px; line-height: 1.7; }
+  #session-confirm-text { white-space: pre-line; margin-bottom: 10px; }
+  #session-confirm-box .btnrow { margin-top: 10px; }
+  #export-box input[type=text] { width: 200px; }
+  #export-box .btnrow { margin-top: 10px; }
+  #export-error { color: #a00; font-size: 12px; margin-top: 6px; white-space: pre-line; }
+  #help-box h3, #changelog-box h3 { margin: 0 0 6px; }
+  #help-box h4 { margin: 12px 0 2px; }
+  #help-box code { background: #f0ead8; padding: 0 3px; }
+  #help-box table { border-collapse: collapse; margin-top: 4px; }
+  #help-box td { border: 1px solid #ccc; padding: 1px 10px; }
+  #changelog-box ul { margin: 4px 0; padding-left: 20px; }
+  #help-close, #changelog-close { float: right; }

@@ -81,6 +81,34 @@ def test_build_timestamp_is_utc_with_second_precision():
     assert abs((datetime.now(timezone.utc) - parsed).total_seconds()) < 2
 
 
+def test_render_only_install_has_web_as_optional_dependency():
+    import tomllib
+    from pathlib import Path
+    data = tomllib.loads((Path(__file__).parent.parent / "pyproject.toml").read_text(
+        encoding="utf-8"))
+    project = data["project"]
+    assert project["dependencies"] == ["pillow>=11.0"]
+    web = set(project["optional-dependencies"]["web"])
+    assert {"pyyaml>=6.0", "fastapi>=0.115", "uvicorn>=0.30"} <= web
+    dev = set(data["dependency-groups"]["dev"])
+    assert web <= dev
+    assert {"httpx>=0.28.1", "pyinstaller>=6.22.3", "pytest>=8.0"} <= dev
+
+
+def test_prune_releases_keeps_latest_of_recent_five_minor_versions(tmp_path):
+    from scripts.build_exe import _prune_releases
+    versions = ["0.5.0", "1.0.2", "1.1.3", "1.2.4", "1.3.0", "1.3.1",
+                "1.4.2", "1.5.3", "1.6.2", "1.7.5", "1.7.6"]
+    for version in versions:
+        (tmp_path / f"BWPDIY-v{version}.exe").touch()
+    (tmp_path / "not-a-release.exe").touch()
+    _prune_releases(tmp_path)
+    assert {p.name for p in tmp_path.iterdir()} == {
+        "BWPDIY-v1.3.1.exe", "BWPDIY-v1.4.2.exe", "BWPDIY-v1.5.3.exe",
+        "BWPDIY-v1.6.2.exe", "BWPDIY-v1.7.6.exe", "not-a-release.exe",
+    }
+
+
 def test_frozen_default_port(fakes, monkeypatch):
     from pathlib import Path
     from bwpdiy import resources

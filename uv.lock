@@ -47,32 +47,43 @@ name = "bwpdiy"
 version = "1.7.7"
 source = { editable = "." }
 dependencies = [
-    { name = "fastapi" },
     { name = "pillow" },
+]
+
+[package.optional-dependencies]
+web = [
+    { name = "fastapi" },
     { name = "pyyaml" },
     { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "pyinstaller" },
     { name = "pytest" },
+    { name = "pyyaml" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.115" },
+    { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.115" },
     { name = "pillow", specifier = ">=11.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "uvicorn", specifier = ">=0.30" },
+    { name = "pyyaml", marker = "extra == 'web'", specifier = ">=6.0" },
+    { name = "uvicorn", marker = "extra == 'web'", specifier = ">=0.30" },
 ]
+provides-extras = ["web"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "pyinstaller", specifier = ">=6.22.3" },
     { name = "pytest", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [[package]]

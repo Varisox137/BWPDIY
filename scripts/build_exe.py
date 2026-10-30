@@ -10,6 +10,7 @@
 
 import hashlib
 import os
+import re
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -48,6 +49,24 @@ ASSETS_EXCLUDE_SUFFIXES = {".psd", ".bak"}
 
 def _utc_build_time() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _prune_releases(releases: Path, keep_minor: int = 5) -> None:
+    """每个二级版本只留最新 exe，并且本地总共只留最近 keep_minor 个二级版本。"""
+    candidates = []
+    for path in releases.glob("BWPDIY-v*.exe"):
+        match = re.fullmatch(r"BWPDIY-v(\d+)\.(\d+)\.(\d+)\.exe", path.name)
+        if match:
+            candidates.append((tuple(map(int, match.groups())), path))
+    latest = {}
+    for version, path in candidates:
+        minor = version[:2]
+        if minor not in latest or version > latest[minor][0]:
+            latest[minor] = (version, path)
+    keep = {latest[minor][1] for minor in sorted(latest)[-keep_minor:]}
+    for _version, path in candidates:
+        if path not in keep:
+            path.unlink(missing_ok=True)
 
 
 def _add_data(src: Path, dest: str) -> list[str]:
@@ -98,6 +117,7 @@ def main() -> int:
     src = ROOT / "dist" / f"{EXE_NAME}.exe"
     dst = releases / src.name
     shutil.copy2(src, dst)
+    _prune_releases(releases)
     # sha256 校验文件（sha256sum 格式）：release 必附资产，客户端下载后比对（updater._verify_download）
     digest = hashlib.sha256(dst.read_bytes()).hexdigest()
     sha_path = dst.with_name(dst.name + ".sha256")

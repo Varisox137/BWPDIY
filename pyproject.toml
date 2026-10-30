@@ -6,6 +6,10 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pillow>=11.0",
+]
+
+[project.optional-dependencies]
+web = [
     "pyyaml>=6.0",
     "fastapi>=0.115",
     "uvicorn>=0.30",
@@ -16,6 +20,9 @@ dev = [
     "httpx>=0.28.1",
     "pyinstaller>=6.22.3",
     "pytest>=8.0",
+    "pyyaml>=6.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
 ]
 
 [build-system]

@@ -120,7 +120,7 @@ bwpdiy.render.render_card(card: dict, assets_dir: Path) -> PIL.Image
 
 ## 5. 编辑器 WebGUI
 
-vanilla JS 单页（无构建），`/` 为编辑器主体页，双 tab：「卡牌库」与「布局设置」（原独立布局页已退役，`/layout` 307 重定向 `/#layout`）。
+vanilla JS 单页（无构建），`/` 为编辑器主体页，双 tab：「卡牌库」与「布局设置」（原独立布局页已退役，`/layout` 307 重定向 `/#layout`）。20261030 起 HTML 只保留结构，CSS 与共享/卡牌/机制/布局/入口五段 JS 分文件按序加载，不引入框架或模块系统。
 
 **卡牌库 tab**（M2+M3 骨架，已落地）三栏：
 
@@ -132,13 +132,12 @@ vanilla JS 单页（无构建），`/` 为编辑器主体页，双 tab：「卡�
 
 **空闲自动终止**（防占用）：连续 2h 无 HTTP 操作进程自动退出（`/api/update/check` 自动轮询不计入活动，否则挂页面永不空闲）；GUI 包装 fetch，连接级失败弹「连接已断开」说明窗提示重启。v1.7.7 起顶栏提供「退出DIY工具」，对所有编辑区统一做未保存确认，`POST /api/shutdown` 记录「手动按钮关闭」并延迟清理退出；前端随后关闭标签页，浏览器禁止脚本关窗时提示手动关闭。选卡时主卡/对局小卡/头像均只作废旧响应而保留当前图，待新数据到达后由预览函数统一替换或隐藏，避免同卡版本切换闪烁。
 
-**M3 完整版未做**：单卡导出 PNG、项目批量导出。
+**后续候选**：项目批量导出（单卡、头像与对局小卡导出均已实现）。
 
 ## 6. BWPro 集成
 
-- **主路径**：BWPro `import bwpdiy.render`，传卡牌 dict 拿 PIL Image / PNG bytes，异常兜底占位卡面
-- **辅助路径**：编辑器服务暴露 `POST /api/render`（传 json 拿 PNG），用于调试与第三方
-- 集成契约（dict 字段表）写入 `docs/integration.md`，两边共同遵守
+- **主路径**：BWPro `import bwpdiy.render`，传卡牌 dict 拿 PIL Image，由调用方保存 PNG 或转换为字节，异常兜底占位卡面；基础安装只引入 Pillow。
+- 集成契约（dict 字段表、四类渲染入口、尺寸与异常规则）见 `docs/integration.md`，两边共同遵守；不经过 WebGUI 服务。
 
 ## 7. 错误处理
 

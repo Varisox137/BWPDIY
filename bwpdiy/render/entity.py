@@ -1,5 +1,6 @@
 """对局式神小卡的独立纯 PIL 渲染器。"""
 
+import json
 import math
 from functools import lru_cache
 from pathlib import Path
@@ -26,39 +27,8 @@ ENTITY_MAX_WORK_PIXELS = 16_000_000
 ENTITY_ART_Y_BIAS = -0.04  # 下角标使视觉重心偏下，卡图默认上移窗口高度的 4%
 LEVEL_COLORS = {"yellow", "cyan", "purple", "red", "blue", "brown"}
 
-_DEFAULT_LAYOUT = {
-    "version": 2,
-    "art_window": {
-        "center": [48, 72], "width": 84, "height": 132,
-        "frame_center": True, "offset_y": 0,
-    },
-    "elements": {
-        "level": {
-            "kind": "level_badge", "pos": [48, 137], "base_size": 27,
-            "num_size": 21, "num_offset": [0, 0],
-        },
-        "power": {
-            "kind": "stat", "field": "power", "pos": [15, 129],
-            "icon_size": 32, "num_offset": [-1, 1], "font_size": 24,
-            "stroke_width": 2,
-        },
-        "health": {
-            "kind": "stat", "field": "health", "pos": [82, 129],
-            "icon_size": 34, "num_offset": [1, 1], "font_size": 24,
-            "stroke_width": 2,
-        },
-        "combat_power": {
-            "kind": "stat", "field": "combat_power", "pos": [14, 99],
-            "icon_size": 34, "num_offset": [0, 0], "font_size": 22,
-            "stroke_width": 2,
-        },
-        "shield": {
-            "kind": "stat", "field": "shield", "pos": [81, 98],
-            "icon_size": 29, "num_offset": [0, 1], "font_size": 22,
-            "stroke_width": 2,
-        },
-    },
-}
+_DEFAULT_LAYOUT = json.loads(Path(__file__).with_name("default_layout.json").read_text(
+    encoding="utf-8"))["对局式神"]
 
 
 def entity_eligible(card: dict) -> bool:

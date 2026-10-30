@@ -32,8 +32,8 @@
         "kind": "stat",
         "field": "power",
         "pos": [
-          34,
-          479
+          32,
+          480
         ],
         "icon_size": 72,
         "num_offset": [
@@ -45,7 +45,7 @@
           0,
           0
         ],
-        "stroke_width": 2,
+        "stroke_width": 3,
         "sign_size_plus": 28,
         "sign_size_minus": 16
       },
@@ -54,7 +54,7 @@
         "field": "health",
         "pos": [
           234,
-          478
+          479
         ],
         "icon_size": 76,
         "num_offset": [
@@ -67,7 +67,8 @@
           0
         ],
         "sign_size_plus": 28,
-        "sign_size_minus": 16
+        "sign_size_minus": 16,
+        "stroke_width": 3
       },
       "name": {
         "kind": "text",
@@ -108,6 +109,132 @@
         "font": "desc",
         "icon_scale": 0.9
       }
+    },
+    "frame_variants": {
+      "blue": {
+        "elements": {
+          "level": {
+            "pos": [
+              10,
+              70
+            ]
+          },
+          "faction": {
+            "pos": [
+              138,
+              300
+            ]
+          },
+          "power": {
+            "pos": [
+              38,
+              479
+            ]
+          },
+          "health": {
+            "pos": [
+              240,
+              478
+            ]
+          },
+          "name": {
+            "pos": [
+              138,
+              337
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              138,
+              416
+            ]
+          }
+        }
+      },
+      "black": {
+        "elements": {
+          "level": {
+            "pos": [
+              5,
+              70
+            ]
+          },
+          "power": {
+            "pos": [
+              32,
+              479
+            ]
+          },
+          "health": {
+            "pos": [
+              234,
+              478
+            ]
+          },
+          "footer": {
+            "pos": [
+              132,
+              498
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "width": 246
+          }
+        }
+      },
+      "red": {
+        "elements": {
+          "level": {
+            "pos": [
+              13,
+              70
+            ]
+          },
+          "faction": {
+            "pos": [
+              138,
+              300
+            ]
+          },
+          "power": {
+            "pos": [
+              37,
+              479
+            ]
+          },
+          "health": {
+            "pos": [
+              240,
+              478
+            ]
+          },
+          "name": {
+            "pos": [
+              138,
+              337
+            ]
+          },
+          "footer": {
+            "pos": [
+              138,
+              496
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              138,
+              416
+            ],
+            "width": 248
+          }
+        }
+      }
     }
   },
   "战斗": {
@@ -115,7 +242,7 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          5,
+          3,
           70
         ],
         "base_size": 68,
@@ -133,7 +260,7 @@
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
-          133,
+          132,
           340
         ],
         "gap": 90,
@@ -157,13 +284,13 @@
           0,
           0
         ],
-        "stroke_width": 2,
+        "stroke_width": 3,
         "group_offset": [
           -1,
           0
         ],
-        "sign_size_plus": 28,
-        "sign_size_minus": 16
+        "sign_size_plus": 32,
+        "sign_size_minus": 20
       },
       "shield": {
         "kind": "stat",
@@ -186,9 +313,9 @@
           0,
           0
         ],
-        "stroke_width": 2,
-        "sign_size_plus": 28,
-        "sign_size_minus": 16,
+        "stroke_width": 3,
+        "sign_size_plus": 32,
+        "sign_size_minus": 20,
         "fragile_pos": [
           237,
           478
@@ -206,7 +333,7 @@
       "name": {
         "kind": "text",
         "pos": [
-          133,
+          132,
           336
         ],
         "font_size": 24,
@@ -215,7 +342,7 @@
       "footer": {
         "kind": "text",
         "pos": [
-          133,
+          132,
           499
         ],
         "font_size": 15,
@@ -229,7 +356,7 @@
           0
         ],
         "center": [
-          133,
+          132,
           418
         ],
         "width": 250,
@@ -242,6 +369,132 @@
         "font": "desc",
         "icon_scale": 0.9
       }
+    },
+    "frame_variants": {
+      "blue": {
+        "elements": {
+          "level": {
+            "pos": [
+              9,
+              70
+            ]
+          },
+          "rarity": {
+            "pos": [
+              136,
+              340
+            ]
+          },
+          "power": {
+            "pos": [
+              37,
+              479
+            ]
+          },
+          "shield": {
+            "pos": [
+              239,
+              480
+            ]
+          },
+          "name": {
+            "pos": [
+              136,
+              336
+            ]
+          },
+          "footer": {
+            "pos": [
+              136,
+              499
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              136,
+              418
+            ]
+          }
+        }
+      },
+      "black": {
+        "elements": {
+          "level": {
+            "pos": [
+              5,
+              70
+            ]
+          },
+          "power": {
+            "pos": [
+              32,
+              479
+            ]
+          },
+          "shield": {
+            "pos": [
+              235,
+              480
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "width": 246
+          }
+        }
+      },
+      "red": {
+        "elements": {
+          "level": {
+            "pos": [
+              12,
+              70
+            ]
+          },
+          "rarity": {
+            "pos": [
+              137,
+              340
+            ]
+          },
+          "power": {
+            "pos": [
+              35,
+              479
+            ]
+          },
+          "shield": {
+            "pos": [
+              241,
+              480
+            ]
+          },
+          "name": {
+            "pos": [
+              137,
+              336
+            ]
+          },
+          "footer": {
+            "pos": [
+              137,
+              496
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              137,
+              418
+            ],
+            "width": 246
+          }
+        }
+      }
     }
   },
   "法术": {
@@ -249,7 +502,7 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          6,
+          4,
           70
         ],
         "base_size": 68,
@@ -278,7 +531,7 @@
         "kind": "stat",
         "field": "power+",
         "pos": [
-          34,
+          33,
           479
         ],
         "icon_size": 72,
@@ -291,13 +544,13 @@
           0,
           0
         ],
-        "stroke_width": 2,
+        "stroke_width": 3,
         "group_offset": [
           -2,
           0
         ],
-        "sign_size_plus": 28,
-        "sign_size_minus": 16
+        "sign_size_plus": 32,
+        "sign_size_minus": 20
       },
       "health": {
         "kind": "stat",
@@ -320,8 +573,9 @@
           -1,
           0
         ],
-        "sign_size_plus": 28,
-        "sign_size_minus": 16
+        "sign_size_plus": 32,
+        "sign_size_minus": 20,
+        "stroke_width": 3
       },
       "name": {
         "kind": "text",
@@ -352,7 +606,7 @@
           138,
           418
         ],
-        "width": 250,
+        "width": 260,
         "height": 125,
         "font_range": [
           24,
@@ -361,6 +615,142 @@
         "wrap": true,
         "font": "desc",
         "icon_scale": 0.9
+      }
+    },
+    "frame_variants": {
+      "blue": {
+        "elements": {
+          "level": {
+            "pos": [
+              9,
+              70
+            ]
+          },
+          "rarity": {
+            "pos": [
+              141,
+              340
+            ]
+          },
+          "power": {
+            "pos": [
+              38,
+              479
+            ]
+          },
+          "name": {
+            "pos": [
+              141,
+              338
+            ]
+          },
+          "footer": {
+            "pos": [
+              141,
+              498
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              141,
+              418
+            ]
+          }
+        }
+      },
+      "black": {
+        "elements": {
+          "rarity": {
+            "pos": [
+              137,
+              340
+            ]
+          },
+          "power": {
+            "pos": [
+              32,
+              479
+            ]
+          },
+          "health": {
+            "pos": [
+              245,
+              478
+            ]
+          },
+          "name": {
+            "pos": [
+              137,
+              338
+            ]
+          },
+          "footer": {
+            "pos": [
+              137,
+              498
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              137,
+              418
+            ],
+            "width": 256
+          }
+        }
+      },
+      "red": {
+        "elements": {
+          "level": {
+            "pos": [
+              14,
+              70
+            ]
+          },
+          "rarity": {
+            "pos": [
+              146,
+              340
+            ]
+          },
+          "power": {
+            "pos": [
+              37,
+              479
+            ]
+          },
+          "health": {
+            "pos": [
+              250,
+              478
+            ]
+          },
+          "name": {
+            "pos": [
+              146,
+              338
+            ]
+          },
+          "footer": {
+            "pos": [
+              146,
+              495
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              146,
+              418
+            ],
+            "width": 250
+          }
+        }
       }
     }
   },
@@ -398,8 +788,8 @@
         "kind": "stat",
         "field": "power",
         "pos": [
-          34,
-          479
+          32,
+          480
         ],
         "icon_size": 72,
         "num_offset": [
@@ -411,7 +801,7 @@
           0,
           0
         ],
-        "stroke_width": 2,
+        "stroke_width": 3,
         "sign_size_plus": 28,
         "sign_size_minus": 16
       },
@@ -420,7 +810,7 @@
         "field": "health",
         "pos": [
           234,
-          478
+          479
         ],
         "icon_size": 76,
         "num_offset": [
@@ -433,7 +823,8 @@
           0
         ],
         "sign_size_plus": 28,
-        "sign_size_minus": 16
+        "sign_size_minus": 16,
+        "stroke_width": 3
       },
       "name": {
         "kind": "text",
@@ -473,6 +864,138 @@
         "wrap": true,
         "font": "desc",
         "icon_scale": 0.9
+      }
+    },
+    "frame_variants": {
+      "blue": {
+        "elements": {
+          "level": {
+            "pos": [
+              10,
+              70
+            ]
+          },
+          "rarity": {
+            "pos": [
+              138,
+              340
+            ]
+          },
+          "power": {
+            "pos": [
+              37,
+              480
+            ]
+          },
+          "health": {
+            "pos": [
+              239,
+              479
+            ]
+          },
+          "name": {
+            "pos": [
+              138,
+              337
+            ]
+          },
+          "footer": {
+            "pos": [
+              138,
+              498
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              138,
+              416
+            ]
+          }
+        }
+      },
+      "black": {
+        "elements": {
+          "level": {
+            "pos": [
+              5,
+              70
+            ]
+          },
+          "power": {
+            "pos": [
+              32,
+              479
+            ]
+          },
+          "health": {
+            "pos": [
+              234,
+              478
+            ]
+          },
+          "footer": {
+            "pos": [
+              132,
+              497
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "width": 246
+          }
+        }
+      },
+      "red": {
+        "elements": {
+          "level": {
+            "pos": [
+              13,
+              70
+            ]
+          },
+          "rarity": {
+            "pos": [
+              138,
+              340
+            ]
+          },
+          "power": {
+            "pos": [
+              36,
+              479
+            ]
+          },
+          "health": {
+            "pos": [
+              240,
+              478
+            ]
+          },
+          "name": {
+            "pos": [
+              138,
+              337
+            ]
+          },
+          "footer": {
+            "pos": [
+              138,
+              495
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              138,
+              416
+            ],
+            "width": 248
+          }
+        }
       }
     }
   },
@@ -524,7 +1047,8 @@
           0
         ],
         "sign_size_plus": 25,
-        "sign_size_minus": 25
+        "sign_size_minus": 25,
+        "stroke_width": 3
       },
       "name": {
         "kind": "text",
@@ -565,6 +1089,131 @@
         "font": "desc",
         "icon_scale": 0.9
       }
+    },
+    "frame_variants": {
+      "blue": {
+        "elements": {
+          "rarity": {
+            "pos": [
+              145,
+              344
+            ]
+          },
+          "durability": {
+            "pos": [
+              248,
+              480
+            ]
+          },
+          "name": {
+            "pos": [
+              145,
+              342
+            ]
+          },
+          "footer": {
+            "pos": [
+              145,
+              500
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              145,
+              421
+            ],
+            "width": 246
+          }
+        }
+      },
+      "black": {
+        "elements": {
+          "level": {
+            "pos": [
+              36,
+              70
+            ]
+          },
+          "rarity": {
+            "pos": [
+              164,
+              344
+            ]
+          },
+          "durability": {
+            "pos": [
+              267,
+              480
+            ]
+          },
+          "name": {
+            "pos": [
+              164,
+              342
+            ]
+          },
+          "footer": {
+            "pos": [
+              164,
+              500
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              164,
+              421
+            ],
+            "width": 246
+          }
+        }
+      },
+      "red": {
+        "elements": {
+          "level": {
+            "pos": [
+              29,
+              70
+            ]
+          },
+          "rarity": {
+            "pos": [
+              155,
+              344
+            ]
+          },
+          "durability": {
+            "pos": [
+              258,
+              479
+            ]
+          },
+          "name": {
+            "pos": [
+              155,
+              342
+            ]
+          },
+          "footer": {
+            "pos": [
+              155,
+              495
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              155,
+              421
+            ],
+            "width": 246
+          }
+        }
+      }
     }
   },
   "协战": {
@@ -572,7 +1221,7 @@
       "level": {
         "kind": "level_badge",
         "pos": [
-          20,
+          17,
           70
         ],
         "base_size": 68,
@@ -694,7 +1343,7 @@
         "field": "power",
         "pos": [
           15,
-          130
+          129
         ],
         "icon_size": 32,
         "num_offset": [
@@ -708,13 +1357,13 @@
         "kind": "stat",
         "field": "health",
         "pos": [
-          84,
-          130
+          82,
+          129
         ],
         "icon_size": 34,
         "num_offset": [
           1,
-          2
+          1
         ],
         "font_size": 24,
         "stroke_width": 2
@@ -723,8 +1372,8 @@
         "kind": "stat",
         "field": "combat_power",
         "pos": [
-          13,
-          101
+          14,
+          99
         ],
         "icon_size": 34,
         "num_offset": [
@@ -738,8 +1387,8 @@
         "kind": "stat",
         "field": "shield",
         "pos": [
-          83,
-          100
+          81,
+          98
         ],
         "icon_size": 29,
         "num_offset": [
@@ -759,17 +1408,17 @@
       "invocation": {
         "text_x": 12,
         "text_dy": 0,
-        "width": 288
+        "width": 256
       },
       "skill": {
         "text_x": 12,
         "text_dy": 0,
-        "width": 288
+        "width": 256
       },
       "seal": {
         "text_x": 12,
         "text_dy": 0,
-        "width": 288,
+        "width": 256,
         "badge_size": 30,
         "badge_pos": [
           6,

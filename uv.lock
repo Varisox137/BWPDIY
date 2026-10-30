@@ -44,7 +44,7 @@ wheels = [
 
 [[package]]
 name = "bwpdiy"
-version = "1.4.0"
+version = "1.7.7"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },

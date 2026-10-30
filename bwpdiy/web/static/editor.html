@@ -10,6 +10,7 @@
   #topnav .brand a { color: inherit; }
   .navtab { padding: 4px 14px; margin-right: 6px; cursor: pointer; border: 1px solid #999; background: #fff; }
   .navtab.active { background: #d9b96a; }
+  #app-shutdown { margin-right: 6px; padding: 4px 10px; cursor: pointer; border: 1px solid #a63d24; background: #d45535; color: #fff; }
   #ext-options { margin-left: auto; color: #d9b96a; font-size: 12px; }
   #ext-options label { margin-left: 10px; cursor: pointer; }
   .tabpage { display: none; flex: 1; min-height: 0; }
@@ -96,6 +97,7 @@
 <body>
 <nav id="topnav">
   <span class="brand">BWPDIY <span class="ver"></span> by <a href="https://github.com/Varisox137/BWPDIY" target="_blank" rel="noopener">Varisox137</a></span>
+  <button id="app-shutdown">退出DIY工具</button>
   <button class="navtab active" data-tab="cards">卡牌库</button>
   <button class="navtab" data-tab="layout">全局布局设置</button>
   <span id="ext-options">
@@ -314,6 +316,7 @@ let samples = null;          // 六类型样卡字段（/api/samples），布局
 // 此后一切请求连接失败——包装 fetch 统一捕获，弹一次说明（JSON 解析失败等非
 // 网络错误不触发：只有 fetch 自身 reject 才是连接级失败）
 let serverDownShown = false;
+let manualShutdown = false;
 let pendingStorageWrites = 0;
 const _origFetch = window.fetch.bind(window);
 function tracksStorageWrite(args) {
@@ -327,7 +330,7 @@ window.fetch = (...args) => {
   const tracked = tracksStorageWrite(args);
   if (tracked) pendingStorageWrites++;
   return _origFetch(...args).catch(e => {
-    if (!serverDownShown) {
+    if (!serverDownShown && !manualShutdown) {
       serverDownShown = true;
       document.getElementById('server-down-modal').style.display = 'block';
     }
@@ -719,10 +722,6 @@ async function selectCard(stem, force = false) {
   cPreviewSeq++; cPreviewAppliedSeq = cPreviewSeq;
   cEntitySeq++; cEntityAppliedSeq = cEntitySeq;
   cPortraitSeq++; cPortraitAppliedSeq = cPortraitSeq;
-  cPortraitImg.style.display = 'none';
-  cPortraitImg.removeAttribute('src');
-  if (cPortraitUrl) { URL.revokeObjectURL(cPortraitUrl); cPortraitUrl = null; }
-  syncSubpreviews();
   curCard = stem;
   const sg = cards.shikigami.find(e => (e.versions || []).some(v => v.stem === stem));
   if (sg) mainShiki = sg.name;
@@ -3472,9 +3471,30 @@ checkUpdate();
 setInterval(checkUpdate, 60000);
 if (location.hash === '#layout' && extOptions.layout) showTab('layout');  // /layout 重定向落点（布局 tab 隐藏时不跳转）
 
+function hasUnsavedChanges() { return dirty || singleDirty || cDirty || mDirty; }
+async function shutdownTool() {
+  if (hasUnsavedChanges() && !await sessionConfirm(
+      '有未保存修改，退出将丢失这些修改，继续退出？', 'unsaved')) return;
+  const button = document.getElementById('app-shutdown');
+  button.disabled = true;
+  manualShutdown = true;
+  let r;
+  try { r = await fetch('/api/shutdown', {method: 'POST'}); }
+  catch (e) { r = null; }  // 服务已先退出时同样关闭标签页，且不再弹普通断连提示
+  if (r && !r.ok) {
+    manualShutdown = false;
+    button.disabled = false;
+    button.textContent = '退出失败，请重试';
+    return;
+  }
+  window.close();
+  button.textContent = '服务已关闭，请关闭标签页';  // 浏览器禁止脚本关窗时的回退提示
+}
+document.getElementById('app-shutdown').onclick = shutdownTool;
+
 // 未保存修改时关闭或刷新标签页弹浏览器确认框；用户选择本会话免提示后同样跳过
 window.addEventListener('beforeunload', ev => {
-  if (!sessionPromptSuppressed.unsaved && (dirty || singleDirty || cDirty || mDirty)) {
+  if (!manualShutdown && !sessionPromptSuppressed.unsaved && hasUnsavedChanges()) {
     ev.preventDefault(); ev.returnValue = '';
   }
 });

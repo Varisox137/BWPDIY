@@ -50,6 +50,20 @@ def test_idle_watchdog_fires(tmp_path):
     assert fired.wait(3)
 
 
+def test_manual_shutdown(assets_dir, tmp_path, caplog):
+    """手动退出按钮：响应成功、调用退出回调，并以 INFO 记录明确原因。"""
+    import logging
+    called = []
+    client = TestClient(create_app(
+        assets_dir, library_dir=tmp_path / "library", on_shutdown=lambda: called.append(True)))
+    with caplog.at_level(logging.INFO):
+        r = client.post("/api/shutdown")
+    assert r.status_code == 200 and r.json()["ok"]
+    assert called == [True]
+    assert any(rec.name == "bwpdiy.web" and rec.getMessage() == "手动按钮关闭"
+               for rec in caplog.records)
+
+
 def test_host_guard(client):
     """Host 校验（防 DNS rebinding）：非回环 Host 一律 400；回环/testserver 放行。"""
     assert client.get("/api/layout", headers={"host": "evil.example.com"}).status_code == 400
@@ -829,6 +843,52 @@ async function sessionConfirm(message, kind) {{ return kind === 'naming'; }}
 (async () => {{
   assert.strictEqual(await confirmDiscard(), false);
   assert.strictEqual(await confirmFallbackNaming(), true);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_shutdown_tool_checks_all_unsaved_state_and_closes(tmp_path):
+    """退出按钮：任一编辑区有修改都先确认；取消不发请求，确认后关闭服务与标签页。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function hasUnsavedChanges()",
+        "async function shutdownTool()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let dirty = false, singleDirty = true, cDirty = false, mDirty = false;
+let manualShutdown = false, allowExit = false, confirmCalls = 0, closeCalls = 0;
+const requests = [], alerts = [];
+const button = {{disabled: false}};
+const document = {{getElementById: id => button}};
+const window = {{close() {{ closeCalls++; }}}};
+async function sessionConfirm(message, kind) {{
+  confirmCalls++;
+  assert.strictEqual(kind, 'unsaved');
+  return allowExit;
+}}
+async function fetch(url, options) {{
+  requests.push({{url, options}});
+  return {{ok: true}};
+}}
+{functions}
+(async () => {{
+  await shutdownTool();
+  assert.strictEqual(confirmCalls, 1);
+  assert.strictEqual(requests.length, 0);
+  assert.strictEqual(closeCalls, 0);
+  assert.strictEqual(button.disabled, false);
+  allowExit = true;
+  await shutdownTool();
+  assert.strictEqual(requests.length, 1);
+  assert.strictEqual(requests[0].url, '/api/shutdown');
+  assert.strictEqual(requests[0].options.method, 'POST');
+  assert.strictEqual(closeCalls, 1);
+  assert.strictEqual(manualShutdown, true);
+  assert.strictEqual(button.disabled, true);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
@@ -2156,7 +2216,7 @@ let activeAsk = null;
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_select_card_rechecks_seq_after_json(tmp_path):
-    """A/B 选卡 JSON 逆序完成时，旧 A 不得覆盖已提交的 B 表单。"""
+    """选卡只作废旧响应，不像清空选择那样主动清图；旧 A 不得覆盖已提交的 B 表单。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function entityEligible(card)",
@@ -2196,11 +2256,11 @@ let activeAsk = null;
 {functions}
 (async () => {{
   const a = selectCard('A');
-  await Promise.resolve();  // confirmDiscard 的 await 让出一次微任务后，旧头像即应清除
-  assert.strictEqual(cPortraitImg.style.display, 'none');  // 慢请求期间也不得闪旧主要式神头像
-  assert.strictEqual(cPortraitImg.src, '');
-  assert.strictEqual(cPortraitUrl, null);
-  assert.strictEqual(subpreviewSyncs, 1);
+  await Promise.resolve();  // 与主卡/小卡一致：等待新数据时保留当前图，避免版本切换闪烁
+  assert.strictEqual(cPortraitImg.style.display, 'block');
+  assert.strictEqual(cPortraitImg.src, 'blob:old');
+  assert.strictEqual(cPortraitUrl, 'blob:old');
+  assert.strictEqual(subpreviewSyncs, 0);
   while (!pending.A) await Promise.resolve();
   const b = selectCard('B');
   while (!pending.B) await Promise.resolve();
@@ -2543,7 +2603,7 @@ let activeAsk = null;
   assert.strictEqual(cPreviewUrl, null);
   assert.strictEqual(cPortraitUrl, null);
   assert.strictEqual(cEntityUrl, null);
-  assert.deepStrictEqual(removed, ['portrait', 'main', 'portrait', 'entity']);
+  assert.deepStrictEqual(removed, ['main', 'portrait', 'entity']);
   assert.strictEqual(cSubpreviews.style.display, 'none');
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});

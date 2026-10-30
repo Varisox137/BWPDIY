@@ -82,7 +82,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                library_dir: Path | None = None,
                loopback_guard: bool = True,
                idle_timeout: float = 7200.0,
-               on_idle=None) -> FastAPI:
+               on_idle=None, on_shutdown=None) -> FastAPI:
     assets_dir = Path(assets_dir)
     static_dir = Path(static_dir) if static_dir else _STATIC
     library_dir = Path(library_dir) if library_dir else default_library_dir()
@@ -243,6 +243,14 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         logging.getLogger("bwpdiy.gui").debug(
             "%s%s", event, f" | {detail}" if detail else "")
         return {"ok": True}
+
+    @app.post("/api/shutdown")
+    def manual_shutdown():
+        if on_shutdown is None:
+            raise HTTPException(503, "当前运行模式未配置手动退出")
+        logging.getLogger("bwpdiy.web").info("手动按钮关闭")
+        on_shutdown()
+        return {"ok": True, "message": "服务即将关闭"}
 
     # ---------- 自动更新（仅 frozen exe 可一键替换；检查对全模式开放） ----------
 

@@ -324,6 +324,8 @@ def test_legacy_num_offset_special_cases_depend_on_element_name(
 
 
 def test_version_2_entity_layout_only_deep_fills_defaults(tmp_path):
+    from bwpdiy.render.entity import _DEFAULT_LAYOUT
+
     current = {
         "version": 2,
         "art_window": {"width": 100},
@@ -339,7 +341,7 @@ def test_version_2_entity_layout_only_deep_fills_defaults(tmp_path):
     assert entity["elements"]["level"]["pos"] == [32, 88]
     assert entity["elements"]["level"]["num_offset"] == [0, 10]
     assert entity["elements"]["level"]["base_size"] == 27
-    assert entity["elements"]["power"]["pos"] == [15, 130]
+    assert entity["elements"]["power"] == _DEFAULT_LAYOUT["elements"]["power"]
 
 
 def test_three_default_entity_layouts_are_synchronized():

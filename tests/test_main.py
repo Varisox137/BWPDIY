@@ -178,6 +178,31 @@ def test_probe_non_loopback_skipped(fakes, monkeypatch):
     assert called == []
 
 
+def test_manual_shutdown_schedules_cleanup_and_exit(fakes, monkeypatch):
+    """手动退出回调先让 HTTP 响应返回，再清理未引用卡图并结束进程。"""
+    import os
+    import bwpdiy.web.app as app_mod
+    import bwpdiy.store as store
+    seen = {}
+    real = app_mod.create_app
+    def spy(*a, **kw):
+        seen.update(kw)
+        return real(*a, **kw)
+    monkeypatch.setattr(app_mod, "create_app", spy)
+    cleaned = []
+    monkeypatch.setattr(store, "cleanup_unused_images", lambda path: cleaned.append(path) or [])
+    exits = []
+    monkeypatch.setattr(os, "_exit", lambda code: exits.append(code))
+    _run(monkeypatch, ["--no-browser"])
+    seen["on_shutdown"]()
+    assert len(fakes["timers"]) == 1
+    interval, func, args = fakes["timers"][0]
+    assert 0 < interval <= 1
+    assert cleaned == [] and exits == []
+    func(*args)
+    assert len(cleaned) == 1 and exits == [0]
+
+
 def test_no_idle_stop_disables_watchdog(fakes, monkeypatch):
     """--no-idle-stop：create_app 收到 idle_timeout=0（关闭闲置看门狗）；缺省保持 7200。"""
     import bwpdiy.web.app as app_mod

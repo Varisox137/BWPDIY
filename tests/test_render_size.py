@@ -107,9 +107,8 @@ def test_card_native_size_scales_text_badges_and_signed_digits(
     assert scaled["elements"]["rarity"]["gap"] == 180
     assert scaled["elements"]["level"]["base_size"] == 136
     assert scaled["elements"]["level"]["num_size"] == 96
-    for key, expected in {"icon_size": 144, "font_size": 112, "stroke_width": 4,
-                          "sign_size_plus": 56, "sign_size_minus": 32}.items():
-        assert scaled["elements"]["power"][key] == expected
+    for key in ("icon_size", "font_size", "stroke_width", "sign_size_plus", "sign_size_minus"):
+        assert scaled["elements"]["power"][key] == layout["elements"]["power"][key] * 2
     assert scaled["elements"]["power"]["num_offset"] == [-2, 4]
     assert scaled["elements"]["power"]["group_offset"] == [-2, 0]
     assert scaled["elements"]["power"]["sign_offset"] == [6, 8]

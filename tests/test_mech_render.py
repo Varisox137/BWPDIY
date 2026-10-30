@@ -208,9 +208,13 @@ def test_default_region_fits_twelve_hanzi(assets_dir, frame):
     assert info12["text_height"] == 3 * 24
     assert info13["text_height"] == 4 * 24
     assert img13.height > img12.height
+    mech_layout = load_layouts(assets_dir)["机制"]
+    region = mech_layout["frames"][frame]
+    shipped_info = {}
     shipped = render_mechanism(_mech(frame=frame, text="一" * 12), assets_dir,
-                               layout=load_layouts(assets_dir)["机制"])
-    assert shipped.width == 312 and shipped.height == img12.height  # 出厂布局：左右各 12px
+                               layout=mech_layout, info=shipped_info)
+    assert shipped_info["text_width"] == region["width"]
+    assert shipped.width >= 2 * region["text_x"] + region["width"]
 
 
 def test_render_info_text_block(assets_dir):

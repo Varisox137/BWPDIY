@@ -38,22 +38,22 @@ _DEFAULT_LAYOUT = {
             "num_size": 21, "num_offset": [0, 0],
         },
         "power": {
-            "kind": "stat", "field": "power", "pos": [15, 130],
+            "kind": "stat", "field": "power", "pos": [15, 129],
             "icon_size": 32, "num_offset": [-1, 1], "font_size": 24,
             "stroke_width": 2,
         },
         "health": {
-            "kind": "stat", "field": "health", "pos": [84, 130],
-            "icon_size": 34, "num_offset": [1, 2], "font_size": 24,
+            "kind": "stat", "field": "health", "pos": [82, 129],
+            "icon_size": 34, "num_offset": [1, 1], "font_size": 24,
             "stroke_width": 2,
         },
         "combat_power": {
-            "kind": "stat", "field": "combat_power", "pos": [13, 101],
+            "kind": "stat", "field": "combat_power", "pos": [14, 99],
             "icon_size": 34, "num_offset": [0, 0], "font_size": 22,
             "stroke_width": 2,
         },
         "shield": {
-            "kind": "stat", "field": "shield", "pos": [83, 100],
+            "kind": "stat", "field": "shield", "pos": [81, 98],
             "icon_size": 29, "num_offset": [0, 1], "font_size": 22,
             "stroke_width": 2,
         },

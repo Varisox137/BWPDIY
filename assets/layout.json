@@ -1377,8 +1377,8 @@
         ],
         "icon_size": 34,
         "num_offset": [
-          0,
-          0
+          1,
+          -1
         ],
         "font_size": 22,
         "stroke_width": 2
@@ -1392,8 +1392,8 @@
         ],
         "icon_size": 29,
         "num_offset": [
-          0,
-          1
+          1,
+          0
         ],
         "font_size": 22,
         "stroke_width": 2

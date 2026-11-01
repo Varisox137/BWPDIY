@@ -161,9 +161,13 @@ def test_five_number_gradients(assets_dir, color):
     from bwpdiy.render.badges import STAT_COLORS, _render_digits
     lib = AssetLibrary(assets_dir)
     img = _render_digits("6", lib.font("name", 40), 2, color)
-    top = STAT_COLORS[color][0]
+    top, bottom = STAT_COLORS[color]
     assert any(all(abs(pixel[i] - top[i]) <= 3 for i in range(3))
                for pixel in img.getdata() if pixel[3] > 200)
+    assert any(all(abs(pixel[i] - bottom[i]) <= 3 for i in range(3))
+               for pixel in img.getdata() if pixel[3] > 200)
+    assert any(pixel[:3] == (0, 0, 0) and pixel[3] > 0
+               for pixel in img.getdata())
 
 
 def test_infinity_has_white_ink_and_stroke(assets_dir):

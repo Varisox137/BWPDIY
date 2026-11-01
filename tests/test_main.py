@@ -250,4 +250,6 @@ def test_current_version_has_changelog():
     from bwpdiy.changelog import CHANGELOG
 
     assert __version__ in CHANGELOG
+    assert CHANGELOG["1.8.0"][0] == (
+        "<b>本次更新更改了全局布局配置，用户可能需要重新手动调整本地配置。</b>")
     assert "1.6.3" not in CHANGELOG

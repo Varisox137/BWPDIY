@@ -53,8 +53,8 @@ def test_stats_dir_no_duplicate_assets(assets_dir):
     """stats/ 文件集合钉死：力量/生命全类型共用，不允许 form_/spell_/combat_ 前缀重复资源回归。"""
     files = sorted(p.name for p in (assets_dir / "stats").glob("*.png"))
     assert files == ["combat_fragile_1.png", "combat_fragile_2.png",
-                     "combat_shield.png", "field_intensity.png",
-                     "health.png", "power.png"]
+                     "combat_shield.png", "countdown.png", "defeated_countdown.png",
+                     "energy.png", "field_intensity.png", "health.png", "power.png"]
 
 
 def test_load_faction_and_icon(assets_dir):

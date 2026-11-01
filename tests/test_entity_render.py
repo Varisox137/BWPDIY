@@ -286,29 +286,52 @@ def test_entity_hidden_countdown_does_not_expand_work_canvas(assets_dir, sample_
 
 @pytest.mark.parametrize("state, expected_font_size", [
     ({"energy": 0}, 24),
+    ({"countdown": 2}, 24),
+    ({"defeated_countdown": 3}, 40),
     ({"defeated_countdown": "infinity"}, 40),
 ])
-def test_entity_counter_width_uses_native_font_scaling(
+def test_entity_counter_native_scaling_covers_geometry_and_ink(
         assets_dir, sample_art, monkeypatch, state, expected_font_size):
     import bwpdiy.render.entity as entity
 
     layout = make_counter_layout()
     base = render_entity(make_card(sample_art), state, assets_dir, layout=layout)
-    font_sizes = []
+    ink_calls = []
+    scaled_elements = []
     original_digits = entity._render_digits
+    original_bounds = entity._entity_work_bounds
 
-    def tracked_digits(text, font, *args):
-        font_sizes.append(font.size)
-        return original_digits(text, font, *args)
+    def tracked_digits(text, font, stroke_width, *args):
+        ink_calls.append((font.size, stroke_width, args[-1]))
+        return original_digits(text, font, stroke_width, *args)
+
+    def tracked_infinity(font_size, stroke_width):
+        ink_calls.append((font_size, stroke_width, None))
+        return Image.new("RGBA", (font_size, font_size // 2))
+
+    def tracked_bounds(lib, elements, current_state, factor=1.0):
+        scaled_elements.append(deepcopy(elements))
+        return original_bounds(lib, elements, current_state, factor)
 
     monkeypatch.setattr(entity, "_render_digits", tracked_digits)
-    monkeypatch.setattr(entity, "_render_infinity",
-                        lambda font_size, stroke_width: font_sizes.append(font_size) or
-                        Image.new("RGBA", (font_size, font_size // 2)), raising=False)
+    monkeypatch.setattr(entity, "_render_infinity", tracked_infinity, raising=False)
+    monkeypatch.setattr(entity, "_entity_work_bounds", tracked_bounds)
     scaled = render_entity(make_card(sample_art), state, assets_dir,
                            layout=layout, width=base.width * 2)
+
     assert scaled.size == (base.width * 2, base.height * 2)
-    assert font_sizes[-1] == expected_font_size * 2
+    assert ink_calls[-1][0] == expected_font_size * 2
+    assert ink_calls[-1][1] == 4
+    if state.get("defeated_countdown") != "infinity":
+        assert ink_calls[-1][2] == entity._DIGIT_GAP * 2
+    for name in ("right_top", "defeated"):
+        before = layout["elements"][name]
+        after = scaled_elements[-1][name]
+        for key in ("pos", "num_offset"):
+            assert after[key] == [value * 2 for value in before[key]]
+        for key in ("icon_size", "font_size", "stroke_width"):
+            assert after[key] == before[key] * 2
+        assert after["_digit_gap"] == entity._DIGIT_GAP * 2
 
 
 def test_entity_native_size_and_zero_stats(assets_dir, sample_art, monkeypatch):
@@ -376,6 +399,15 @@ def test_entity_stat_color_inherited_from_card(assets_dir, sample_art):
     overridden = render_entity(card, {"power": 3, "power_color": "green"}, assets_dir, crop=False)
     assert images_equal(inherited, explicit)
     assert not images_equal(inherited, overridden)
+
+
+@pytest.mark.parametrize("color", ["white", "yellow"])
+def test_entity_stat_color_inheritance_ignores_counter_only_colors(
+        assets_dir, sample_art, color):
+    baseline = render_entity(make_card(sample_art), {"power": 3}, assets_dir, crop=False)
+    inherited = render_entity(make_card(sample_art, power_color=color),
+                              {"power": 3}, assets_dir, crop=False)
+    assert images_equal(inherited, baseline)
 
 
 @pytest.mark.parametrize("value, expected", [
@@ -762,6 +794,18 @@ def test_validate_entity_state_rejects_excess_digits(field, value):
     ("power", "stroke_width", -1),
     ("power", "stroke_width", 33),
     ("power", "num_offset", [math.inf, 0]),
+    ("right_top", "pos", [True, 0]),
+    ("right_top", "pos", [5000, 0]),
+    ("right_top", "num_offset", [math.inf, 0]),
+    ("right_top", "icon_size", 1025),
+    ("right_top", "font_size", 0),
+    ("right_top", "stroke_width", 33),
+    ("defeated", "pos", [True, 0]),
+    ("defeated", "pos", [5000, 0]),
+    ("defeated", "num_offset", [math.inf, 0]),
+    ("defeated", "icon_size", 1025),
+    ("defeated", "font_size", 0),
+    ("defeated", "stroke_width", 33),
 ])
 def test_entity_rejects_invalid_layout_before_allocation(
         assets_dir, sample_art, monkeypatch, element, key, value):
@@ -776,7 +820,8 @@ def test_entity_rejects_invalid_layout_before_allocation(
         entity, "_render_digits",
         lambda *args, **kwargs: pytest.fail("非法布局不得进入数字图分配"))
     with pytest.raises(ValueError):
-        render_entity(make_card(sample_art), {}, assets_dir, layout=layout)
+        render_entity(make_card(sample_art),
+                      {"energy": 0, "defeated_countdown": 2}, assets_dir, layout=layout)
 
 
 @pytest.mark.parametrize("key, value", [

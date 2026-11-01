@@ -2918,6 +2918,153 @@ async function fetch(url, options) {{
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_battle_same_session_out_of_order_success_keeps_newest(tmp_path):
+    script = _script()
+    handler = _extract_js(script, "async function handleBattlePreviewResponse(r, seq, session)")
+    driver = f"""
+const assert = require('node:assert');
+let battleActive = true, battleSession = 7;
+let battlePreviewAppliedSeq = 0, battlePreviewUrl = 'blob:old';
+const image = {{src: 'blob:old'}}, error = {{textContent: ''}};
+const document = {{getElementById: id => id === 'b-preview' ? image : error}};
+const created = [], revoked = [];
+const URL = {{createObjectURL: blob => {{ created.push(blob.png); return 'blob:' + blob.png; }},
+             revokeObjectURL: url => revoked.push(url)}};
+{handler}
+function slowSuccess(png) {{
+  let release;
+  const response = {{ok: true, blob: () => new Promise(resolve => {{ release = resolve; }})}};
+  return {{response, release: () => release({{png}})}};
+}}
+(async () => {{
+  const older = slowSuccess('older'), newer = slowSuccess('newer');
+  const oldPending = handleBattlePreviewResponse(older.response, 1, 7);
+  const newPending = handleBattlePreviewResponse(newer.response, 2, 7);
+  newer.release();
+  await newPending;
+  assert.strictEqual(image.src, 'blob:newer');
+  older.release();
+  await oldPending;
+  assert.strictEqual(image.src, 'blob:newer');
+  assert.strictEqual(battlePreviewUrl, 'blob:newer');
+  assert.deepStrictEqual(created, ['newer']);
+  assert.deepStrictEqual(revoked, ['blob:old']);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_battle_navigation_integrates_hash_entry_guards_and_return(tmp_path):
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function battleStyles(card)",
+        "function makeEntityState(card)",
+        "function enterBattlePreview()",
+        "function leaveBattlePreview()",
+        "function showTab(name)",
+        "async function tryShowTab(name)",
+    ))
+    main = (EDITOR_HTML.parent / "editor-main.js").read_text(encoding="utf-8")
+    startup = "\n".join(line for line in main.splitlines()
+                        if line.startswith("if (location.hash"))
+    assert startup.count("showTab") == 2
+    driver = f"""
+const assert = require('node:assert');
+const ENTITY_LEVELS = [0, 1, 2, 3];
+const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan']);
+const STAT_VALUE_COLOR_VALUES = new Set(['red', 'green', 'purple']);
+function classList(active = false) {{
+  const values = new Set(active ? ['active'] : []);
+  return {{contains: name => values.has(name),
+    toggle: (name, on) => {{ if (on) values.add(name); else values.delete(name); }}}};
+}}
+const navtabs = ['cards', 'battle', 'layout'].map(tab =>
+  ({{dataset: {{tab}}, classList: classList(tab === 'cards')}}));
+const pages = Object.fromEntries(['cards', 'battle', 'layout'].map(tab =>
+  ['tab-' + tab, {{id: 'tab-' + tab, classList: classList(tab === 'cards')}}]));
+const elements = {{...pages,
+  'b-status': {{textContent: ''}}, 'b-error': {{textContent: ''}},
+  'b-preview': {{src: '', removeAttribute() {{ this.src = ''; }}}},
+  'b-btn-export': {{disabled: true}},
+}};
+const document = {{
+  getElementById: id => elements[id],
+  querySelectorAll: selector => selector === '.navtab' ? navtabs
+    : (selector === '.tabpage' ? Object.values(pages) : []),
+}};
+const location = {{hash: '#battle'}};
+const history = {{replaceState: (a, b, hash) => {{ location.hash = hash; }}}};
+const extOptions = {{layout: false}};
+const URL = {{revokeObjectURL() {{}}}};
+let cards = {{shikigami: [], cards: []}};
+let curProject = '项目', curCard = '形态-stem', curMech = null;
+let formData = {{type: '形态', name: '未保存形态', level: 2, level_color: 'cyan',
+                power: 3, health: 4}};
+let cDirty = true, mDirty = false, dirty = false, singleDirty = false;
+let cardLayoutMode = null;
+let battleStyle = null, battleCardState = null, battleEntityState = null;
+let battleActive = false, battleSession = 0, battlePreviewTimer = null;
+let battlePreviewSeq = 0, battlePreviewAppliedSeq = 0, battlePreviewUrl = null;
+let battleExporting = false, scheduled = 0, allowLeave = false;
+const prompts = [];
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function clearTimeout() {{}}
+function buildBattleStyles() {{}}
+function buildBattleForm() {{}}
+function scheduleBattlePreview() {{ scheduled++; }}
+function captureLayoutSnapshot() {{}}
+function layoutBoot() {{}}
+function buildForm() {{}}
+function scheduleCardPreview() {{}}
+function exitCardLayout() {{ throw new Error('本用例不进入单卡布局分支'); }}
+async function sessionConfirm(message) {{ prompts.push(message); return allowLeave; }}
+{functions}
+{startup}
+(async () => {{
+  assert.strictEqual(battleActive, true);
+  assert.strictEqual(battleCardState.name, '未保存形态');
+  assert.notStrictEqual(battleCardState, formData);
+  const originalForm = formData;
+  await tryShowTab('cards');
+  assert.strictEqual(battleActive, false);
+  assert.strictEqual(formData, originalForm);
+  assert.strictEqual(formData.name, '未保存形态');
+  assert.strictEqual(curCard, '形态-stem');
+  assert.strictEqual(cDirty, true);
+
+  curMech = '共享机制'; formData = null; mDirty = true;
+  await tryShowTab('battle');
+  assert.strictEqual(battleActive, false);
+  assert.strictEqual(prompts.length, 1);
+  assert(prompts[0].includes('卡牌/机制'));
+  allowLeave = true;
+  await tryShowTab('battle');
+  assert.strictEqual(battleActive, true);
+  assert(elements['b-status'].textContent.includes('请先'));
+  await tryShowTab('cards');
+
+  showTab('layout');
+  dirty = true; allowLeave = false;
+  await tryShowTab('battle');
+  assert.strictEqual(battleActive, false);
+  assert.strictEqual(pages['tab-layout'].classList.contains('active'), true);
+  assert.strictEqual(prompts.length, 3);
+  assert(prompts[2].includes('布局'));
+  allowLeave = true;
+  await tryShowTab('battle');
+  assert.strictEqual(battleActive, true);
+  assert.strictEqual(pages['tab-battle'].classList.contains('active'), true);
+  assert.strictEqual(curCard, '形态-stem');
+  assert.strictEqual(cDirty, true && mDirty, true);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_battle_card_level_zero_is_omitted_for_preview_and_export(tmp_path):
     """大卡等级 0 在渲染副本中删 level；小卡 state.level=0 仍原样提交。"""
     script = _script()

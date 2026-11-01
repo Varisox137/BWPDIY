@@ -59,6 +59,9 @@ def test_validate_entity_state_defaults_and_discards_unknown_keys():
         "health": 0,
         "combat_power": 0,
         "shield": 0,
+        "energy": None,
+        "countdown": None,
+        "defeated_countdown": None,
         "art_scale": 1.0,
         "power_color": None,
         "health_color": None,
@@ -92,6 +95,220 @@ def test_validate_entity_state_rejects_invalid_values(field, value):
 def test_validate_entity_state_rejects_non_mapping():
     with pytest.raises(ValueError):
         validate_entity_state([])
+
+
+@pytest.mark.parametrize("state", [
+    {"energy": 0, "countdown": 1}, {"energy": -1}, {"energy": True},
+    {"countdown": 0}, {"countdown": 1.5}, {"defeated_countdown": 0},
+    {"defeated_countdown": -1}, {"defeated_countdown": "inf"},
+    {"defeated_countdown": True},
+])
+def test_entity_rejects_invalid_counter_states(state):
+    with pytest.raises(ValueError):
+        validate_entity_state(state)
+
+
+def test_entity_permanent_defeat_accepts_infinity():
+    assert validate_entity_state(
+        {"defeated_countdown": "infinity"})["defeated_countdown"] == "infinity"
+
+
+@pytest.mark.parametrize("field", ["energy", "countdown", "defeated_countdown"])
+def test_entity_rejects_excess_counter_digits(field):
+    with pytest.raises(ValueError, match="位数"):
+        validate_entity_state({field: 10 ** 12})
+
+
+def make_counter_layout():
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["elements"] = {
+        "right_top": {
+            "kind": "counter", "pos": [82, 18], "icon_size": 28,
+            "num_offset": [0, 0], "font_size": 24, "stroke_width": 2,
+        },
+        "defeated": {
+            "kind": "counter", "pos": [48, 66], "icon_size": 44,
+            "num_offset": [0, 0], "font_size": 40, "stroke_width": 2,
+        },
+    }
+    return layout
+
+
+def test_entity_counter_asset_and_digit_selection(assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
+    lib = get_library(assets_dir)
+    badges = []
+    digits = []
+    infinities = []
+    original_badge = lib.stat_badge
+    original_digits = entity._render_digits
+
+    def tracked_digits(text, font, stroke_width, color=None, gap=3):
+        digits.append((text, color))
+        return original_digits(text, font, stroke_width, color, gap)
+
+    monkeypatch.setattr(lib, "stat_badge",
+                        lambda name: badges.append(name) or original_badge(name))
+    monkeypatch.setattr(entity, "_render_digits", tracked_digits)
+    monkeypatch.setattr(entity, "_render_infinity",
+                        lambda font_size, stroke_width: infinities.append(
+                            (font_size, stroke_width)) or Image.new("RGBA", (40, 20)),
+                        raising=False)
+
+    def render(state):
+        badges.clear()
+        digits.clear()
+        infinities.clear()
+        render_entity(make_card(sample_art), state, assets_dir,
+                      layout=make_counter_layout(), crop=False)
+        return list(badges), list(digits), list(infinities)
+
+    assert render({"energy": 0}) == (["energy"], [("0", "yellow")], [])
+    assert render({"countdown": 2}) == (["countdown"], [("2", "white")], [])
+    assert render({"energy": 0, "defeated_countdown": 2}) == (
+        ["energy", "defeated_countdown"], [("0", "yellow"), ("2", "white")], [])
+    assert render({"countdown": 2, "defeated_countdown": 2}) == (
+        ["defeated_countdown"], [("2", "white")], [])
+    assert render({"defeated_countdown": "infinity"}) == (
+        ["defeated_countdown"], [], [(40, 2)])
+
+
+@pytest.mark.parametrize("right_state", [{"energy": 0}, {"countdown": 2}])
+def test_entity_level_zero_skips_all_counter_layers(
+        assets_dir, sample_art, monkeypatch, right_state):
+    import bwpdiy.render.entity as entity
+
+    lib = get_library(assets_dir)
+    monkeypatch.setattr(lib, "stat_badge",
+                        lambda *args: pytest.fail("等级 0 不得读取状态图标"))
+    monkeypatch.setattr(entity, "_render_digits",
+                        lambda *args: pytest.fail("等级 0 不得渲染数字"))
+    monkeypatch.setattr(entity, "_render_infinity",
+                        lambda *args: pytest.fail("等级 0 不得渲染无限符号"), raising=False)
+    state = {"level": 0, "defeated_countdown": "infinity", **right_state}
+    actual = render_entity(make_card(sample_art), state, assets_dir,
+                           layout=make_counter_layout())
+    expected = render_entity(make_card(sample_art), state, assets_dir,
+                             layout={**make_counter_layout(), "elements": {}})
+    assert images_equal(actual, expected)
+
+
+def test_entity_defeat_grays_only_frame_and_artwork(assets_dir, sample_art):
+    from PIL import ImageOps
+
+    layout = make_counter_layout()
+    layout["elements"] = {}
+    base = render_entity(make_card(sample_art), {}, assets_dir,
+                         layout=layout, crop=False)
+    actual = render_entity(make_card(sample_art), {"defeated_countdown": 2}, assets_dir,
+                           layout=layout, crop=False)
+    expected = ImageOps.grayscale(base).convert("RGBA")
+    expected.putalpha(base.getchannel("A"))
+    assert images_equal(actual, expected)
+    assert actual.getchannel("A").tobytes() == base.getchannel("A").tobytes()
+
+
+def test_entity_defeat_preserves_energy_icon_color(assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
+    layout = make_counter_layout()
+    layout["elements"]["right_top"]["pos"] = [48, 72]
+    layout["elements"]["defeated"]["enabled"] = False
+    lib = get_library(assets_dir)
+    monkeypatch.setattr(lib, "stat_badge",
+                        lambda name: Image.new("RGBA", (20, 20), (12, 34, 56, 255)))
+    monkeypatch.setattr(entity, "_render_digits", lambda *args: None)
+    actual = render_entity(make_card(sample_art),
+                           {"energy": 0, "defeated_countdown": 2}, assets_dir,
+                           layout=layout, crop=False)
+    assert actual.getpixel((48, 72)) == (12, 34, 56, 255)
+
+
+def test_entity_defeated_counter_draws_above_energy(assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
+    layout = make_counter_layout()
+    layout["elements"]["right_top"]["pos"] = [48, 72]
+    layout["elements"]["defeated"]["pos"] = [48, 72]
+    lib = get_library(assets_dir)
+    colors = {"energy": (255, 0, 0, 255), "defeated_countdown": (0, 0, 255, 255)}
+    monkeypatch.setattr(lib, "stat_badge",
+                        lambda name: Image.new("RGBA", (20, 20), colors[name]))
+    monkeypatch.setattr(entity, "_render_digits", lambda *args: None)
+    actual = render_entity(make_card(sample_art),
+                           {"energy": 0, "defeated_countdown": 2}, assets_dir,
+                           layout=layout, crop=False)
+    assert actual.getpixel((48, 72)) == (0, 0, 255, 255)
+
+
+@pytest.mark.parametrize("element, state", [
+    ("right_top", {"energy": 0}),
+    ("defeated", {"defeated_countdown": 2}),
+    ("defeated", {"defeated_countdown": "infinity"}),
+])
+def test_entity_counter_overflow_expands_work_canvas(
+        assets_dir, sample_art, element, state):
+    layout = make_counter_layout()
+    for name in layout["elements"]:
+        layout["elements"][name]["enabled"] = name == element
+    layout["elements"][element]["pos"] = [48, 160]
+    full = render_entity(make_card(sample_art), state, assets_dir,
+                         layout=layout, crop=False)
+    assert full.height > 144
+
+
+@pytest.mark.parametrize("element, state", [
+    ("right_top", {"energy": 0}),
+    ("defeated", {"defeated_countdown": 2}),
+    ("defeated", {"defeated_countdown": "infinity"}),
+])
+def test_entity_counter_ink_overflow_expands_work_canvas(
+        assets_dir, sample_art, element, state):
+    layout = make_counter_layout()
+    for name in layout["elements"]:
+        layout["elements"][name]["enabled"] = name == element
+    layout["elements"][element]["pos"] = [48, 72]
+    layout["elements"][element]["num_offset"] = [0, 100]
+    full = render_entity(make_card(sample_art), state, assets_dir,
+                         layout=layout, crop=False)
+    assert full.height > 144
+
+
+def test_entity_hidden_countdown_does_not_expand_work_canvas(assets_dir, sample_art):
+    layout = make_counter_layout()
+    layout["elements"]["right_top"]["pos"] = [1000, 1000]
+    full = render_entity(make_card(sample_art),
+                         {"countdown": 2, "defeated_countdown": 2}, assets_dir,
+                         layout=layout, crop=False)
+    assert full.size == (96, 144)
+
+
+@pytest.mark.parametrize("state, expected_font_size", [
+    ({"energy": 0}, 24),
+    ({"defeated_countdown": "infinity"}, 40),
+])
+def test_entity_counter_width_uses_native_font_scaling(
+        assets_dir, sample_art, monkeypatch, state, expected_font_size):
+    import bwpdiy.render.entity as entity
+
+    layout = make_counter_layout()
+    base = render_entity(make_card(sample_art), state, assets_dir, layout=layout)
+    font_sizes = []
+    original_digits = entity._render_digits
+
+    def tracked_digits(text, font, *args):
+        font_sizes.append(font.size)
+        return original_digits(text, font, *args)
+
+    monkeypatch.setattr(entity, "_render_digits", tracked_digits)
+    monkeypatch.setattr(entity, "_render_infinity",
+                        lambda font_size, stroke_width: font_sizes.append(font_size) or
+                        Image.new("RGBA", (font_size, font_size // 2)), raising=False)
+    scaled = render_entity(make_card(sample_art), state, assets_dir,
+                           layout=layout, width=base.width * 2)
+    assert scaled.size == (base.width * 2, base.height * 2)
+    assert font_sizes[-1] == expected_font_size * 2
 
 
 def test_entity_native_size_and_zero_stats(assets_dir, sample_art, monkeypatch):

@@ -359,6 +359,25 @@ def test_version_2_entity_layout_only_deep_fills_defaults(tmp_path):
     assert entity["elements"]["power"] == _DEFAULT_LAYOUT["elements"]["power"]
 
 
+def test_entity_counter_layout_backfilled_and_shipped(tmp_path):
+    from bwpdiy.render.entity import _DEFAULT_LAYOUT
+
+    _write_entity_layout(tmp_path, {"version": 2, "elements": {}})
+    backfilled = layout.load_layouts(tmp_path)["对局式神"]["elements"]
+    assert backfilled["right_top"] == {
+        "kind": "counter", "pos": [82, 18], "icon_size": 28,
+        "num_offset": [0, 0], "font_size": 24, "stroke_width": 2,
+    }
+    assert backfilled["defeated"] == {
+        "kind": "counter", "pos": [48, 66], "icon_size": 44,
+        "num_offset": [0, 0], "font_size": 40, "stroke_width": 2,
+    }
+    for path in (Path("assets"), Path("bwpdiy/render")):
+        elements = layout.load_layouts(path)["对局式神"]["elements"]
+        assert elements["right_top"] == _DEFAULT_LAYOUT["elements"]["right_top"]
+        assert elements["defeated"] == _DEFAULT_LAYOUT["elements"]["defeated"]
+
+
 def test_three_default_entity_layouts_are_synchronized():
     from bwpdiy.render.entity import _DEFAULT_LAYOUT
 

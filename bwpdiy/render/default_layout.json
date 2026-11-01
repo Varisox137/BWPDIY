@@ -1541,6 +1541,34 @@
         ],
         "font_size": 22,
         "stroke_width": 2
+      },
+      "right_top": {
+        "kind": "counter",
+        "pos": [
+          82,
+          18
+        ],
+        "icon_size": 28,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 24,
+        "stroke_width": 2
+      },
+      "defeated": {
+        "kind": "counter",
+        "pos": [
+          48,
+          66
+        ],
+        "icon_size": 44,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "stroke_width": 2
       }
     }
   },

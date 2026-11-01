@@ -5,13 +5,14 @@ import math
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageOps
 
 from bwpdiy.render.artwork import (
     ARTWORK_MAX_PIXELS, artwork_ref, fit_artwork, load_card_artwork)
 from bwpdiy.render.assets import AssetLibrary, get_library
 from bwpdiy.render.badges import (
-    _DIGIT_GAP, STAT_VALUE_COLORS, TYPE_FRAME_CODE, _paste_element, _render_digits)
+    _DIGIT_GAP, STAT_VALUE_COLORS, TYPE_FRAME_CODE, _paste_element, _render_digits,
+    _render_infinity)
 from bwpdiy.render.pipeline import _normalize_frame
 from bwpdiy.render.size import fit_target_canvas, resolve_target_size, scale_layout
 
@@ -130,6 +131,9 @@ def validate_entity_state(state: dict) -> dict:
         "health": state.get("health", 0),
         "combat_power": state.get("combat_power", 0),
         "shield": state.get("shield", 0),
+        "energy": state.get("energy"),
+        "countdown": state.get("countdown"),
+        "defeated_countdown": state.get("defeated_countdown"),
         "art_scale": state.get("art_scale", 1.0),
     }
     for field in ("power", "health", "combat_power", "shield"):
@@ -146,6 +150,25 @@ def validate_entity_state(state: dict) -> dict:
         color = normalized[f"{field}_color"]
         if color is not None and (not isinstance(color, str) or color not in STAT_VALUE_COLORS):
             raise ValueError(f"{field}_color 非法")
+    energy, countdown = normalized["energy"], normalized["countdown"]
+    if energy is not None and countdown is not None:
+        raise ValueError("energy/countdown 至多一个非空")
+    for field in ("energy", "countdown"):
+        value = normalized[field]
+        if value is not None and not _is_int(value):
+            raise ValueError(f"{field} 必须是整数")
+    if energy is not None and energy < 0:
+        raise ValueError("energy 必须是非负整数")
+    if countdown is not None and countdown <= 0:
+        raise ValueError("countdown 必须是正整数")
+    defeated = normalized["defeated_countdown"]
+    if defeated is not None and defeated != "infinity":
+        if not _is_int(defeated) or defeated <= 0:
+            raise ValueError("defeated_countdown 必须是正整数或 infinity")
+    for field in ("energy", "countdown", "defeated_countdown"):
+        value = normalized[field]
+        if _is_int(value) and value > max_value:
+            raise ValueError(f"{field} 数值位数不得超过 {ENTITY_MAX_STAT_DIGITS} 位")
     if normalized["level"] not in (0, 1, 2, 3):
         raise ValueError("level 必须是 0、1、2 或 3")
     color = normalized["level_color"]
@@ -202,6 +225,14 @@ def _stat_icon(lib: AssetLibrary, field: str, value: int) -> Image.Image:
     return lib.stat_badge(field)
 
 
+def _right_top_counter(state: dict) -> tuple[str, int, str] | None:
+    if state["energy"] is not None:
+        return "energy", state["energy"], "yellow"
+    if state["defeated_countdown"] is None and state["countdown"] is not None:
+        return "countdown", state["countdown"], "white"
+    return None
+
+
 def _validate_entity_elements(elements: dict, state: dict) -> None:
     if not isinstance(elements, dict):
         raise ValueError("对局式神元素表必须是对象")
@@ -217,7 +248,7 @@ def _validate_entity_elements(elements: dict, state: dict) -> None:
             for key in ("base_size", "num_size"):
                 if not _bounded_number(level.get(key), ENTITY_MAX_ELEMENT_SIZE, True):
                     raise ValueError(f"等级标 {key} 必须是有限且限幅的正数")
-    for field in ("power", "health", "combat_power", "shield"):
+    for field in ("power", "health", "combat_power", "shield", "right_top", "defeated"):
         elem = elements.get(field)
         if elem is None:
             continue
@@ -226,6 +257,10 @@ def _validate_entity_elements(elements: dict, state: dict) -> None:
         if not elem.get("enabled", True):
             continue
         if field in ("combat_power", "shield") and state[field] == 0:
+            continue
+        if field == "right_top" and _right_top_counter(state) is None:
+            continue
+        if field == "defeated" and state["defeated_countdown"] is None:
             continue
         for key in ("pos", "num_offset"):
             if not _bounded_pair(elem.get(key, [0, 0] if key == "num_offset" else None)):
@@ -240,6 +275,19 @@ def _validate_entity_elements(elements: dict, state: dict) -> None:
             raise ValueError(f"{field} stroke_width 必须是有限且限幅的非负数")
 
 
+def _paste_centered_ink(canvas: Image.Image, elem: dict,
+                        ink: Image.Image | None) -> Image.Image:
+    if ink is None:
+        return canvas
+    nx, ny = elem.get("num_offset", [0, 0])
+    center_x = elem["pos"][0] + nx
+    center_y = elem["pos"][1] + ny
+    out = canvas.copy()
+    out.alpha_composite(ink, (round(center_x - ink.width / 2),
+                              round(center_y - ink.height / 2)))
+    return out
+
+
 def _render_stat(canvas: Image.Image, lib: AssetLibrary, elem: dict,
                  state: dict, digits: Image.Image | None) -> Image.Image:
     if not elem.get("enabled", True):
@@ -248,18 +296,18 @@ def _render_stat(canvas: Image.Image, lib: AssetLibrary, elem: dict,
     value = state[field]
     if field in ("combat_power", "shield") and value == 0:
         return canvas
-    pos = elem["pos"]
-    out = _paste_element(canvas, _stat_icon(lib, field, value), pos,
+    out = _paste_element(canvas, _stat_icon(lib, field, value), elem["pos"],
                          (elem["icon_size"], elem["icon_size"]))
-    if digits is None:
-        return out
-    nx, ny = elem.get("num_offset", [0, 0])
-    center_x = pos[0] + nx
-    center_y = pos[1] + ny
-    out = out.copy()
-    out.alpha_composite(digits, (round(center_x - digits.width / 2),
-                                 round(center_y - digits.height / 2)))
-    return out
+    return _paste_centered_ink(out, elem, digits)
+
+
+def _render_counter(canvas: Image.Image, lib: AssetLibrary, elem: dict,
+                    icon_name: str, ink: Image.Image | None) -> Image.Image:
+    if not elem.get("enabled", True):
+        return canvas
+    out = _paste_element(canvas, lib.stat_badge(icon_name), elem["pos"],
+                         (elem["icon_size"], elem["icon_size"]))
+    return _paste_centered_ink(out, elem, ink)
 
 
 def _entity_work_bounds(lib: AssetLibrary, elements: dict,
@@ -287,6 +335,16 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
             raise ValueError("对局式神工作画布面积超像素上限")
         return bounds
 
+    def add_prepared(field, elem, ink):
+        prepared_digits[field] = ink
+        if ink is None:
+            return
+        pos = elem["pos"]
+        nx, ny = elem.get("num_offset", [0, 0])
+        x = round(pos[0] + nx - ink.width / 2)
+        y = round(pos[1] + ny - ink.height / 2)
+        rects.append((x, y, x + ink.width, y + ink.height))
+
     level = elements.get("level")
     if state["level"] != 0 and level is not None and level.get("enabled", True):
         pos = level["pos"]
@@ -301,6 +359,16 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         if field in ("combat_power", "shield") and state[field] == 0:
             continue
         add_centered(elem["pos"], (elem["icon_size"], elem["icon_size"]))
+    right_top = _right_top_counter(state)
+    for field in ("right_top", "defeated"):
+        elem = elements.get(field)
+        if elem is None or not elem.get("enabled", True):
+            continue
+        if field == "right_top" and right_top is None:
+            continue
+        if field == "defeated" and state["defeated_countdown"] is None:
+            continue
+        add_centered(elem["pos"], (elem["icon_size"], elem["icon_size"]))
     checked_bounds()
     for field in ("power", "health", "combat_power", "shield"):
         elem = elements.get(field)
@@ -312,14 +380,27 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         digits = _render_digits(str(abs(value)), lib.font("name", elem["font_size"]),
                                 round(elem.get("stroke_width", 1)), state[f"{field}_color"],
                                 elem.get("_digit_gap", _DIGIT_GAP))
-        prepared_digits[field] = digits
-        if digits is None:
+        add_prepared(field, elem, digits)
+    for field in ("right_top", "defeated"):
+        elem = elements.get(field)
+        if elem is None or not elem.get("enabled", True):
             continue
-        pos = elem["pos"]
-        nx, ny = elem.get("num_offset", [0, 0])
-        x = round(pos[0] + nx - digits.width / 2)
-        y = round(pos[1] + ny - digits.height / 2)
-        rects.append((x, y, x + digits.width, y + digits.height))
+        if field == "right_top":
+            if right_top is None:
+                continue
+            _, value, color = right_top
+        else:
+            value = state["defeated_countdown"]
+            if value is None:
+                continue
+            color = "white"
+        if value == "infinity":
+            ink = _render_infinity(elem["font_size"], round(elem.get("stroke_width", 1)))
+        else:
+            ink = _render_digits(str(value), lib.font("name", elem["font_size"]),
+                                 round(elem.get("stroke_width", 1)), color,
+                                 elem.get("_digit_gap", _DIGIT_GAP))
+        add_prepared(field, elem, ink)
     return checked_bounds(), prepared_digits
 
 
@@ -371,7 +452,7 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
     if factor != 1:
         entity_layout = scale_layout(entity_layout, factor)
         for elem in (entity_layout.get("elements") or {}).values():
-            if elem.get("kind") == "stat":
+            if elem.get("kind") in ("stat", "counter"):
                 elem["_digit_gap"] = _DIGIT_GAP * factor
     window = entity_layout.get("art_window", _DEFAULT_LAYOUT["art_window"])
     validate_entity_art_window(window)
@@ -399,8 +480,11 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
                           offset_y, state["art_scale"], cover_base=original)
     center_x, center_y = window["center"]
     origin = (round(center_x - window_width / 2), round(center_y - window_height / 2))
-    canvas = _render_frame(art, origin, factor)
-    frame = canvas
+    frame = _render_frame(art, origin, factor)
+    if state["defeated_countdown"] is not None:
+        alpha = frame.getchannel("A")
+        frame = ImageOps.grayscale(frame).convert("RGBA")
+        frame.putalpha(alpha)
     canvas = Image.new("RGBA", (right - left, bottom - top), (0, 0, 0, 0))
     canvas.alpha_composite(frame, (-left, -top))
 
@@ -413,6 +497,13 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
         if field in elements:
             canvas = _render_stat(canvas, lib, shifted(elements[field]), state,
                                   prepared_digits.get(field))
+    right_top = _right_top_counter(state)
+    if right_top is not None and "right_top" in elements:
+        canvas = _render_counter(canvas, lib, shifted(elements["right_top"]),
+                                 right_top[0], prepared_digits.get("right_top"))
+    if state["defeated_countdown"] is not None and "defeated" in elements:
+        canvas = _render_counter(canvas, lib, shifted(elements["defeated"]),
+                                 "defeated_countdown", prepared_digits.get("defeated"))
     if not crop:
         return canvas
     bbox = canvas.getchannel("A").point(lambda value: 255 if value > 10 else 0).getbbox()

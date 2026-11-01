@@ -1453,6 +1453,8 @@ def test_entity_layout_sample_stat_inputs(tmp_path):
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function buildCardProps()",
         "function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null)",
+        "function selRowC(div, label, opts, val, set, map = null)",
+        "function battleCheckbox(div, label, checked, set, disabled = false)",
     ))
     driver = f"""
 const assert = require('node:assert');
@@ -1466,8 +1468,9 @@ const document = {{getElementById: () => div, createElement: element}};
 let activeAsk = null;
 {functions}
 buildCardProps();
-assert.deepStrictEqual(div.children.map(x => x.textContent), ['力量 ', '生命 ', '战力 ', '护甲 ']);
-const inputs = div.children.map(x => x.children[0]);
+assert.deepStrictEqual(div.children.slice(0, 4).map(x => x.textContent),
+  ['力量 ', '生命 ', '战力 ', '护甲 ']);
+const inputs = div.children.slice(0, 4).map(x => x.children[0]);
 assert.deepStrictEqual(inputs.map(x => x.min), [0, 0, undefined, undefined]);
 inputs[0].value = '-8'; inputs[0].onchange();
 inputs[1].value = '7'; inputs[1].onchange();
@@ -1485,6 +1488,246 @@ assert.strictEqual(entityLayoutSample.power, 999999999999);
 assert.strictEqual(entityLayoutSample.shield, -999999999999);
 assert.strictEqual(scheduled, 7);
 console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_layout_burst_and_entity_counter_props_drag_and_order(tmp_path):
+    """爆能按等级锚点调参/拖拽；实体 counter 无符号参数并按固定顺序列出。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function buildLists()",
+        "function layoutRegions()",
+        "function disp(k)",
+        "function buildProps()",
+        "function title(t)",
+        "function numRow(div, label, val, set)",
+        "function pick(mx, my)",
+    ))
+    disp_map = script[script.index("const DISP ="):script.index("function disp(k)")]
+    driver = f"""
+const assert = require('node:assert');
+let entityLayoutMode = false, mechLayoutMode = false, cardLayoutMode = null;
+let curType = '战斗', sel = null, dirty = false, scheduled = 0;
+const layouts = {{
+  '战斗': {{elements: {{
+    level: {{kind: 'level_badge', pos: [10, 10]}},
+    burst: {{kind: 'burst', offset: [30, 40], icon_size: 12, num_offset: [12, 0],
+      font_size: 14, stroke_width: 2, sign_offset: [0, 0], group_offset: [0, 0],
+      sign_size_plus: 7, sign_size_minus: 6}},
+  }}, text_regions: {{}}}},
+  '对局式神': {{version: 2, elements: {{
+    defeated: {{kind: 'counter', pos: [48, 66], icon_size: 44, num_offset: [0, 0],
+      font_size: 40, stroke_width: 2}},
+    shield: {{kind: 'stat', pos: [0, 100]}},
+    right_top: {{kind: 'counter', pos: [82, 18], icon_size: 28, num_offset: [0, 0],
+      font_size: 24, stroke_width: 2}},
+    health: {{kind: 'stat', pos: [40, 100]}}, combat_power: {{kind: 'stat', pos: [10, 100]}},
+    power: {{kind: 'stat', pos: [30, 100]}}, level: {{kind: 'level_badge', pos: [48, 137]}},
+  }}, art_window: {{center: [48, 72], width: 84, height: 132}}}},
+}};
+function typeLayout() {{ return entityLayoutMode ? layouts['对局式神'] : layouts[curType]; }}
+function markDirty() {{ dirty = true; }}
+function schedulePreview() {{ scheduled++; }}
+function refreshSel() {{}}
+function draw() {{}}
+let activeAsk = null;
+function element(tag) {{ return {{tag, children: [], style: {{}}, dataset: {{}}, textContent: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const elems = element('div'), props = element('div');
+const document = {{getElementById: id => id === 'l-elems' ? elems : props,
+  createElement: element}};
+{disp_map}
+{functions}
+buildLists();
+assert.deepStrictEqual(elems.children.map(x => x.textContent), ['等级标', '爆能']);
+sel = {{kind: 'element', name: 'burst'}};
+buildProps();
+const controls = {{}};
+function collect(node) {{
+  if (node.tag === 'label' && node.children[0]) controls[node.textContent.trim()] = node.children[0];
+  for (const child of node.children || []) collect(child);
+}}
+collect(props);
+for (const label of ['偏移 x', '偏移 y', '图标尺寸', '数字偏移 x', '数字偏移 y', '字号',
+                     '描边宽度', '符号偏移 x', '符号偏移 y', '符号数字整体偏移 x',
+                     '符号数字整体偏移 y', '加号尺寸', '减号尺寸'])
+  assert(controls[label], `缺少爆能参数：${{label}}`);
+assert(!controls['位置 x']);
+const target = pick(40, 50);
+assert(target && target.sel.name === 'burst');
+target.set(70, 80);
+assert.deepStrictEqual(layouts['战斗'].elements.burst.offset, [60, 70]);
+assert.deepStrictEqual(layouts['战斗'].elements.level.pos, [10, 10]);
+controls['偏移 x'].value = '9'; controls['偏移 x'].onchange();
+assert.deepStrictEqual(layouts['战斗'].elements.burst.offset, [9, 70]);
+entityLayoutMode = true;
+sel = {{kind: 'element', name: 'right_top'}};
+buildProps();
+const counterControls = {{}};
+function collectCounter(node) {{
+  if (node.tag === 'label' && node.children[0])
+    counterControls[node.textContent.trim()] = node.children[0];
+  for (const child of node.children || []) collectCounter(child);
+}}
+collectCounter(props);
+assert.deepStrictEqual(Object.keys(counterControls),
+  ['位置 x', '位置 y', '图标尺寸', '数字偏移 x', '数字偏移 y', '字号', '描边宽度']);
+assert(!Object.keys(counterControls).some(label => label.includes('符号') || label.includes('加号') ||
+                                                   label.includes('减号')));
+buildLists();
+assert.deepStrictEqual(elems.children.map(x => x.textContent),
+  ['等级', '卡图内窗', '力量', '生命', '战力', '护甲', '右上组件', '气绝倒计时']);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_layout_burst_signed_sample_request_without_dirty(tmp_path):
+    """六类型卡牌内容提供带符号爆能样例，只刷新预览且不修改布局脏状态。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function cardField(name)",
+        "function setCardField(name, value)",
+        "function buildCardProps()",
+        "function textRow(div, label, val, set)",
+        "function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null)",
+        "function selRow(div, label, opts, val, set, map = null)",
+        "async function refreshPreview()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let entityLayoutMode = false, mechLayoutMode = false, cardLayoutMode = null;
+let curType = '战斗', cardOverrides = {{}}, cDirty = false, dirty = false, scheduled = 0;
+let formData = null;
+const samples = {{'战斗': {{name: '样卡', level: 1, shikigami: '所属', description: ''}}}};
+const layout = {{elements: {{burst: {{kind: 'burst', offset: [0, 55]}}}}, text_regions: {{}}}};
+const layouts = {{'战斗': layout}};
+const EVOLVE_TYPES = new Set(), NONNEG_TYPES = new Set(), FRAME_VARIANT_TYPES = new Set();
+let layoutFrameVariant = 'norm', previewSeq = 0;
+function typeLayout() {{ return layout; }}
+function globalTypeLayout() {{ return layout; }}
+function layoutForRender(value) {{ return value; }}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+const statusEl = {{textContent: ''}};
+function statInputs() {{ return []; }}
+function markDirty() {{ dirty = true; }}
+function schedulePreview() {{ scheduled++; }}
+async function refreshEntityLayoutPreview() {{}}
+async function refreshMechPreview() {{}}
+async function handleLayoutPreviewResponse() {{}}
+const requests = [];
+async function fetch(url, options) {{ requests.push({{url, options}}); return {{ok: true}}; }}
+function element(tag) {{ return {{tag, children: [], textContent: '', value: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const div = element('div');
+const document = {{getElementById: () => div, createElement: element}};
+let activeAsk = null;
+{functions}
+(async () => {{
+  buildCardProps();
+  const controls = {{}};
+  function visit(node) {{
+    if (node.tag === 'label' && node.children[0]) controls[node.textContent.trim()] = node.children[0];
+    for (const child of node.children || []) visit(child);
+  }}
+  visit(div);
+  assert(controls['爆能']);
+  controls['爆能'].value = '-10'; controls['爆能'].onchange();
+  assert.strictEqual(cardOverrides['战斗'].burst, -10);
+  assert.strictEqual(dirty, false);
+  assert.strictEqual(scheduled, 1);
+  await refreshPreview();
+  assert.strictEqual(requests.length, 1);
+  const body = JSON.parse(requests[0].options.body);
+  assert.deepStrictEqual(body.card, {{burst: -10}});
+  assert.deepStrictEqual(body.layout, layout);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_layout_entity_counter_samples_and_requests_without_dirty(tmp_path):
+    """实体样例覆盖 none/energy/countdown、气绝与永久，切换样例不碰布局工作副本。"""
+    script = _script()
+    sample = _extract_js(script, "const entityLayoutSample = {") + ";"
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function buildCardProps()",
+        "function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null)",
+        "function selRowC(div, label, opts, val, set, map = null)",
+        "function battleCheckbox(div, label, checked, set, disabled = false)",
+        "async function refreshEntityLayoutPreview()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let entityLayoutMode = true, cardLayoutMode = null, dirty = false, scheduled = 0, previewSeq = 0;
+const layout = {{version: 2, elements: {{right_top: {{kind: 'counter', pos: [82, 18]}},
+  defeated: {{kind: 'counter', pos: [48, 66]}}}}, art_window: {{center: [48, 72]}}}};
+const before = JSON.stringify(layout);
+function typeLayout() {{ return layout; }}
+function markDirty() {{ dirty = true; }}
+function schedulePreview() {{ scheduled++; }}
+async function handleLayoutPreviewResponse() {{}}
+const requests = [];
+async function fetch(url, options) {{ requests.push({{url, options}}); return {{ok: true}}; }}
+function element(tag) {{ return {{tag, children: [], textContent: '', value: '', checked: false,
+  disabled: false, className: '', style: {{}},
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const div = element('div');
+const document = {{getElementById: () => div, createElement: element}};
+let activeAsk = null;
+{sample}
+{functions}
+function control(label) {{
+  let found = null;
+  function visit(node) {{
+    if (node.tag === 'label' && node.textContent.trim() === label) found = node.children[0];
+    for (const child of node.children || []) visit(child);
+  }}
+  visit(div);
+  return found;
+}}
+(async () => {{
+  buildCardProps();
+  const mode = control('右上组件');
+  assert(mode && control('气绝') && control('永久'));
+  assert.strictEqual(control('永久').disabled, true);
+  mode.value = 'countdown'; mode.onchange();
+  assert.strictEqual(entityLayoutSample.countdown, 1);
+  assert.strictEqual(entityLayoutSample.energy, null);
+  const countdown = control('右上数值');
+  countdown.value = '2'; countdown.onchange();
+  assert.strictEqual(entityLayoutSample.countdown, 2);
+  control('右上组件').value = 'energy'; control('右上组件').onchange();
+  const energy = control('右上数值');
+  energy.value = '3'; energy.onchange();
+  await refreshEntityLayoutPreview();
+  let state = JSON.parse(requests[0].options.body).state;
+  assert.strictEqual(state.energy, 3);
+  assert.strictEqual(state.countdown, null);
+  assert.strictEqual(state.defeated_countdown, null);
+  const defeated = control('气绝');
+  defeated.checked = true; defeated.onchange();
+  assert.strictEqual(entityLayoutSample.defeated_countdown, 3);
+  assert.strictEqual(control('永久').disabled, false);
+  const permanent = control('永久');
+  permanent.checked = true; permanent.onchange();
+  await refreshEntityLayoutPreview();
+  state = JSON.parse(requests[1].options.body).state;
+  assert.strictEqual(state.energy, 3);
+  assert.strictEqual(state.defeated_countdown, 'infinity');
+  assert.strictEqual(JSON.stringify(layout), before);
+  assert.strictEqual(dirty, false);
+  assert.strictEqual(scheduled, 6);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
 """
     _run_node(tmp_path, driver)
 

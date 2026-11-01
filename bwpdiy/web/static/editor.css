@@ -66,6 +66,7 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
   #l-props input, #l-props select { width: 90px; }
   #l-props input[type="number"] { width: 45px; }
   #l-cardprops label { display: block; font-size: 12px; margin-top: 4px; }
+  #l-cardprops label.inline { display: inline-block; margin-right: 10px; }
   #l-cardprops input { width: 100px; }
   #l-cardprops input[type="number"] { width: 50px; }
   #l-cardprops textarea { width: 195px; height: 64px; font-size: 12px; }

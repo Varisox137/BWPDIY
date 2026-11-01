@@ -8,9 +8,11 @@ const DISP = {
   // 布局元素名 / 文本区名 / 字体键
   level: '等级标', faction: '派系标', rarity: '稀有度', power: '力量', health: '生命',
   shield: '护甲', durability: '耐久', name: '卡名', footer: '脚注', desc: '描述',
-  duo_frame: '双式神框', art_window: '卡图内窗',
+  duo_frame: '双式神框', art_window: '卡图内窗', burst: '爆能',
+  right_top: '右上组件', defeated: '气绝倒计时',
   // 元素 kind
   stat: '数值', rarity_flank: '稀有度双标', level_badge: '等级标', text: '文本',
+  counter: '计数',
   // stat 字段
   'power+': '力量+', 'shield+': '护甲+', 'health+': '生命+',
   // stat 图标码（资源代号）
@@ -68,7 +70,8 @@ let mechLayoutMode = false;
 let entityLayoutMode = false;
 // 布局样卡数值仅控制预览，不写盘、不计入未保存。
 const entityLayoutSample = {level: 2, level_color: 'yellow',
-  power: 2, health: 5, combat_power: 1, shield: -1};
+  power: 2, health: 5, combat_power: 1, shield: -1,
+  energy: null, countdown: null, defeated_countdown: null};
 // 与 render/mech.py DEFAULT_LAYOUT 同口径（缺键/缺段时补齐，保存时全段随 layouts 写回）：
 // 三类框共用仅字号/小图标；角标配置随 seal 区域（badge 仅 seal 合法）；名称无独立偏移
 const MECH_LAYOUT_DEFAULTS = {name_size: 26, text_size: 24, icon_scale: 1.0};
@@ -388,7 +391,7 @@ async function refreshMechPreview() {
 }
 
 // 卡牌内容输入（预览数据可编辑；改动走防抖实时预览，不涉及布局保存）
-// 顺序固定：卡名 / 等级（0=无等级）/ 觉醒 / 所属式神 / 子类型 / 左下右下数值 / 文本描述
+// 顺序固定：卡名 / 等级（0=无等级）/ 爆能 / 觉醒 / 所属式神 / 子类型 / 左下右下数值 / 文本描述
 function buildCardProps() {
   const div = document.getElementById('l-cardprops');
   div.innerHTML = '';
@@ -402,12 +405,60 @@ function buildCardProps() {
         schedulePreview();
       }, null, 999999999999);
     }
+    const mode = entityLayoutSample.energy !== null ? 'energy'
+      : (entityLayoutSample.countdown !== null ? 'countdown' : 'none');
+    const modeLabels = {none: '无', energy: '能量', countdown: '倒计时'};
+    selRowC(div, '右上组件', ['none', 'energy', 'countdown'], mode, v => {
+      if (v === 'energy') {
+        entityLayoutSample.energy = Number.isInteger(entityLayoutSample.energy)
+          ? Math.max(0, entityLayoutSample.energy) : 0;
+        entityLayoutSample.countdown = null;
+      } else if (v === 'countdown') {
+        entityLayoutSample.countdown = Number.isInteger(entityLayoutSample.countdown)
+          ? Math.max(1, entityLayoutSample.countdown) : 1;
+        entityLayoutSample.energy = null;
+      } else {
+        entityLayoutSample.energy = null;
+        entityLayoutSample.countdown = null;
+      }
+      buildCardProps();
+      schedulePreview();
+    }, key => modeLabels[key]);
+    if (mode !== 'none') {
+      numRowC(div, '右上数值', entityLayoutSample[mode], true, v => {
+        entityLayoutSample[mode] = v;
+        schedulePreview();
+      }, null, 999999999999, mode === 'energy' ? 0 : 1);
+    }
+    const defeated = entityLayoutSample.defeated_countdown !== null;
+    const permanent = entityLayoutSample.defeated_countdown === 'infinity';
+    battleCheckbox(div, '气绝', defeated, checked => {
+      entityLayoutSample.defeated_countdown = checked ? 3 : null;
+      buildCardProps();
+      schedulePreview();
+    });
+    battleCheckbox(div, '永久', permanent, checked => {
+      if (entityLayoutSample.defeated_countdown === null) return;
+      entityLayoutSample.defeated_countdown = checked ? 'infinity' : 3;
+      buildCardProps();
+      schedulePreview();
+    }, !defeated);
+    if (defeated) {
+      const row = div.children.length;
+      numRowC(div, '气绝倒计时', permanent ? 3 : entityLayoutSample.defeated_countdown, true, v => {
+        entityLayoutSample.defeated_countdown = v;
+        schedulePreview();
+      }, null, 999999999999, 1);
+      div.children[row].children[0].disabled = permanent;
+    }
     return;
   }
   if (!cardLayoutMode && (!samples || !samples[curType])) return;  // 单卡模式数据源是 formData，无需样卡
   textRow(div, '卡名', cardField('name') || '', v => setCardField('name', v));
   selRow(div, '等级', ['0', '1', '2', '3'], String(cardField('level') ?? 0),
     v => setCardField('level', v === '0' ? null : parseInt(v, 10)));
+  numRowC(div, '爆能', cardField('burst') ?? 0, false,
+    v => setCardField('burst', v), null, 999999999999);
   if (EVOLVE_TYPES.has(curType)) {
     const l = document.createElement('label');
     l.textContent = '觉醒 ';
@@ -469,20 +520,20 @@ function textRow(div, label, val, set) {
 }
 
 // 左栏列表（显示中文名，内部键存 dataset.key 供选中高亮比对）
-// 元素与文本区合并为一列，固定顺序：等级 / 卡名 / 稀有度 / 描述 / 左下角组件 / 右下角组件 / 脚注
-// （左右下角组件 = stat 元素按 pos.x 升序；幻境仅右下角一个）
+// 元素与文本区合并为一列：普通类型按卡面区域排序，stat 按 pos.x 升序；
+// 对局式神固定为等级 / 卡图内窗 / 力量 / 生命 / 战力 / 护甲 / 右上组件 / 气绝倒计时。
 function buildLists() {
   const tl = typeLayout();
   const ed = document.getElementById('l-elems'); ed.innerHTML = '';
   const items = [];
-  for (const n of ['level', 'duo_frame', 'name', 'rarity']) {
+  for (const n of ['level', 'burst', 'duo_frame', 'name', 'rarity']) {
     if (tl.elements[n]) items.push({kind: 'element', name: n});
   }
   const regions = layoutRegions();
   if (regions.desc) items.push({kind: 'region', name: 'desc'});
   if (regions.art_window) items.push({kind: 'region', name: 'art_window'});
   const stats = entityLayoutMode
-    ? ['power', 'health', 'combat_power', 'shield'].filter(n => tl.elements[n])
+    ? ['power', 'health', 'combat_power', 'shield', 'right_top', 'defeated'].filter(n => tl.elements[n])
     : Object.entries(tl.elements)
       .filter(([, e]) => e.kind === 'stat')
       .sort((a, b) => a[1].pos[0] - b[1].pos[0])
@@ -596,10 +647,13 @@ function draw() {
   ctx.translate(-previewOffset[0], -previewOffset[1]);
   const tl = typeLayout();
   for (const [name, e] of Object.entries(tl.elements)) {
+    // 爆能锚点 = 等级位置 + offset；其余点元素直接使用 pos。
+    const pos = e.kind === 'burst'
+      ? [tl.elements.level.pos[0] + e.offset[0], tl.elements.level.pos[1] + e.offset[1]] : e.pos;
     // 元素位置点：绿色小圆点（比文本区中心方块略小），选中变黄
-    handle(e.pos, sel && sel.name === name ? '#ff4' : '#4f4', 4);
-    if (e.kind === 'stat') {
-      const np = [e.pos[0] + e.num_offset[0], e.pos[1] + e.num_offset[1]];
+    handle(pos, sel && sel.name === name ? '#ff4' : '#4f4', 4);
+    if (['stat', 'burst', 'counter'].includes(e.kind)) {
+      const np = [pos[0] + e.num_offset[0], pos[1] + e.num_offset[1]];
       handle(np, sel && sel.name === name ? '#ff4' : '#f8f', 5, true);
     }
     if (e.kind === 'duo_frame') {
@@ -664,10 +718,12 @@ function pick(mx, my) {
   const tl = typeLayout();
   const near = (x, y) => Math.hypot(mx - x, my - y) < 8;
   for (const [name, e] of Object.entries(tl.elements)) {
-    if (e.kind === 'stat') {
-      const np = [e.pos[0] + e.num_offset[0], e.pos[1] + e.num_offset[1]];
+    const pos = e.kind === 'burst'
+      ? [tl.elements.level.pos[0] + e.offset[0], tl.elements.level.pos[1] + e.offset[1]] : e.pos;
+    if (['stat', 'burst', 'counter'].includes(e.kind)) {
+      const np = [pos[0] + e.num_offset[0], pos[1] + e.num_offset[1]];
       if (near(...np)) return { sel: {kind: 'element', name},
-        set: (x, y) => { e.num_offset = [x - e.pos[0], y - e.pos[1]]; } };
+        set: (x, y) => { e.num_offset = [x - pos[0], y - pos[1]]; } };
     }
     if (e.kind === 'duo_frame') {
       // 双式神框拖拽点（仅协战有该元素）：
@@ -691,7 +747,11 @@ function pick(mx, my) {
       if (near(...centers[1])) return { sel: {kind: 'element', name},
         set: (x, y) => { e.slot2_dy = y - e.pos[1]; } };
     }
-    if (near(...e.pos)) return { sel: {kind: 'element', name}, set: (x, y) => { e.pos = [x, y]; } };
+    if (near(...pos)) return { sel: {kind: 'element', name}, set: (x, y) => {
+      if (e.kind === 'burst')
+        e.offset = [x - tl.elements.level.pos[0], y - tl.elements.level.pos[1]];
+      else e.pos = [x, y];
+    } };
   }
   for (const [name, r] of Object.entries(layoutRegions())) {
     if (name === 'art_window') {
@@ -721,8 +781,13 @@ function buildProps() {
     div.appendChild(title(e.kind === 'stat'
       ? `${disp(sel.name)}（数值：${disp(e.field)}）`
       : `${disp(sel.name)}（${disp(e.kind)}）`));
-    numRow(div, '位置 x', e.pos[0], v => { e.pos[0] = v; draw(); });
-    numRow(div, '位置 y', e.pos[1], v => { e.pos[1] = v; draw(); });
+    if (e.kind === 'burst') {
+      numRow(div, '偏移 x', e.offset[0], v => { e.offset[0] = v; draw(); });
+      numRow(div, '偏移 y', e.offset[1], v => { e.offset[1] = v; draw(); });
+    } else {
+      numRow(div, '位置 x', e.pos[0], v => { e.pos[0] = v; draw(); });
+      numRow(div, '位置 y', e.pos[1], v => { e.pos[1] = v; draw(); });
+    }
     if (e.kind === 'stat') {
       numRow(div, '图标尺寸', e.icon_size, v => e.icon_size = v);
       numRow(div, '数字偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; draw(); });
@@ -761,6 +826,23 @@ function buildProps() {
         e.fragile_sign_offset ??= [0, 0];
         numRow(div, '破甲符号偏移 x', e.fragile_sign_offset[0], v => { e.fragile_sign_offset[0] = v; draw(); });
         numRow(div, '破甲符号偏移 y', e.fragile_sign_offset[1], v => { e.fragile_sign_offset[1] = v; draw(); });
+      }
+    }
+    if (e.kind === 'burst' || e.kind === 'counter') {
+      numRow(div, '图标尺寸', e.icon_size, v => e.icon_size = v);
+      numRow(div, '数字偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; draw(); });
+      numRow(div, '数字偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; draw(); });
+      numRow(div, '字号', e.font_size, v => e.font_size = v);
+      numRow(div, '描边宽度', e.stroke_width ?? 2, v => e.stroke_width = v);
+      if (e.kind === 'burst') {
+        e.sign_offset ??= [0, 0];
+        numRow(div, '符号偏移 x', e.sign_offset[0], v => { e.sign_offset[0] = v; draw(); });
+        numRow(div, '符号偏移 y', e.sign_offset[1], v => { e.sign_offset[1] = v; draw(); });
+        e.group_offset ??= [0, 0];
+        numRow(div, '符号数字整体偏移 x', e.group_offset[0], v => { e.group_offset[0] = v; draw(); });
+        numRow(div, '符号数字整体偏移 y', e.group_offset[1], v => { e.group_offset[1] = v; draw(); });
+        numRow(div, '加号尺寸', e.sign_size_plus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => e.sign_size_plus = v);
+        numRow(div, '减号尺寸', e.sign_size_minus ?? e.sign_size ?? Math.round(e.font_size * 0.5), v => e.sign_size_minus = v);
       }
     }
     if (e.kind === 'rarity_flank') {

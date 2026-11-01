@@ -29,7 +29,7 @@ def test_get_layout(client):
 
 def test_editor_static_assets(client):
     """拆分后的 HTML 引用必须由真实服务提供，且不得遮蔽现有 API。"""
-    for name in ("editor.css", "editor-core.js", "editor-cards.js",
+    for name in ("editor.css", "editor-core.js", "editor-cards.js", "editor-battle.js",
                  "editor-mech.js", "editor-layout.js", "editor-main.js"):
         r = client.get(f"/{name}")
         assert r.status_code == 200 and r.content
@@ -1589,37 +1589,40 @@ def test_entity_state_is_temporary(tmp_path):
     """小卡默认取基础值，法术觉醒叠加永久数值；临时修改不写卡牌、不置脏。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
-        "function entityEligible(card)",
+        "function battleStyles(card)",
         "function makeEntityState(card)",
-        "function setEntityField(key, value)",
+        "function setBattleEntityField(key, value)",
     ))
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
+const ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan', 'purple', 'red', 'blue', 'brown']);
+const STAT_VALUE_COLOR_VALUES = new Set(['red', 'green', 'purple']);
 const cards = {{shikigami: [{{name: '基础式神', power: 3, health: 4}}], cards: []}};
-let entityState = null;
+let battleEntityState = null;
 let cDirty = false;
 let scheduled = 0;
-function scheduleEntityPreview() {{ scheduled++; }}
-let activeAsk = null;
+function scheduleBattlePreview() {{ scheduled++; }}
 {functions}
-assert(entityEligible({{type: '式神'}}));
-assert(entityEligible({{type: '形态'}}));
-assert(entityEligible({{type: '法术', evolve: true}}));
-assert(!entityEligible({{type: '战斗'}}));
-assert(!entityEligible(null));
+assert(battleStyles({{type: '式神'}}).includes('entity'));
+assert(battleStyles({{type: '形态'}}).includes('entity'));
+assert(battleStyles({{type: '法术', evolve: true}}).includes('entity'));
+assert(!battleStyles({{type: '战斗'}}).includes('entity'));
 const source = {{type: '法术', evolve: true, shikigami: '基础式神', 'power+': 2, 'health+': -1,
                 level: 2, level_color: 'cyan', power: -2, health: 5.5,
-                combat_power: 8, shield: 9, art_scale: 7}};
+                combat_power: 8, shield: 9, art_scale: 7, power_color: 'green'}};
 const state = makeEntityState(source);
-entityState = state;
-assert.deepStrictEqual(state, {{level: 2, level_color: 'cyan', power: 5, health: 3,
-                                combat_power: 0, shield: 0, art_scale: 1}});
-assert.deepStrictEqual(makeEntityState({{type: '式神', level: 4, level_color: 'bad',
-                                         power: 3, health: 4}}),
-                       {{level: 1, level_color: 'yellow', power: 3, health: 4,
-                        combat_power: 0, shield: 0, art_scale: 1}});
+battleEntityState = state;
+assert.deepStrictEqual([state.level, state.level_color, state.power, state.health,
+                        state.combat_power, state.shield, state.art_scale],
+                       [2, 'cyan', 5, 3, 0, 0, 1]);
+assert.strictEqual(state.power_color, 'green');
+assert.strictEqual(state.energy, null);
+assert.strictEqual(state.countdown, null);
+assert.strictEqual(state.defeated_countdown, null);
+const fallback = makeEntityState({{type: '式神', level: 4, level_color: 'bad', power: 3, health: 4}});
+assert.deepStrictEqual([fallback.level, fallback.level_color, fallback.power, fallback.health],
+                       [1, 'yellow', 3, 4]);
 assert.deepStrictEqual(makeEntityState({{type: '形态', shikigami: '基础式神', power: 2, health: 5}}).power, 2);
 const awakenedForm = makeEntityState({{type: '形态', evolve: true, shikigami: '基础式神',
                                        power: 9, health: 9}});
@@ -1631,7 +1634,7 @@ const negative = makeEntityState({{type: '法术', evolve: true, shikigami: '基
                                    'power+': -9, 'health+': -9}});
 assert.deepStrictEqual([negative.power, negative.health], [0, 0]);
 assert.strictEqual(makeEntityState({{type: '式神', level: 0}}).level, 0);
-setEntityField('power', 4);
+setBattleEntityField('power', 4);
 assert(state.power === 4 && cDirty === false && scheduled === 1);
 assert(source.power === -2 && source['power+'] === 2);
 console.log('OK');
@@ -1640,126 +1643,36 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_entity_subpreviews_dom_order_and_visibility(tmp_path):
-    """式神子预览为头像→实体，形态仅实体，普通战斗隐藏子预览容器。"""
-    import json
+def test_portrait_subpreview_visibility_without_entity(tmp_path):
+    """卡牌库子预览只保留主要式神头像，其他卡不显示容器。"""
     script = _script()
-    html = EDITOR_HTML.read_text(encoding="utf-8")
-    mid = html.split('<div id="c-mid">', 1)[1].split('<div id="c-right">', 1)[0]
     functions = "\n".join(_extract_js(script, decl) for decl in (
-        "function entityEligible(card)",
         "function isMainShikigami(card)",
         "function syncSubpreviews()",
         "async function cPreviewPortrait(withForm)",
-        "async function entityPreview()",
     ))
     driver = f"""
 const assert = require('node:assert');
-const mid = {json.dumps(mid)};
-const container = mid.indexOf('id="c-subpreviews"');
-const portrait = mid.indexOf('id="c-portrait"');
-const entity = mid.indexOf('id="c-entity"');
-assert(container >= 0 && container < portrait && portrait < entity);
 const cSubpreviews = {{style: {{display: 'none'}}}};
 const cPortraitImg = {{style: {{display: 'none'}}, removeAttribute() {{}}}};
-const cEntityImg = {{style: {{display: 'none'}}, removeAttribute() {{}}}};
-let formData = {{type: '式神'}}, entityState = {{power: 2}};
-let curProject = '项目', curCard = 'stem', curMech = null;
+let formData = {{type: '式神'}};
+let curProject = '项目', curCard = 'stem';
 let cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
-let cEntitySeq = 0, cEntityAppliedSeq = 0, cEntityUrl = null;
-const cErrorEl = {{textContent: ''}};
 const URL = {{createObjectURL: () => 'blob:new', revokeObjectURL() {{}}}};
 function enc(value) {{ return value; }}
 async function fetch() {{ return {{ok: true, blob: async () => ({{kind: 'png'}})}}; }}
-async function cHandleEntityPreviewResponse(r, seq) {{ cEntityImg.src = 'blob:entity'; }}
-let activeAsk = null;
 {functions}
 (async () => {{
   await cPreviewPortrait(false);
-  await entityPreview();
   assert.strictEqual(cPortraitImg.style.display, 'block');
-  assert.strictEqual(cEntityImg.style.display, 'block');
   assert.strictEqual(cSubpreviews.style.display, 'flex');
+  formData = {{type: '式神', shikigami: '基础'}};
+  await cPreviewPortrait(true);
+  assert.strictEqual(cPortraitImg.style.display, 'none');
+  assert.strictEqual(cSubpreviews.style.display, 'none');
   formData = {{type: '形态'}};
   await cPreviewPortrait(true);
-  await entityPreview();
-  assert.strictEqual(cPortraitImg.style.display, 'none');
-  assert.strictEqual(cEntityImg.style.display, 'block');
-  assert.strictEqual(cSubpreviews.style.display, 'flex');
-  formData = {{type: '战斗'}};
-  await cPreviewPortrait(true);
-  await entityPreview();
-  assert.strictEqual(cPortraitImg.style.display, 'none');
-  assert.strictEqual(cEntityImg.style.display, 'none');
   assert.strictEqual(cSubpreviews.style.display, 'none');
-  console.log('OK');
-}})().catch(e => {{ console.error(e); process.exit(1); }});
-"""
-    _run_node(tmp_path, driver)
-
-
-@pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_entity_preview_has_independent_response_channel_and_export(tmp_path):
-    """实体使用独立 seq/URL/图片，慢响应不写主卡；导出沿用当前临时状态。"""
-    script = _script()
-    functions = "\n".join(_extract_js(script, decl) for decl in (
-        "function entityEligible(card)",
-        "function syncSubpreviews()",
-        "async function cHandleEntityPreviewResponse(r, seq)",
-        "async function entityPreview()",
-        "async function exportEntity()",
-    ))
-    driver = f"""
-const assert = require('node:assert');
-let entityState = {{level: 2, level_color: 'cyan', power: 4, health: 5,
-                    combat_power: -1, shield: 2, art_scale: 1.2}};
-let formData = {{type: '形态', name: '  烈:/山?  '}};
-let curProject = '项目', curCard = 'card-stem', curMech = null;
-let cPreviewSeq = 7, cEntitySeq = 3, cEntityAppliedSeq = 0, cEntityUrl = 'blob:old-entity';
-const cPreviewImg = {{src: 'blob:main', onload: null}};
-const cEntityImg = {{src: 'blob:old-entity', style: {{display: 'block'}}, onload: null,
-                    removeAttribute() {{}}}};
-const cPortraitImg = {{style: {{display: 'none'}}}};
-const cSubpreviews = {{style: {{display: 'flex'}}}};
-const requests = [], downloads = [], created = [];
-const cErrorEl = {{textContent: ''}};
-function setPreviewError() {{}}
-const cFormErrors = {{textContent: ''}};
-const document = {{getElementById: id => id === 'c-form-errors' ? cFormErrors : null,
-                   createElement: tag => ({{click() {{ downloads.push({{href: this.href,
-                                                                      download: this.download}}); }}}})}};
-const URL = {{createObjectURL: blob => {{ created.push(blob); return 'blob:new-entity'; }},
-             revokeObjectURL: url => {{}}}};
-async function fetch(url, options) {{
-  requests.push({{url, options}});
-  return {{ok: true, blob: async () => ({{kind: 'png'}})}};
-}}
-async function parseErrorDetail(response) {{ return ['bad']; }}
-let activeAsk = null;
-{functions}
-(async () => {{
-  await entityPreview();
-  assert.strictEqual(cEntitySeq, 4);
-  assert.strictEqual(cPreviewSeq, 7);
-  assert.strictEqual(cPreviewImg.src, 'blob:main');
-  assert.strictEqual(cEntityImg.src, 'blob:new-entity');
-  assert.strictEqual(cEntityUrl, 'blob:new-entity');
-  assert.strictEqual(requests[0].url, '/api/entity-preview');
-  assert.deepStrictEqual(JSON.parse(requests[0].options.body),
-                         {{project: curProject, card: formData, state: entityState}});
-  const stale = cHandleEntityPreviewResponse({{ok: true,
-    blob: () => new Promise(resolve => {{ globalThis.releaseBlob = resolve; }})}}, 5);
-  cEntitySeq++; cEntityAppliedSeq = cEntitySeq;
-  globalThis.releaseBlob({{kind: 'stale'}});
-  await stale;
-  assert.strictEqual(cEntityImg.src, 'blob:new-entity');
-  assert.strictEqual(created.length, 1);
-  await exportEntity();
-  assert.strictEqual(requests[1].url, '/api/entity-preview');
-  assert.deepStrictEqual(JSON.parse(requests[1].options.body),
-                         {{project: curProject, card: formData, state: entityState}});
-  assert.deepStrictEqual(downloads, [{{href: 'blob:new-entity', download: '烈山_对局.png'}}]);
-  assert.strictEqual(cFormErrors.textContent, '');
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
@@ -1826,46 +1739,34 @@ function parseErrorDetail() {{ return new Promise(resolve => {{ releaseError = r
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_ineligible_subpreview_invalidates_pending_blob(tmp_path):
-    """类型变为不支持实体/头像时，等待中的旧 blob 不得重新回写。"""
+    """主要式神变为衍生物时，等待中的旧头像 blob 不得重新回写。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
-        "function entityEligible(card)",
         "function isMainShikigami(card)",
-        "async function cHandleEntityPreviewResponse(r, seq)",
-        "async function entityPreview()",
         "async function cPreviewPortrait(withForm)",
     ))
     driver = f"""
 const assert = require('node:assert');
-let cEntitySeq = 0, cEntityAppliedSeq = 0, cEntityUrl = null;
 let cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
-let formData = {{type: '式神'}}, entityState = {{}}, curProject = '项目', curCard = 'stem';
-const cEntityImg = {{src: '', style: {{}}, removeAttribute() {{ this.src = ''; }}}};
+let formData = {{type: '式神'}}, curProject = '项目', curCard = 'stem';
 const cPortraitImg = {{src: '', style: {{}}, removeAttribute() {{ this.src = ''; }}}};
-const created = [], revoked = [];
+const created = [];
 const URL = {{createObjectURL: blob => {{ created.push(blob); return blob; }},
-             revokeObjectURL: url => revoked.push(url)}};
-function setPreviewError() {{}}
+             revokeObjectURL() {{}}}};
 function syncSubpreviews() {{}}
 function enc(value) {{ return value; }}
-let releaseEntity, releasePortrait;
+let releasePortrait;
 async function fetch() {{ return {{ok: true,
   blob: () => new Promise(resolve => {{ releasePortrait = resolve; }})}}; }}
-let activeAsk = null;
 {functions}
 (async () => {{
-  const oldEntity = cHandleEntityPreviewResponse({{ok: true,
-    blob: () => new Promise(resolve => {{ releaseEntity = resolve; }})}}, 1);
   const oldPortrait = cPreviewPortrait(true);
   while (!releasePortrait) await Promise.resolve();
-  formData = {{type: '战斗'}};
-  await entityPreview();
+  formData = {{type: '式神', shikigami: '基础'}};
   await cPreviewPortrait(true);
-  releaseEntity('blob:old-entity'); releasePortrait('blob:old-portrait');
-  await oldEntity; await oldPortrait;
-  assert.strictEqual(cEntityImg.src, '');
+  releasePortrait('blob:old-portrait');
+  await oldPortrait;
   assert.strictEqual(cPortraitImg.src, '');
-  assert.strictEqual(cEntityUrl, null);
   assert.strictEqual(cPortraitUrl, null);
   assert.deepStrictEqual(created, []);
   console.log('OK');
@@ -1947,9 +1848,9 @@ def test_mouse_preview_frames_coalesce_latest_and_stay_independent(tmp_path):
     """鼠标编辑按通道合并到动画帧，执行时读取最新值且不取消其他通道。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
-        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
-        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
-        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
+        "const mousePreviewFrames = {art: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, portrait: false}",
         "function scheduleMousePreview(channel)",
         "function flushMousePreview(channel)",
         "function afterMouseEdit(channel)",
@@ -1958,16 +1859,15 @@ def test_mouse_preview_frames_coalesce_latest_and_stay_independent(tmp_path):
 const assert = require('node:assert');
 let formData = {{type: '式神', artwork: {{images: [{{offset_x: 0}}]}}}};
 let cDirty = false, notes = 0;
-let cPreviewTimer = null, cEntityTimer = null;
+let cPreviewTimer = null;
 const previews = [];
 const document = {{getElementById: () => null}};
 function noteEdit() {{ notes++; }}
 function showFormErrors() {{}}
 function validateCardJS() {{ return []; }}
-function cPreviewForm(withPortrait, withEntity) {{
-  previews.push({{channel: 'art', x: formData.artwork.images[0].offset_x, withPortrait, withEntity}});
+function cPreviewForm(withPortrait) {{
+  previews.push({{channel: 'art', x: formData.artwork.images[0].offset_x, withPortrait}});
 }}
-function entityPreview() {{ previews.push({{channel: 'entity', x: formData.artwork.images[0].offset_x}}); }}
 function cPreviewPortrait(withForm) {{ previews.push({{channel: 'portrait', withForm}}); }}
 let nextFrame = 0;
 const frames = new Map();
@@ -1980,23 +1880,20 @@ for (let i = 1; i <= 20; i++) {{
   formData.artwork.images[0].offset_x = i;
   afterMouseEdit('art');
 }}
-assert.strictEqual(frames.size, 2);
+assert.strictEqual(frames.size, 1);
 assert.strictEqual(previews.length, 0);
 assert(cDirty && notes === 20);
 runFrame(mousePreviewFrames.art);
-assert.deepStrictEqual(previews, [{{channel: 'art', x: 20, withPortrait: false, withEntity: false}}]);
-assert.strictEqual(frames.size, 1);
-runFrame(mousePreviewFrames.entity);
-assert.deepStrictEqual(previews[1], {{channel: 'entity', x: 20}});
+assert.deepStrictEqual(previews, [{{channel: 'art', x: 20, withPortrait: false}}]);
+assert.strictEqual(frames.size, 0);
 afterMouseEdit('portrait');
 scheduleMousePreview('art');
-scheduleMousePreview('entity');
-assert.strictEqual(frames.size, 3);
-const artFrame = mousePreviewFrames.art, entityFrame = mousePreviewFrames.entity;
-flushMousePreview('portrait');
 assert.strictEqual(frames.size, 2);
-assert(frames.has(artFrame) && frames.has(entityFrame));
-assert.deepStrictEqual(previews[2], {{channel: 'portrait', withForm: true}});
+const artFrame = mousePreviewFrames.art;
+flushMousePreview('portrait');
+assert.strictEqual(frames.size, 1);
+assert(frames.has(artFrame));
+assert.deepStrictEqual(previews[1], {{channel: 'portrait', withForm: true}});
 console.log('OK');
 """
     _run_node(tmp_path, driver)
@@ -2007,9 +1904,9 @@ def test_mouse_preview_drops_backlog_and_finishes_at_latest_position(tmp_path):
     """在途渲染期间合并连续操作，不排队回放轨迹，完成后补发最新状态。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
-        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
-        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
-        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
+        "const mousePreviewFrames = {art: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, portrait: false}",
         "function scheduleMousePreview(channel)",
         "function flushMousePreview(channel)",
     ))
@@ -2021,7 +1918,6 @@ function cPreviewForm() {{
   positions.push(x);
   return new Promise(resolve => pending.push(resolve));
 }}
-function entityPreview() {{}}
 function cPreviewPortrait() {{}}
 function requestAnimationFrame() {{ throw new Error('本测试直接刷新'); }}
 function cancelAnimationFrame() {{}}
@@ -2057,9 +1953,9 @@ def test_mouseup_flushes_only_the_active_drag_channels(tmp_path):
     """实际拖拽结束时取消待执行帧并立即最终预览，无拖拽的 mouseup 不刷新。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
-        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
-        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
-        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
+        "const mousePreviewFrames = {art: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, portrait: false}",
         "function scheduleMousePreview(channel)",
         "function flushMousePreview(channel)",
         "function afterMouseEdit(channel)",
@@ -2068,14 +1964,13 @@ def test_mouseup_flushes_only_the_active_drag_channels(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 let formData = {{type: '式神'}}, cDirty = false;
-let cPreviewTimer = null, cEntityTimer = null;
+let cPreviewTimer = null;
 const previews = [];
 const document = {{getElementById: () => null}};
 function noteEdit() {{}}
 function showFormErrors() {{}}
 function validateCardJS() {{ return []; }}
-function cPreviewForm(withPortrait, withEntity) {{ previews.push(['art', withPortrait, withEntity]); }}
-function entityPreview() {{ previews.push(['entity']); }}
+function cPreviewForm(withPortrait) {{ previews.push(['art', withPortrait]); }}
 function cPreviewPortrait(withForm) {{ previews.push(['portrait', withForm]); }}
 let nextFrame = 0;
 const frames = new Map();
@@ -2108,10 +2003,10 @@ assert.deepStrictEqual(previews, []);
 assert.strictEqual(frames.size, 0);
 artImg.listeners.mousedown({{button: 0, clientX: 0, clientY: 0, preventDefault() {{}}}});
 dispatchWindow('mousemove', {{clientX: 5, clientY: 5}});
-assert.strictEqual(frames.size, 2);
+assert.strictEqual(frames.size, 1);
 dispatchWindow('mouseup');
 assert.strictEqual(frames.size, 0);
-assert.deepStrictEqual(previews, [['art', false, false], ['entity']]);
+assert.deepStrictEqual(previews, [['art', false]]);
 previews.length = 0;
 cPortraitImg.listeners.mousedown({{button: 0, clientX: 0, clientY: 0, preventDefault() {{}}}});
 dispatchWindow('mousemove', {{clientX: 5, clientY: 5}});
@@ -2126,21 +2021,20 @@ console.log('OK');
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_mouse_edit_coalesces_pending_normal_preview_without_losing_channels(tmp_path):
-    """普通防抖未到期时鼠标编辑接管其通道，每通道最终只请求一次。"""
+    """普通防抖未到期时鼠标编辑接管主卡与头像通道，每通道最终只请求一次。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function scheduleCardPreview()",
-        "function scheduleEntityPreview()",
-        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
-        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
-        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
+        "const mousePreviewFrames = {art: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, portrait: false}",
         "function scheduleMousePreview(channel)",
         "function flushMousePreview(channel)",
         "function afterMouseEdit(channel)",
     ))
     driver = f"""
 const assert = require('node:assert');
-let cPreviewTimer = null, cEntityTimer = null;
+let cPreviewTimer = null;
 let formData = {{type: '式神', artwork: {{images: [{{offset_x: 7}}]}}}}, cDirty = false;
 const previews = [];
 const document = {{getElementById: () => null}};
@@ -2148,7 +2042,6 @@ function noteEdit() {{}}
 function showFormErrors() {{}}
 function validateCardJS() {{ return []; }}
 function cPreviewForm() {{ previews.push('art'); }}
-function entityPreview() {{ previews.push('entity'); }}
 function cPreviewPortrait() {{ previews.push('portrait'); }}
 let nextTimer = 0, nextFrame = 0;
 const timers = new Map(), frames = new Map();
@@ -2159,16 +2052,15 @@ function cancelAnimationFrame(id) {{ frames.delete(id); }}
 let activeAsk = null;
 {functions}
 scheduleCardPreview();
-scheduleEntityPreview();
-assert.strictEqual(timers.size, 2);
+assert.strictEqual(timers.size, 1);
 afterMouseEdit('art');
 assert.strictEqual(timers.size, 0);
-assert.strictEqual(frames.size, 3);
+assert.strictEqual(frames.size, 2);
 assert.deepStrictEqual(previews, []);
 for (const id of [...frames.keys()]) {{
   const fn = frames.get(id); frames.delete(id); fn();
 }}
-assert.deepStrictEqual(previews.sort(), ['art', 'entity', 'portrait']);
+assert.deepStrictEqual(previews.sort(), ['art', 'portrait']);
 assert.strictEqual(timers.size, 0);
 console.log('OK');
 """
@@ -2177,19 +2069,18 @@ console.log('OK');
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_normal_preview_debounce_refreshes_one_round(tmp_path):
-    """纯普通输入在 300ms 后只刷新一轮，实体独立输入仍只刷新实体。"""
+    """纯普通输入在 300ms 后只刷新一轮主卡与头像。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function scheduleCardPreview()",
-        "function scheduleEntityPreview()",
         "async function cPreviewProject()",
-        "async function cPreviewForm(withPortrait = true, withEntity = true)",
+        "async function cPreviewForm(withPortrait = true)",
     ))
     driver = f"""
 const assert = require('node:assert');
-let cPreviewTimer = null, cEntityTimer = null;
+let cPreviewTimer = null;
 let cPreviewSeq = 0, formData = {{type: '式神'}}, curProject = '项目', curCard = 'stem';
-let portraits = 0, entities = 0, handled = 0;
+let portraits = 0, handled = 0;
 let nextTimer = 0;
 const timers = new Map(), delays = [];
 function setTimeout(fn, delay) {{
@@ -2201,7 +2092,6 @@ async function runTimer(id) {{
 }}
 function enc(value) {{ return value; }}
 function validateCardJS() {{ return []; }}
-function entityPreview() {{ entities++; }}
 function cPreviewPortrait() {{ portraits++; }}
 async function cHandlePreviewResponse() {{ handled++; }}
 async function fetch() {{ return {{ok: true}}; }}
@@ -2211,17 +2101,12 @@ let activeAsk = null;
   scheduleCardPreview();
   scheduleCardPreview();
   assert.strictEqual(timers.size, 1);
-  assert.strictEqual(handled + entities + portraits, 0);
+  assert.strictEqual(handled + portraits, 0);
   await runTimer(cPreviewTimer);
-  assert.deepStrictEqual([handled, entities, portraits], [1, 1, 1]);
+  assert.deepStrictEqual([handled, portraits], [1, 1]);
   await cPreviewProject();
-  assert.deepStrictEqual([handled, entities, portraits], [2, 2, 2]);
-  scheduleEntityPreview();
-  scheduleEntityPreview();
-  assert.strictEqual(timers.size, 1);
-  await runTimer(cEntityTimer);
-  assert.deepStrictEqual([handled, entities, portraits], [2, 3, 2]);
-  assert.deepStrictEqual(delays, [300, 300, 300, 300]);
+  assert.deepStrictEqual([handled, portraits], [2, 2]);
+  assert.deepStrictEqual(delays, [300, 300]);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
@@ -2231,20 +2116,13 @@ let activeAsk = null;
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_select_card_rechecks_seq_after_json(tmp_path):
     """选卡只作废旧响应，不像清空选择那样主动清图；旧 A 不得覆盖已提交的 B 表单。"""
-    script = _script()
-    functions = "\n".join(_extract_js(script, decl) for decl in (
-        "function entityEligible(card)",
-        "function makeEntityState(card)",
-        "async function selectCard(stem, force = false)",
-    ))
+    select = _extract_js(_script(), "async function selectCard(stem, force = false)")
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
-const LEVEL_COLOR_VALUES = new Set(['yellow']);
 let curCard = null, curProject = '项目', curMech = null, formData = null, cardData = null;
-let entityState = null, cDirty = false, mainShiki = null, neutralMode = false, selectSeq = 0;
-let cPreviewSeq = 0, cEntitySeq = 0, cPortraitSeq = 0;
-let cPreviewAppliedSeq = 0, cEntityAppliedSeq = 0, cPortraitAppliedSeq = 0;
+let cDirty = false, mainShiki = null, neutralMode = false, selectSeq = 0;
+let cPreviewSeq = 0, cPortraitSeq = 0;
+let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0;
 let cards = {{shikigami: [], cards: []}}, builds = 0, previews = 0;
 const cStatusEl = {{textContent: ''}};
 const cPortraitImg = {{src: 'blob:old', style: {{display: 'block'}},
@@ -2267,10 +2145,10 @@ async function fetch(url) {{
   return {{ok: true, json: () => new Promise(resolve => {{ pending[stem] = resolve; }})}};
 }}
 let activeAsk = null;
-{functions}
+{select}
 (async () => {{
   const a = selectCard('A');
-  await Promise.resolve();  // 与主卡/小卡一致：等待新数据时保留当前图，避免版本切换闪烁
+  await Promise.resolve();
   assert.strictEqual(cPortraitImg.style.display, 'block');
   assert.strictEqual(cPortraitImg.src, 'blob:old');
   assert.strictEqual(cPortraitUrl, 'blob:old');
@@ -2285,7 +2163,7 @@ let activeAsk = null;
   assert.strictEqual(curCard, 'B');
   assert.strictEqual(cardData.name, 'B');
   assert.strictEqual(formData.name, 'B');
-  assert.strictEqual(entityState.power, 2);
+  assert.strictEqual(formData.power, 2);
   assert.strictEqual(builds, 1);
   assert.strictEqual(previews, 1);
   console.log('OK');
@@ -2296,32 +2174,25 @@ let activeAsk = null;
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_clear_card_invalidates_pending_select_json(tmp_path):
-    """慢 A 的 JSON 在清卡后完成时不得复活表单或对局实体状态。"""
+    """慢 A 的 JSON 在清卡后完成时不得复活表单。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
-        "function entityEligible(card)",
-        "function makeEntityState(card)",
         "async function selectCard(stem, force = false)",
-        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
+        "const mousePreviewFrames = {art: 0, portrait: 0}",
         "function clearCard()",
     ))
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
-const LEVEL_COLOR_VALUES = new Set(['yellow']);
 let curCard = null, curProject = '项目', curMech = null, formData = null, cardData = null;
-let entityState = null, cDirty = false, mainShiki = null, neutralMode = false, selectSeq = 0;
+let cDirty = false, mainShiki = null, neutralMode = false, selectSeq = 0;
 let cards = {{shikigami: [], cards: []}}, builds = 0, previews = 0;
 const cStatusEl = {{textContent: ''}}, cErrorEl = {{textContent: ''}};
-const cPreviewErrors = {{main: '', entity: ''}};
-let cPreviewErrorChannel = null;
-let cPreviewTimer = null, cPortraitTimer = null, cEntityTimer = null;
-let cPreviewSeq = 0, cPortraitSeq = 0, cEntitySeq = 0;
-let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0, cEntityAppliedSeq = 0;
-let cPreviewUrl = null, cPortraitUrl = null, cEntityUrl = null;
+let cPreviewTimer = null, cPortraitTimer = null;
+let cPreviewSeq = 0, cPortraitSeq = 0;
+let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0;
+let cPreviewUrl = null, cPortraitUrl = null;
 const cPreviewImg = {{removeAttribute() {{}}}};
 const cPortraitImg = {{style: {{}}, removeAttribute() {{}}}};
-const cEntityImg = {{style: {{}}, removeAttribute() {{}}}};
 const cSubpreviews = {{style: {{}}}};
 const document = {{getElementById: () => ({{textContent: ''}})}};
 const URL = {{revokeObjectURL() {{}}}};
@@ -2352,7 +2223,6 @@ let activeAsk = null;
   assert.strictEqual(curCard, null);
   assert.strictEqual(cardData, null);
   assert.strictEqual(formData, null);
-  assert.strictEqual(entityState, null);
   assert.strictEqual(builds, 0);
   assert.strictEqual(previews, 0);
   console.log('OK');
@@ -2363,31 +2233,28 @@ let activeAsk = null;
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_clear_card_cancels_mouse_preview_frames(tmp_path):
-    """清卡取消三通道旧帧并归零，随后各通道仍能独立合并和调度。"""
+    """清卡取消主卡/头像旧帧并归零，随后两通道仍能独立合并和调度。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
-        "const mousePreviewFrames = {art: 0, entity: 0, portrait: 0}",
-        "const mousePreviewBusy = {art: false, entity: false, portrait: false}",
-        "const mousePreviewQueued = {art: false, entity: false, portrait: false}",
+        "const mousePreviewFrames = {art: 0, portrait: 0}",
+        "const mousePreviewBusy = {art: false, portrait: false}",
+        "const mousePreviewQueued = {art: false, portrait: false}",
         "function scheduleMousePreview(channel)",
         "function flushMousePreview(channel)",
         "function clearCard()",
     ))
     driver = f"""
 const assert = require('node:assert');
-let selectSeq = 0, curCard = 'old', cardData = {{}}, formData = {{}}, entityState = {{}};
+let selectSeq = 0, curCard = 'old', cardData = {{}}, formData = {{}};
 let cDirty = true;
-let cPreviewTimer = null, cPortraitTimer = null, cEntityTimer = null;
-let cPreviewSeq = 0, cPortraitSeq = 0, cEntitySeq = 0;
-let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0, cEntityAppliedSeq = 0;
-let cPreviewUrl = null, cPortraitUrl = null, cEntityUrl = null;
+let cPreviewTimer = null, cPortraitTimer = null;
+let cPreviewSeq = 0, cPortraitSeq = 0;
+let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0;
+let cPreviewUrl = null, cPortraitUrl = null;
 const cPreviewImg = {{removeAttribute() {{}}}};
 const cPortraitImg = {{style: {{}}, removeAttribute() {{}}}};
-const cEntityImg = {{style: {{}}, removeAttribute() {{}}}};
 const cSubpreviews = {{style: {{}}}};
 const cErrorEl = {{textContent: ''}};
-const cPreviewErrors = {{main: '', entity: ''}};
-let cPreviewErrorChannel = null;
 const document = {{getElementById: () => ({{textContent: ''}})}};
 const URL = {{revokeObjectURL() {{}}}};
 function clearTimeout() {{}}
@@ -2395,7 +2262,6 @@ function resetUndo() {{}}
 function syncCardFrameButtons() {{}}
 const previews = [];
 function cPreviewForm() {{ previews.push('art'); }}
-function entityPreview() {{ previews.push('entity'); }}
 function cPreviewPortrait() {{ previews.push('portrait'); }}
 let nextFrame = 0;
 const frames = new Map(), cancelled = [];
@@ -2405,24 +2271,22 @@ let activeAsk = null;
 {functions}
 scheduleMousePreview('art');
 scheduleMousePreview('art');
-scheduleMousePreview('entity');
 scheduleMousePreview('portrait');
-assert.strictEqual(frames.size, 3);
+assert.strictEqual(frames.size, 2);
 clearCard();
-assert.deepStrictEqual(cancelled, [1, 2, 3]);
+assert.deepStrictEqual(cancelled, [1, 2]);
 assert.strictEqual(frames.size, 0);
-assert.deepStrictEqual(mousePreviewFrames, {{art: 0, entity: 0, portrait: 0}});
+assert.deepStrictEqual(mousePreviewFrames, {{art: 0, portrait: 0}});
 assert.deepStrictEqual(previews, []);
 scheduleMousePreview('art');
 scheduleMousePreview('art');
-scheduleMousePreview('entity');
 scheduleMousePreview('portrait');
-assert.strictEqual(frames.size, 3);
+assert.strictEqual(frames.size, 2);
 for (const id of [...frames.keys()]) {{
   const fn = frames.get(id); frames.delete(id); fn();
 }}
-assert.deepStrictEqual(previews.sort(), ['art', 'entity', 'portrait']);
-assert.deepStrictEqual(mousePreviewFrames, {{art: 0, entity: 0, portrait: 0}});
+assert.deepStrictEqual(previews.sort(), ['art', 'portrait']);
+assert.deepStrictEqual(mousePreviewFrames, {{art: 0, portrait: 0}});
 console.log('OK');
 """
     _run_node(tmp_path, driver)
@@ -2430,32 +2294,28 @@ console.log('OK');
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_preview_urls_released_on_replace_and_clear_without_onload(tmp_path):
-    """三通道连续两次换图均立即释放旧 URL，清卡释放最后一张，不依赖 onload。"""
+    """主卡/头像连续两次换图均立即释放旧 URL，清卡释放最后一张，不依赖 onload。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function isMainShikigami(card)",
         "async function cHandlePreviewResponse(r, seq)",
-        "async function cHandleEntityPreviewResponse(r, seq)",
         "async function cPreviewPortrait(withForm)",
         "function clearCard()",
     ))
     driver = f"""
 const assert = require('node:assert');
-let cPreviewSeq = 1, cEntitySeq = 1, cPortraitSeq = 0, selectSeq = 0;
-let cPreviewAppliedSeq = 0, cEntityAppliedSeq = 0, cPortraitAppliedSeq = 0;
-const mousePreviewFrames = {{art: 0, entity: 0, portrait: 0}};
+let cPreviewSeq = 1, cPortraitSeq = 0, selectSeq = 0;
+let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0;
+const mousePreviewFrames = {{art: 0, portrait: 0}};
 function cancelAnimationFrame() {{}}
-let cPreviewTimer = null, cEntityTimer = null, cPortraitTimer = null;
-let cPreviewUrl = 'main-old', cEntityUrl = 'entity-old', cPortraitUrl = 'portrait-old';
+let cPreviewTimer = null, cPortraitTimer = null;
+let cPreviewUrl = 'main-old', cPortraitUrl = 'portrait-old';
 let curCard = 'stem', curProject = '项目', curMech = null, cardData = {{}}, formData = {{type: '式神'}};
-let entityState = {{}}, cDirty = false;
+let cDirty = false;
 const cPreviewImg = {{src: 'main-old', removeAttribute() {{}}}};
-const cEntityImg = {{src: 'entity-old', style: {{}}, removeAttribute() {{}}}};
 const cPortraitImg = {{src: 'portrait-old', style: {{}}, removeAttribute() {{}}}};
 const cSubpreviews = {{style: {{}}}};
 const cErrorEl = {{textContent: ''}};
-const cPreviewErrors = {{main: '', entity: ''}};
-let cPreviewErrorChannel = null;
 function setPreviewError() {{}}
 const revoked = [];
 const URL = {{createObjectURL: blob => blob, revokeObjectURL: url => revoked.push(url)}};
@@ -2471,20 +2331,15 @@ function success(url) {{ return {{ok: true, blob: async () => url}}; }}
 let activeAsk = null;
 {functions}
 const mainResponse = r => cHandlePreviewResponse(r, ++cPreviewSeq);
-const entityResponse = r => cHandleEntityPreviewResponse(r, ++cEntitySeq);
 (async () => {{
   await mainResponse(success('main-1'));
   await mainResponse(success('main-2'));
-  await entityResponse(success('entity-1'));
-  await entityResponse(success('entity-2'));
   await cPreviewPortrait(true);
   await cPreviewPortrait(true);
-  assert.deepStrictEqual(revoked,
-    ['main-old', 'main-1', 'entity-old', 'entity-1', 'portrait-old', 'portrait-1']);
+  assert.deepStrictEqual(revoked, ['main-old', 'main-1', 'portrait-old', 'portrait-1']);
   clearCard();
   assert.deepStrictEqual(revoked,
-    ['main-old', 'main-1', 'entity-old', 'entity-1', 'portrait-old', 'portrait-1',
-     'portrait-2', 'entity-2', 'main-2']);
+    ['main-old', 'main-1', 'portrait-old', 'portrait-1', 'portrait-2', 'main-2']);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
@@ -2492,95 +2347,29 @@ const entityResponse = r => cHandleEntityPreviewResponse(r, ++cEntitySeq);
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_preview_errors_are_cleared_per_channel(tmp_path):
-    """实体成功只清实体错误；主卡/实体交错失败时保留另一通道错误。"""
+def test_select_card_and_clear_cancel_main_and_portrait_channels(tmp_path):
+    """切卡保留正常表单；清卡取消主卡/头像通道并释放全部 objectURL。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
-        "async function cHandlePreviewResponse(r, seq)",
-        "async function cHandleEntityPreviewResponse(r, seq)",
-    ))
-    error_helper = (_extract_js(script, "function setPreviewError(channel, text)")
-                    if "function setPreviewError(channel, text)" in script else """
-function setPreviewError(channel, text) {
-  cPreviewErrors[channel] = text;
-  if (text) cPreviewErrorChannel = channel;
-  else if (cPreviewErrorChannel === channel)
-    cPreviewErrorChannel = cPreviewErrors[channel === 'main' ? 'entity' : 'main']
-      ? (channel === 'main' ? 'entity' : 'main') : null;
-  cErrorEl.textContent = cPreviewErrorChannel ? cPreviewErrors[cPreviewErrorChannel] : '';
-}
-""")
-    driver = f"""
-const assert = require('node:assert');
-let cPreviewSeq = 0, cEntitySeq = 0, cPreviewAppliedSeq = 0, cEntityAppliedSeq = 0;
-let cPreviewUrl = null, cEntityUrl = null;
-const cPreviewImg = {{src: '', onload: null}}, cEntityImg = {{src: '', onload: null}};
-const cErrorEl = {{textContent: ''}};
-const cPreviewErrors = {{main: '', entity: ''}};
-let cPreviewErrorChannel = null;
-const URL = {{createObjectURL: blob => blob, revokeObjectURL() {{}}}};
-async function parseErrorDetail(response) {{ return [response.detail]; }}
-function success(url) {{ return {{ok: true, blob: async () => url}}; }}
-function failure(detail) {{ return {{ok: false, detail}}; }}
-{error_helper}
-let activeAsk = null;
-{functions}
-const mainResponse = r => cHandlePreviewResponse(r, ++cPreviewSeq);
-const entityResponse = r => cHandleEntityPreviewResponse(r, ++cEntitySeq);
-(async () => {{
-  await entityResponse(failure('实体一'));
-  assert(cErrorEl.textContent.includes('实体一'));
-  await entityResponse(success('entity-ok'));
-  assert.strictEqual(cErrorEl.textContent, '');
-  await mainResponse(failure('主卡一'));
-  await entityResponse(failure('实体二'));
-  assert(cErrorEl.textContent.includes('实体二'));
-  await mainResponse(success('main-ok'));
-  assert(cErrorEl.textContent.includes('实体二'));
-  await entityResponse(success('entity-ok-2'));
-  assert.strictEqual(cErrorEl.textContent, '');
-  await mainResponse(failure('主卡二'));
-  await entityResponse(failure('实体三'));
-  await entityResponse(success('entity-ok-3'));
-  assert(cErrorEl.textContent.includes('主卡二'));
-  console.log('OK');
-}})().catch(e => {{ console.error(e); process.exit(1); }});
-"""
-    _run_node(tmp_path, driver)
-
-
-@pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_select_card_initializes_entity_and_clear_cancels_all_channels(tmp_path):
-    """切卡重建临时实体状态；清卡取消三通道并释放全部 objectURL。"""
-    script = _script()
-    functions = "\n".join(_extract_js(script, decl) for decl in (
-        "function entityEligible(card)",
-        "function makeEntityState(card)",
         "async function selectCard(stem, force = false)",
         "function clearCard()",
     ))
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
-const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan']);
-let entityState = {{power: 99}};
 let curCard = 'old', curProject = '项目', curMech = null, formData = {{name: '旧'}};
 let cardData = null, cDirty = true, mainShiki = null, neutralMode = false, selectSeq = 0;
 let cards = {{shikigami: [], cards: []}};
 const cStatusEl = {{textContent: ''}}, cErrorEl = {{textContent: ''}};
-const cPreviewErrors = {{main: '', entity: ''}};
-let cPreviewErrorChannel = null;
 const removed = [];
 const cPreviewImg = {{removeAttribute() {{ removed.push('main'); }}}};
 const cPortraitImg = {{style: {{}}, removeAttribute() {{ removed.push('portrait'); }}}};
-const cEntityImg = {{style: {{}}, removeAttribute() {{ removed.push('entity'); }}}};
 const cSubpreviews = {{style: {{display: 'flex'}}}};
-let cPreviewUrl = 'blob:main', cPortraitUrl = 'blob:portrait', cEntityUrl = 'blob:entity';
-let cPreviewSeq = 1, cPortraitSeq = 2, cEntitySeq = 3;
-let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0, cEntityAppliedSeq = 0;
-const mousePreviewFrames = {{art: 0, entity: 0, portrait: 0}};
+let cPreviewUrl = 'blob:main', cPortraitUrl = 'blob:portrait';
+let cPreviewSeq = 1, cPortraitSeq = 2;
+let cPreviewAppliedSeq = 0, cPortraitAppliedSeq = 0;
+const mousePreviewFrames = {{art: 0, portrait: 0}};
 function cancelAnimationFrame() {{}}
-let cPreviewTimer = 11, cPortraitTimer = 12, cEntityTimer = 13;
+let cPreviewTimer = 11, cPortraitTimer = 12;
 const cancelled = [], revoked = [];
 function clearTimeout(id) {{ cancelled.push(id); }}
 const URL = {{revokeObjectURL(url) {{ revoked.push(url); }}}};
@@ -2601,23 +2390,20 @@ let activeAsk = null;
 {functions}
 (async () => {{
   await selectCard('new');
-  assert.strictEqual(entityState.power, 3);
-  assert.strictEqual(entityState.health, 4);
+  assert.strictEqual(formData.power, 3);
+  assert.strictEqual(formData.health, 4);
   assert.strictEqual(cDirty, false);
   clearCard();
-  assert.strictEqual(entityState, null);
-  assert.deepStrictEqual(cancelled, [11, 12, 13]);
+  assert.strictEqual(formData, null);
+  assert.deepStrictEqual(cancelled, [11, 12]);
   assert.strictEqual(cPreviewTimer, null);
   assert.strictEqual(cPortraitTimer, null);
-  assert.strictEqual(cEntityTimer, null);
-  assert.deepStrictEqual(revoked, ['blob:portrait', 'blob:entity', 'blob:main']);
+  assert.deepStrictEqual(revoked, ['blob:portrait', 'blob:main']);
   assert.strictEqual(cPreviewSeq, 3);
   assert.strictEqual(cPortraitSeq, 4);
-  assert.strictEqual(cEntitySeq, 5);
   assert.strictEqual(cPreviewUrl, null);
   assert.strictEqual(cPortraitUrl, null);
-  assert.strictEqual(cEntityUrl, null);
-  assert.deepStrictEqual(removed, ['main', 'portrait', 'entity']);
+  assert.deepStrictEqual(removed, ['main', 'portrait']);
   assert.strictEqual(cSubpreviews.style.display, 'none');
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
@@ -2641,58 +2427,78 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_entity_controls_append_to_normal_form_without_dirtying(tmp_path):
-    """实体控件追加在普通表单后，保留原字段与按钮，修改只调度实体预览。"""
+def test_battle_entity_controls_cover_counters_without_dirtying(tmp_path):
+    """对局页提供右上状态、气绝与永久控件，所有修改只调度临时预览。"""
     script = _script()
-    functions = "\n".join(_extract_js(script, decl) for decl in (
-        "function appendEntityForm(div)",
-        "function setEntityField(key, value)",
-        "function selRowC(div, label, opts, val, set, map = null)",
-        "function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null)",
-        "function artRow(div, label, val, set, pval, pset, step = 1, min = null, ids = null)",
-    ))
-    build_form = _extract_js(script, "function buildForm()")
+    declarations = (
+        "function setBattleEntityField(key, value)",
+        "function battleSelectRow(div, label, options, value, set)",
+        "function battleNumberRow(div, label, value, set, min = null, id = null, disabled = false)",
+        "function battleScaleRow(div)",
+        "function battleColorOptions()",
+        "function battleColorField(style, field, value)",
+        "function battleCheckbox(div, label, checked, set, disabled = false)",
+        "function battleCounterMode()",
+        "function setBattleCounterMode(mode)",
+        "function setBattleDefeated(enabled)",
+        "function setBattlePermanent(permanent)",
+        "function buildBattleForm()",
+    )
+    functions = "\n".join(_extract_js(script, decl) for decl in declarations)
     driver = f"""
 const assert = require('node:assert');
-const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
-const LEVEL_COLORS = [['yellow', '黄'], ['cyan', '青']];
-let entityState = {{level: 2, level_color: 'cyan', power: 3, health: 4,
-                    combat_power: 0, shield: 0, art_scale: 1}};
-let cDirty = false, scheduled = 0, exported = false;
-const formData = {{type: '形态', name: '烈'}};
-function scheduleEntityPreview() {{ scheduled++; }}
-function exportEntity() {{ exported = true; }}
-function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '',
-  appendChild(child) {{ this.children.push(child); }} }}; }}
-const form = element('div');
-const normalLabel = element('label'); normalLabel.textContent = '卡名 ';
-const normalButton = element('button'); normalButton.textContent = '保存';
-form.appendChild(normalLabel); form.appendChild(normalButton);
-const document = {{createElement: element}};
-const buildFormSource = {build_form!r};
-let activeAsk = null;
-{functions}
-appendEntityForm(form);
-assert.strictEqual(form.children[0], normalLabel);
-assert.strictEqual(form.children[1], normalButton);
-assert(buildFormSource.includes('appendEntityForm(div)'));
-const labels = [], buttons = [], labelElements = [];
-function visit(node) {{
-  if (node.tag === 'label') {{ labels.push(node.textContent.trim()); labelElements.push(node); }}
-  if (node.tag === 'button') buttons.push(node);
-  for (const child of node.children || []) visit(child);
+const ENTITY_LEVELS = [0, 1, 2, 3], LEVEL_COLORS = [['yellow', '黄']];
+const STATS_BY_TYPE = {{'形态': ['power', 'health']}};
+const STAT_MATRIX = {{'形态': {{power: '力量', health: '生命'}}}};
+const STAT_VALUE_COLORS = [['white', '白'], ['red', '红']];
+let battleStyle = 'entity', battleCardState = {{type: '形态'}};
+let battleEntityState = {{level: 2, level_color: 'yellow', power: 3, health: 4,
+  combat_power: 0, shield: 0, art_scale: 1, energy: null, countdown: null,
+  defeated_countdown: null, power_color: null, health_color: null,
+  combat_power_color: null, shield_color: null}};
+let cDirty = true, mDirty = true, scheduled = 0;
+function scheduleBattlePreview() {{ scheduled++; }}
+function setBattleCardField() {{ throw new Error('小卡控件不得写大卡'); }}
+function element(tag) {{
+  return {{tag, children: [], style: {{}}, textContent: '', value: '', checked: false,
+    disabled: false, className: '',
+    set innerHTML(value) {{ if (value === '') this.children = []; this._innerHTML = value; }},
+    get innerHTML() {{ return this._innerHTML || ''; }},
+    appendChild(child) {{ this.children.push(child); return child; }} }};
 }}
-visit(form);
-assert.deepStrictEqual(labels, ['卡名', '等级', '勾玉颜色', '对局缩放', '力量', '生命',
-                                '战力/乏力', '护甲/破甲']);
-assert.deepStrictEqual(buttons.map(b => b.textContent), ['保存', '导出对局式神']);
-const level = labelElements.find(l => l.textContent.trim() === '等级').children[0];
-level.value = '3'; level.onchange();
-assert.strictEqual(entityState.level, 3);
-assert.strictEqual(scheduled, 1);
-assert.strictEqual(cDirty, false);
-buttons[1].onclick();
-assert(exported);
+const form = element('div');
+const document = {{createElement: element, getElementById: () => form}};
+{functions}
+buildBattleForm();
+function control(label, id = null) {{
+  let found = null;
+  function visit(node) {{
+    if (node.tag === 'label' && node.textContent.trim() === label) found = node.children[0];
+    for (const child of node.children || []) visit(child);
+  }}
+  visit(form);
+  if (id) {{
+    function byId(node) {{ if (node.id === id) found = node; for (const c of node.children || []) byId(c); }}
+    byId(form);
+  }}
+  return found;
+}}
+const mode = control('右上状态');
+mode.value = 'energy'; mode.onchange();
+assert.strictEqual(battleEntityState.energy, 0);
+assert.strictEqual(battleEntityState.countdown, null);
+const energy = control('右上数值', 'b-counter-value');
+energy.value = '4'; energy.onchange();
+assert.strictEqual(battleEntityState.energy, 4);
+const defeated = control('气绝');
+defeated.checked = true; defeated.onchange();
+assert.strictEqual(battleEntityState.defeated_countdown, 3);
+const permanent = control('永久');
+permanent.checked = true; permanent.onchange();
+assert.strictEqual(battleEntityState.defeated_countdown, 'infinity');
+assert.strictEqual(control('气绝倒计时', 'b-defeated-value').disabled, true);
+assert.strictEqual(cDirty, true && mDirty, true);
+assert(scheduled >= 4);
 console.log('OK');
 """
     _run_node(tmp_path, driver)
@@ -2707,3 +2513,247 @@ def test_preview_duo_frame_override_empty_slots(client):
     assert on.status_code == 200 and on.headers["content-type"] == "image/png"
     off = client.post("/api/preview", json={"type": "协战", "layout": tl})
     assert off.status_code == 200 and on.content != off.content
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_battle_styles_follow_card_type(tmp_path):
+    styles = _extract_js(_script(), "function battleStyles(card)")
+    driver = f"""
+const assert = require('node:assert');
+{styles}
+assert.deepStrictEqual(battleStyles({{type: '式神'}}), ['entity']);
+assert.deepStrictEqual(battleStyles({{type: '式神', shikigami: '白狼'}}), ['entity']);
+assert.deepStrictEqual(battleStyles({{type: '战斗'}}), ['card']);
+assert.deepStrictEqual(battleStyles({{type: '形态'}}), ['card', 'entity']);
+assert.deepStrictEqual(battleStyles({{type: '法术', evolve: true}}), ['card', 'entity']);
+assert.deepStrictEqual(battleStyles(null), []);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_battle_entry_rebuilds_temporary_state_without_dirtying(tmp_path):
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function battleStyles(card)",
+        "function makeEntityState(card)",
+        "function setBattleCardField(key, value)",
+        "function setBattleEntityField(key, value)",
+        "function enterBattlePreview()",
+        "function leaveBattlePreview()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+const ENTITY_LEVELS = [0, 1, 2, 3];
+const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan']);
+const STAT_VALUE_COLOR_VALUES = new Set(['red', 'green', 'purple']);
+let cards = {{shikigami: [], cards: []}};
+let curProject = '项目', curCard = '形态-stem', curMech = null;
+let formData = {{type: '形态', name: '烈', level: 2, level_color: 'cyan',
+                power: 3, health: 4, power_color: 'green'}};
+let cDirty = true, mDirty = true;
+let battleStyle = null, battleCardState = null, battleEntityState = null;
+let battleActive = false, battleSession = 0, battlePreviewTimer = null;
+let battlePreviewSeq = 0, battlePreviewAppliedSeq = 0, battlePreviewUrl = null;
+let scheduled = 0;
+const elements = {{
+  'b-status': {{textContent: ''}}, 'b-error': {{textContent: ''}},
+  'b-preview': {{src: 'blob:old', removeAttribute() {{ this.src = ''; }}}},
+  'b-btn-export': {{disabled: false}},
+}};
+const document = {{getElementById: id => elements[id]}};
+const URL = {{revokeObjectURL() {{}}}};
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function buildBattleStyles() {{}}
+function buildBattleForm() {{}}
+function clearTimeout() {{}}
+function scheduleBattlePreview() {{ scheduled++; }}
+{functions}
+enterBattlePreview();
+assert.strictEqual(battleStyle, 'card');
+assert.strictEqual(battleCardState.burst, 0);
+assert.strictEqual(battleCardState.power_color, 'green');
+assert.deepStrictEqual(battleEntityState.power_color, 'green');
+assert.strictEqual(battleEntityState.energy, null);
+assert.strictEqual(battleEntityState.countdown, null);
+assert.strictEqual(battleEntityState.defeated_countdown, null);
+assert.notStrictEqual(battleCardState, formData);
+setBattleCardField('burst', 3);
+setBattleEntityField('power', 9);
+assert.strictEqual(formData.burst, undefined);
+assert.strictEqual(formData.power, 3);
+assert.strictEqual(cDirty, true);
+assert.strictEqual(mDirty, true);
+assert.strictEqual(scheduled, 3);
+leaveBattlePreview();
+assert.strictEqual(battleActive, false);
+assert.strictEqual(elements['b-preview'].src, '');
+formData.name = '未保存的新名字';
+enterBattlePreview();
+assert.strictEqual(battleCardState.name, '未保存的新名字');
+assert.strictEqual(battleCardState.burst, 0);
+assert.strictEqual(battleEntityState.power, 3);
+assert.strictEqual(curCard, '形态-stem');
+assert.strictEqual(cDirty, true && mDirty, true);
+curMech = '机制'; formData = null;
+enterBattlePreview();
+assert(elements['b-status'].textContent.includes('请先'));
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_battle_slow_response_export_and_leave_are_safe(tmp_path):
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function battleRequest(style, project, stem, card, state)",
+        "async function handleBattlePreviewResponse(r, seq, session)",
+        "async function exportBattlePreview()",
+        "function leaveBattlePreview()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let battleActive = true, battleSession = 4, battleStyle = 'entity';
+let battlePreviewTimer = null, battlePreviewSeq = 2, battlePreviewAppliedSeq = 0;
+let battlePreviewUrl = 'blob:old';
+let battleCardState = {{type: '形态', name: '烈:/山?'}};
+let battleEntityState = {{power: 3}};
+let curProject = '项目', curCard = 'stem';
+const image = {{src: 'blob:old', removeAttribute() {{ this.src = ''; }}}};
+const status = {{textContent: ''}}, error = {{textContent: ''}}, button = {{disabled: false}};
+const document = {{getElementById: id => ({{
+  'b-preview': image, 'b-status': status, 'b-error': error, 'b-btn-export': button,
+}})[id], createElement: () => ({{click() {{ downloads.push({{href: this.href,
+  download: this.download}}); }}}})}};
+const downloads = [], created = [];
+const URL = {{createObjectURL: blob => {{ created.push(blob); return 'blob:new'; }},
+             revokeObjectURL() {{}}}};
+function clearTimeout() {{}}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function enc(value) {{ return value; }}
+async function parseErrorDetail() {{ return ['失败']; }}
+const requests = [];
+async function fetch(url, options) {{
+  requests.push({{url, options}});
+  return {{ok: true, blob: async () => ({{png: 'new'}})}};
+}}
+{functions}
+(async () => {{
+  let release;
+  const slow = {{ok: true, blob: () => new Promise(resolve => {{ release = resolve; }})}};
+  const pending = handleBattlePreviewResponse(slow, 2, 4);
+  leaveBattlePreview();
+  release({{png: 'stale'}});
+  await pending;
+  assert.strictEqual(image.src, '');
+  assert.deepStrictEqual(created, []);
+
+  battleActive = true; battleSession = 5; battleStyle = 'entity';
+  battleCardState = {{type: '形态', name: '烈:/山?'}};
+  battleEntityState = {{power: 3}};
+  battlePreviewAppliedSeq = 0;
+  image.src = 'blob:valid';
+  await handleBattlePreviewResponse({{ok: false}}, 3, 5);
+  assert.strictEqual(image.src, 'blob:valid');
+  assert(error.textContent.includes('失败'));
+
+  const exporting = exportBattlePreview();
+  await Promise.resolve();
+  leaveBattlePreview();
+  await exporting;
+  assert.deepStrictEqual(downloads, []);
+  assert.strictEqual(requests[0].url, '/api/entity-preview');
+  const body = JSON.parse(requests[0].options.body);
+  assert.deepStrictEqual(body, {{project: '项目', card: {{type: '形态', name: '烈:/山?'}},
+                                state: {{power: 3}}}});
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_battle_export_style_switch_cancels_download_and_unlocks(tmp_path):
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function battleRequest(style, project, stem, card, state)",
+        "async function exportBattlePreview()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let battleActive = true, battleSession = 1, battleStyle = 'card';
+let battleCardState = {{type: '形态', name: '烈'}}, battleEntityState = {{}};
+let curProject = '项目', curCard = 'stem', battleExporting = false;
+const error = {{textContent: ''}}, button = {{disabled: false}};
+const downloads = [];
+const document = {{getElementById: id => id === 'b-error' ? error : button,
+  createElement: () => ({{click() {{ downloads.push(this.download); }}}})}};
+const URL = {{createObjectURL: () => 'blob:new', revokeObjectURL() {{}}}};
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function enc(value) {{ return value; }}
+function setTimeout() {{}}
+let resolveFirst, requests = 0;
+function fetch() {{
+  requests++;
+  if (requests === 1) return new Promise(resolve => {{ resolveFirst = resolve; }});
+  return Promise.resolve({{ok: true, blob: async () => ({{png: 'second'}})}});
+}}
+{functions}
+(async () => {{
+  const first = exportBattlePreview();
+  while (!resolveFirst) await Promise.resolve();
+  battleStyle = 'entity';
+  resolveFirst({{ok: true, blob: async () => ({{png: 'first'}})}});
+  assert.strictEqual(await first, false);
+  assert.deepStrictEqual(downloads, []);
+  assert.strictEqual(battleExporting, false);
+  assert.strictEqual(await exportBattlePreview(), true);
+  assert.deepStrictEqual(downloads, ['烈_对局.png']);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+def test_battle_page_structure_and_card_library_migration():
+    html = EDITOR_HTML.read_text(encoding="utf-8")
+    assert 'data-tab="battle"' in html and 'id="tab-battle"' in html
+    assert 'id="c-entity"' not in html
+    scripts = [chunk.split('"', 1)[0] for chunk in html.split('<script src="')[1:]]
+    assert scripts == ["editor-core.js", "editor-cards.js", "editor-battle.js",
+                       "editor-mech.js", "editor-layout.js", "editor-main.js"]
+    cards = (EDITOR_HTML.parent / "editor-cards.js").read_text(encoding="utf-8")
+    for obsolete in ("appendEntityForm", "exportEntity", "statColorSelect",
+                     "scheduleEntityPreview", "c-entity"):
+        assert obsolete not in cards
+    assert "levelColorRow" not in cards
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_battle_migration_keeps_marker_level_zero_without_color_control(tmp_path):
+    level_row = _extract_js(_script(), "function levelRow(div)")
+    driver = f"""
+const assert = require('node:assert');
+let formData = {{level: 1, level_color: 'cyan'}}, edits = 0;
+function afterEdit() {{ edits++; }}
+function element(tag) {{ return {{tag, children: [], textContent: '', value: '',
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const div = element('div');
+const document = {{createElement: element}};
+{level_row}
+levelRow(div);
+assert.strictEqual(div.children.length, 1);
+assert.strictEqual(div.children[0].children.length, 1);
+const select = div.children[0].children[0];
+assert.deepStrictEqual(select.children.map(option => option.value), ['0', '1', '2', '3']);
+select.value = '0'; select.onchange();
+assert.strictEqual(formData.level, undefined);
+assert.strictEqual(formData.level_color, 'cyan');
+select.value = '2'; select.onchange();
+assert.strictEqual(formData.level, 2);
+assert.strictEqual(edits, 2);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)

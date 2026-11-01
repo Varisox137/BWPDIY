@@ -19,7 +19,7 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
   #c-right { width: 300px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
   #c-preview { margin-top: 10px; background: #222; max-width: 512px; max-height: 512px; }  /* 紧致原尺寸显示（卡图高 512 宽按内容、机制框原宽），不拉伸 */
   #c-subpreviews { display: none; flex-direction: row; justify-content: center; align-items: center; gap: 16px; margin: 16px 0 12px; }
-  #c-portrait, #c-entity { display: block; margin: 0; background: #222; }
+  #c-portrait { display: block; margin: 0; background: #222; }
   .item { padding: 3px 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 4px; font-size: 13px; }
   .item .meta { font-weight: normal; opacity: .7; }
   .item .meta.deck-invalid { color: #c0392b; font-weight: bold; opacity: 1; }
@@ -40,6 +40,20 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
   #c-form .readonly { color: #666; font-size: 12px; margin-top: 4px; }
   #c-form-errors { color: #c0392b; font-size: 12px; white-space: pre-line; margin-top: 8px; }
   #c-dirty { color: #a00; font-size: 12px; margin-left: 8px; }
+
+  /* ---- 对局预览 tab ---- */
+  #b-left { width: 130px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
+  #b-left h4 { font-size: 14px; margin: 4px 0 8px; }
+  #b-styles button { display: block; width: 100%; margin: 4px 0; padding: 6px; cursor: pointer; }
+  #b-styles button.active { background: #d9b96a; }
+  #b-mid { flex: 1; display: flex; flex-direction: column; align-items: center; background: #3a3a3a; padding-top: 8px; overflow-y: auto; }
+  #b-preview { margin: 10px 0; background: #222; max-width: 512px; max-height: 512px; }
+  #b-status { color: #ffd77a; margin-left: 8px; }
+  #b-error { color: #ff9a9a; font-size: 12px; max-width: 512px; white-space: pre-line; margin-top: 4px; }
+  #b-right { width: 300px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }
+  #b-form label { display: block; font-size: 12px; margin-top: 8px; }
+  #b-form input[type="number"] { width: 75px; }
+  #b-form .inline { display: inline-block; margin-right: 10px; }
 
   /* ---- 布局设置 tab（沿用原 layout.html 样式约定） ---- */
   #l-sidebar, #l-props { width: 220px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }

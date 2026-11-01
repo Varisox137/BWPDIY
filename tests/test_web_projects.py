@@ -505,8 +505,8 @@ def test_entity_preview_is_read_only(client, project, library_dir):
 def test_editor_page_at_root(client):
     r = client.get("/")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
-    # 编辑器主体页含两 tab：卡牌库 / 布局设置
-    assert "卡牌库" in r.text and "布局设置" in r.text
+    # 编辑器主体页含三 tab：卡牌库 / 对局预览 / 布局设置
+    assert "卡牌库" in r.text and "对局预览" in r.text and "布局设置" in r.text
 
 
 def test_layout_redirects_to_editor_layout_tab(client):
@@ -947,3 +947,29 @@ def test_upload_artwork_uses_form_id(client, project):
                     content=SAMPLE_ART.read_bytes(),
                     headers={"Content-Type": "application/octet-stream"})
     assert r.status_code == 200 and r.json()["path"] == "无id卡.png"
+
+
+def test_battle_preview_temporary_fields_return_png_without_writes(client, project, library_dir):
+    """对局页两种预览接受临时爆能/能量/倒计时/气绝状态，且项目 YAML 字节不变。"""
+    assert client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card()).status_code == 200
+    paths = sorted((library_dir / project).glob("*/*.yaml"))
+    before = {path: path.read_bytes() for path in paths}
+    card_response = client.post(
+        f"/api/projects/{project}/cards/测试斩/preview",
+        json={"card": {**_battle_card(), "level": 2, "level_color": "cyan", "burst": 2}})
+    assert card_response.status_code == 200
+    assert card_response.content[:8] == b"\x89PNG\r\n\x1a\n"
+    entity_response = client.post("/api/entity-preview", json={
+        "project": project,
+        "card": _entity_card("形态"),
+        "state": {"level": 0, "energy": 3, "defeated_countdown": "infinity",
+                  "power": 2, "health": 4, "combat_power": 1, "shield": -1},
+    })
+    assert entity_response.status_code == 200
+    assert entity_response.content[:8] == b"\x89PNG\r\n\x1a\n"
+    countdown_response = client.post("/api/entity-preview", json={
+        "project": project, "card": _entity_card("形态"),
+        "state": {"countdown": 2, "defeated_countdown": 3},
+    })
+    assert countdown_response.status_code == 200
+    assert {path: path.read_bytes() for path in paths} == before

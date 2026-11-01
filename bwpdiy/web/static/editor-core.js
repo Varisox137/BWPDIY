@@ -105,11 +105,15 @@ async function parseErrorDetail(r) {
 
 // ================= 顶部 tab 导航 =================
 function showTab(name) {
+  const current = document.getElementById('tab-battle').classList.contains('active') ? 'battle'
+    : document.getElementById('tab-layout').classList.contains('active') ? 'layout' : 'cards';
+  if (current === 'battle' && name !== 'battle') leaveBattlePreview();
   document.querySelectorAll('.navtab').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === name));
-  document.getElementById('tab-cards').classList.toggle('active', name === 'cards');
-  document.getElementById('tab-layout').classList.toggle('active', name === 'layout');
-  history.replaceState(null, '', name === 'layout' ? '#layout' : '#cards');
+  document.querySelectorAll('.tabpage').forEach(p =>
+    p.classList.toggle('active', p.id === `tab-${name}`));
+  history.replaceState(null, '', `#${name}`);
+  if (name === 'battle') enterBattlePreview();
   if (name === 'layout') {
     captureLayoutSnapshot();  // 每次进入都尝试记录快照（dirty 时跳过，保住本轮编辑前的基准）
     layoutBoot();  // 布局 tab 懒初始化（首次进入才拉取样卡/渲染预览）
@@ -118,7 +122,8 @@ function showTab(name) {
 // tab 切换门卫：未保存修改弹窗提醒（不丢弃——布局/卡牌修改均保留在内存，仅提示）；
 // 单卡布局模式下离开布局 tab：确认后退出单卡模式（布局调整丢弃，卡牌内容修改保留回卡牌库）
 async function tryShowTab(name) {
-  const cur = document.getElementById('tab-layout').classList.contains('active') ? 'layout' : 'cards';
+  const cur = document.getElementById('tab-battle').classList.contains('active') ? 'battle'
+    : document.getElementById('tab-layout').classList.contains('active') ? 'layout' : 'cards';
   if (name === cur) return;
   if (cardLayoutMode) {
     if ((singleDirty || cDirty) && !await sessionConfirm(
@@ -140,7 +145,7 @@ function updateLayoutNavtab() {
 }
 
 // ================= 顶栏扩展选项（localStorage 持久化） =================
-// 标记扩展（marker）：N 稀有度 + 勾玉六色 + 式神等级 + 派系样式；取消勾选只隐藏控件，
+// 标记扩展（marker）：N 稀有度 + 式神等级 + 派系样式；取消勾选只隐藏控件，
 // 已写进卡牌的数据（level_color 等）不回退、渲染照常生效
 const EXT_KEY = 'bwpdiy_ext_options';
 const extOptions = {layout: false, marker: false};
@@ -156,7 +161,7 @@ function applyExtOptions() {
     if (cardLayoutMode) exitCardLayout();  // 单卡布局模式随扩展关闭退出（布局调整丢弃）
     if (document.getElementById('tab-layout').classList.contains('active')) showTab('cards');
   }
-  if (formData) buildForm();  // 稀有度/勾玉颜色等下拉随扩展选项变化
+  if (formData) buildForm();  // 稀有度/等级等下拉随扩展选项变化
 }
 document.getElementById('ext-layout').onchange = ev => {
   extOptions.layout = ev.target.checked; saveExtOptions(); applyExtOptions();

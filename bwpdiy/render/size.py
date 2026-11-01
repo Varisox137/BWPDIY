@@ -7,7 +7,7 @@ MAX_RENDER_SIDE = 8192
 MAX_RENDER_PIXELS = 64_000_000
 
 _PAIR_KEYS = {
-    "pos", "fragile_pos", "center", "center_offset", "num_offset",
+    "pos", "fragile_pos", "center", "center_offset", "num_offset", "offset",
     "sign_offset", "group_offset", "fragile_num_offset", "fragile_sign_offset",
     "frame_offset", "frame_offset_2", "faction_offset", "badge_pos", "star_offset",
 }

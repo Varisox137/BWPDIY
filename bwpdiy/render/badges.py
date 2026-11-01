@@ -257,14 +257,45 @@ def _render_sign(lib: AssetLibrary, name: str, size: int) -> Image.Image:
                       Image.Resampling.LANCZOS)
 
 
+def _render_number_block(out: Image.Image, lib: AssetLibrary, elem: dict,
+                         value: int, num_pos: tuple[float, float], signed: bool,
+                         color: str, sign_offset) -> Image.Image:
+    font = lib.font("name", elem["font_size"])
+    stroke_width = elem.get("stroke_width", 2)
+    digits = str(abs(value)) if signed else str(value)
+    digit_img = _render_digits(digits, font, stroke_width, color,
+                               elem.get("_digit_gap", _DIGIT_GAP))
+    if digit_img is None:
+        return out
+    sign_img = None
+    if signed:
+        sign_name = "plus" if value >= 0 else "minus"
+        sign_size = elem.get(f"sign_size_{sign_name}",
+                             elem.get("sign_size", round(elem["font_size"] * 0.5)))
+        sign_img = _render_sign(lib, sign_name, sign_size)
+        sign_img = _tint_sign(sign_img, *STAT_COLORS[color])
+    sign_w = sign_img.width if sign_img is not None else 0
+    gap = elem.get("_sign_gap", 2) if sign_img is not None else 0
+    left = round(num_pos[0] - (sign_w + gap + digit_img.width) / 2)
+    out = out.copy()
+    if sign_img is not None:
+        sx, sy = sign_offset
+        out.alpha_composite(sign_img,
+                            (left + round(sx),
+                             round(num_pos[1] - sign_img.height / 2 + sy)))
+    out.alpha_composite(digit_img,
+                        (round(left + sign_w + gap), round(num_pos[1] - digit_img.height / 2)))
+    return out
+
+
 def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                    elem: dict, card: dict, ctx: dict | None = None,
                    composite: bool = False, stat_part: str | None = None) -> Image.Image:
     """渲染单个布局元素；渲染条件不满足时原样返回 canvas。
 
-    composite=True 时 stat 图标走 alpha_composite 贴图（源 alpha 保真）：
+    composite=True 时 stat/burst 图标走 alpha_composite 贴图（源 alpha 保真）：
     仅供 pipeline 的文本避让掩膜采集；实卡绘制用缺省 paste 行为。
-    stat_part：stat 元素分层绘制——"icon" 只画角标图标、"number" 只画符号+数字、
+    stat_part：stat/burst 分层绘制——"icon" 只画角标图标、"number" 只画符号+数字、
     None 两者都画（缺省）。pipeline 按 框上叠加图标层 / 描述后数值层 分两遍调用。
     """
     kind = elem["kind"]
@@ -308,27 +339,49 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         style = card.get("faction_style", elem.get("style", 2))
         return _paste_element(canvas, lib.faction(color, style),
                               elem["pos"], (elem["size"], elem["size"]))
-    if kind == "stat":
-        if not stat_rendered(elem, card):
-            return canvas
-        value = card[elem["field"]]
-        field = elem["field"]
-        # 破甲（战斗负护甲）四键分离：坐标/图标大小/数字偏移/符号偏移读 fragile_* 键，
-        # 缺省回退基础键；字号/描边/符号尺寸/group_offset 与护甲共享，不为破甲单设
-        fragile = (card["type"] == "战斗" and field == "shield+" and value < 0)
-        if fragile:
-            # 破甲贴图变体可配（fragile_variant 1/2，缺省 2）
-            stem = f"combat_fragile_{elem.get('fragile_variant', FRAGILE_VARIANT)}"
-            pos = tuple(elem.get("fragile_pos", elem["pos"]))
-            icon_size = elem.get("fragile_icon_size", elem["icon_size"])
-            num_offset = elem.get("fragile_num_offset", elem["num_offset"])
-            sign_offset = elem.get("fragile_sign_offset", elem.get("sign_offset", [0, 0]))
-        else:
-            stem = _FIELD_BADGE[field]
-            pos = tuple(elem["pos"])
+    if kind in ("stat", "burst"):
+        if kind == "burst":
+            if "burst" not in card:
+                return canvas
+            value = card["burst"]
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError("爆能必须是带符号整数")
+            if len(str(abs(value))) > 12:
+                raise ValueError("爆能绝对值最多 12 位")
+            if value == 0:
+                return canvas
+            anchor = elem["_anchor"]
+            offset = elem.get("offset", [0, 0])
+            pos = (anchor[0] + offset[0], anchor[1] + offset[1])
+            stem = "energy"
             icon_size = elem["icon_size"]
             num_offset = elem["num_offset"]
             sign_offset = elem.get("sign_offset", [0, 0])
+            signed = True
+            color = "white"
+        else:
+            if not stat_rendered(elem, card):
+                return canvas
+            value = card[elem["field"]]
+            field = elem["field"]
+            # 破甲（战斗负护甲）四键分离：坐标/图标大小/数字偏移/符号偏移读 fragile_* 键，
+            # 缺省回退基础键；字号/描边/符号尺寸/group_offset 与护甲共享，不为破甲单设
+            fragile = (card["type"] == "战斗" and field == "shield+" and value < 0)
+            if fragile:
+                # 破甲贴图变体可配（fragile_variant 1/2，缺省 2）
+                stem = f"combat_fragile_{elem.get('fragile_variant', FRAGILE_VARIANT)}"
+                pos = tuple(elem.get("fragile_pos", elem["pos"]))
+                icon_size = elem.get("fragile_icon_size", elem["icon_size"])
+                num_offset = elem.get("fragile_num_offset", elem["num_offset"])
+                sign_offset = elem.get("fragile_sign_offset", elem.get("sign_offset", [0, 0]))
+            else:
+                stem = _FIELD_BADGE[field]
+                pos = tuple(elem["pos"])
+                icon_size = elem["icon_size"]
+                num_offset = elem["num_offset"]
+                sign_offset = elem.get("sign_offset", [0, 0])
+            signed = _stat_mode(elem, card) == "signed"
+            color = card.get(f"{field}_color") or "white"  # 外部可选 red/green/purple
         if stat_part != "number":
             out = _paste_element(canvas, lib.stat_badge(stem), pos,
                                  (icon_size, icon_size),
@@ -337,42 +390,12 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
             out = canvas  # 数值层不带图标（图标层已画）
         if stat_part == "icon":
             return out
-        # group_offset：符号+数字整体相对角标的额外偏移（per-type 键，四类带符号
-        # 数值可各自微调；缺省 [0,0]），叠加在跨类型通用的 num_offset 之上
+        # group_offset：符号+数字整体相对角标的额外偏移，叠加在 num_offset 之上
         gx, gy = elem.get("group_offset", [0, 0])
         num_pos = (pos[0] + num_offset[0] + gx,
                    pos[1] + num_offset[1] + gy)
-        font = lib.font("name", elem["font_size"])
-        stroke_width = elem.get("stroke_width", 2)
-        signed = _stat_mode(elem, card) == "signed"
-        color = card.get(f"{field}_color") or "white"  # 外部可选 red/green/purple
-        digits = str(abs(value)) if signed else str(value)
-        # 符号贴图（如有）+ 数字作为一个整体块，块的视觉中心对齐 num_pos；
-        # sign_offset 为符号相对数字块的微调偏移
-        digit_img = _render_digits(digits, font, stroke_width, color,
-                                   elem.get("_digit_gap", _DIGIT_GAP))
-        if digit_img is None:
-            return out
-        sign_img = None
-        if signed:
-            # 加号/减号尺寸分开可调（sign_size 为旧数据回退）
-            sign_name = "plus" if value >= 0 else "minus"
-            sign_size = elem.get(f"sign_size_{sign_name}",
-                                 elem.get("sign_size", round(elem["font_size"] * 0.5)))
-            sign_img = _render_sign(lib, sign_name, sign_size)
-            sign_img = _tint_sign(sign_img, *STAT_COLORS[color])
-        sign_w = sign_img.width if sign_img is not None else 0
-        gap = elem.get("_sign_gap", 2) if sign_img is not None else 0
-        left = round(num_pos[0] - (sign_w + gap + digit_img.width) / 2)
-        out = out.copy()
-        if sign_img is not None:
-            sx, sy = sign_offset
-            out.alpha_composite(sign_img,
-                                (left + round(sx),
-                                 round(num_pos[1] - sign_img.height / 2 + sy)))
-        out.alpha_composite(digit_img,
-                            (round(left + sign_w + gap), round(num_pos[1] - digit_img.height / 2)))
-        return out
+        return _render_number_block(out, lib, elem, value, num_pos,
+                                    signed, color, sign_offset)
     if kind == "duo_frame":
         # 协战双式神框：卡面 duo_frame: true 且类型为协战时绘制（默认不绘制）；
         # 头像数据 card["_duo"] 由 web 层按所属式神注入（内部键，不进 schema）

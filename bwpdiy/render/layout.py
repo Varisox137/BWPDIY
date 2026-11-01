@@ -47,6 +47,18 @@ def _base_layout(type_layout: dict) -> dict:
     return {key: value for key, value in type_layout.items() if key != "frame_variants"}
 
 
+def _fill_burst_defaults(layouts: dict, default: dict) -> None:
+    for card_type in (*FRAME_LAYOUT_TYPES, "协战"):
+        type_layout = layouts.get(card_type)
+        default_layout = default.get(card_type)
+        if not isinstance(type_layout, dict) or not isinstance(default_layout, dict):
+            continue
+        elements = type_layout.get("elements")
+        default_burst = default_layout.get("elements", {}).get("burst")
+        if isinstance(elements, dict) and "burst" not in elements and default_burst:
+            elements["burst"] = copy.deepcopy(default_burst)
+
+
 def _materialize_frame_variants(layouts: dict) -> None:
     """把非常规框的稀疏覆盖补成编辑器使用的完整工作布局。"""
     for card_type in FRAME_LAYOUT_TYPES:
@@ -80,6 +92,7 @@ def load_layouts(assets_dir: Path) -> dict:
             entity = layouts["对局式神"]
             entity["version"] = 2
         _fill_entity_defaults(entity, default["对局式神"])
+    _fill_burst_defaults(layouts, default)
     _materialize_frame_variants(layouts)
     return layouts
 

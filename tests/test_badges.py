@@ -215,6 +215,22 @@ def test_stat_signed_and_offset(assets_dir):
     assert opaque(render_element(canvas(), lib, "power", elem, {"type": "战斗"})) == 0
 
 
+@pytest.mark.parametrize("value, sign", [(10, "plus"), (-10, "minus")])
+def test_burst_signed_white_component(assets_dir, sign, value):
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "burst", "_anchor": [100, 60], "offset": [0, 50],
+            "icon_size": 50, "num_offset": [0, 0], "font_size": 36,
+            "stroke_width": 2, "sign_size_plus": 20, "sign_size_minus": 14,
+            "sign_offset": [0, 0], "group_offset": [0, 0]}
+    card = {"type": "法术", "burst": value}
+    img = render_element(canvas(), lib, "burst", elem, card)
+    assert opaque(img) > 0
+    assert opaque(render_element(canvas(), lib, "burst", elem,
+                                 {"type": "法术", "burst": 0})) == 0
+    assert img.tobytes() == render_element(
+        canvas(), lib, "burst", elem, dict(card, burst_color="red")).tobytes()
+
+
 def test_stat_group_offset_stacks_on_num_offset(assets_dir):
     """group_offset：符号+数字整体相对角标的额外偏移，叠加在 num_offset 之上；
     图标不动、符号随数字整体一起移动。"""

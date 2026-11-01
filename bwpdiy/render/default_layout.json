@@ -19,6 +19,30 @@
           0
         ]
       },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
+      },
       "faction": {
         "kind": "faction",
         "pos": [
@@ -256,6 +280,30 @@
           0,
           0
         ]
+      },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
       },
       "rarity": {
         "kind": "rarity_flank",
@@ -517,6 +565,30 @@
           0
         ]
       },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
+      },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
@@ -774,6 +846,30 @@
           0
         ]
       },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
+      },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
@@ -1019,6 +1115,30 @@
           0
         ]
       },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
+      },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
@@ -1260,6 +1380,30 @@
           0,
           0
         ]
+      },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
       },
       "rarity": {
         "kind": "rarity_flank",

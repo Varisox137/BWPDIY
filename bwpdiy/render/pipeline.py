@@ -173,31 +173,36 @@ def _draw_static(canvas, type_layout: dict, card: dict, lib, variant: str):
         name_width = name_font.getlength(card["name"])
     ctx = {"name_width": name_width}
     # 分层渲染（自底向上）：框内静态（卡名/稀有度双标/脚注点文本）→
-    # 框上叠加（等级标/派系标/stat 角标图标）→ 描述文本 → stat 数值（符号+数字）
+    # 框上叠加（等级标/派系标/stat/burst 图标）→ 描述文本 → stat/burst 数值
     _STATIC = ("text", "rarity_flank")
     for elem_name, elem in elements.items():
         if elem["kind"] in _STATIC:
             canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
-    stat_elems = []
+    numbered_elems = []
     for elem_name, elem in elements.items():
         if elem["kind"] in _STATIC:
             continue
-        if elem["kind"] == "stat":
-            stat_elems.append((elem_name, elem))
+        if elem["kind"] in ("stat", "burst"):
+            numbered_elems.append((elem_name, elem))
             canvas = render_element(canvas, lib, elem_name, elem, card, ctx,
                                     stat_part="icon")
         else:
             canvas = render_element(canvas, lib, elem_name, elem, card, ctx)
     regions = type_layout["text_regions"]
     if card.get("description") and "desc" in regions:
-        # 文本避让掩膜：实际渲染的 stat 元素（图标+数值全量）在透明层再渲染一份，
+        # 文本避让掩膜：实际渲染的 stat/burst（图标+数值全量）在透明层再渲染一份，
         # 取 alpha≥OBSTACLE_ALPHA 的碰撞轮廓（非原始 box，仿牌框阈值预处理）
-        rendered_stats = [e for _, e in stat_elems
-                          if e.get("enabled", True) and stat_rendered(e, card)]
+        rendered_numbers = [
+            e for _, e in numbered_elems
+            if e.get("enabled", True) and (
+                (e["kind"] == "stat" and stat_rendered(e, card))
+                or (e["kind"] == "burst" and card.get("burst", 0) != 0)
+            )
+        ]
         obstacle_mask = None
-        if rendered_stats:
+        if rendered_numbers:
             layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
-            for i, e in enumerate(rendered_stats):
+            for i, e in enumerate(rendered_numbers):
                 # composite=True：掩膜采集走 alpha_composite，图标源 alpha 保真
                 # （默认 paste 在透明层上平方 alpha，抗锯齿淡边缘会被掩膜阈值丢弃）
                 layer = render_element(layer, lib, f"stat_{i}", e, card, ctx,
@@ -210,7 +215,7 @@ def _draw_static(canvas, type_layout: dict, card: dict, lib, variant: str):
                              obstacle_mask=obstacle_mask, fill=desc_fill,
                              keyword_fill=kw_fill, icon_variant=variant)
     # 数值层最后画：描述文本避让数值（掩膜含数值墨迹），数值压在文本之上
-    for elem_name, elem in stat_elems:
+    for elem_name, elem in numbered_elems:
         canvas = render_element(canvas, lib, elem_name, elem, card, ctx,
                                 stat_part="number")
     return canvas
@@ -298,10 +303,14 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         for region in (type_layout.get("text_regions") or {}).values():
             region["_line_gap"] = 6 * factor
         for elem in (type_layout.get("elements") or {}).values():
-            if elem.get("kind") == "stat":
+            if elem.get("kind") in ("stat", "burst"):
                 elem["_digit_gap"] = 3 * factor
                 elem["_sign_gap"] = 2 * factor
     type_layout = _to_canvas_coords(type_layout, anchor_x)
+    elements = type_layout.get("elements") or {}
+    for elem in elements.values():
+        if elem.get("kind") == "burst":
+            elem["_anchor"] = elements["level"]["pos"]
     card = copy.deepcopy(card) if factor != 1 else dict(card)
     if not card.get("footer"):
         if card_type == "协战":

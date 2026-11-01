@@ -78,6 +78,62 @@ def test_render_with_layout_override(assets_dir, sample_art):
     assert list(moved.getdata()) != list(default.getdata())
 
 
+def test_burst_follows_level_layout_without_card_level(assets_dir, sample_art):
+    import copy
+
+    from PIL import ImageChops
+
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+
+    card = make_card(sample_art.parent, "法术", burst=-10, description="")
+    type_layout = get_type_layout(load_layouts(assets_dir), "法术")
+    base = render_card(card, assets_dir, layout=type_layout, crop=False)
+    empty = render_card(dict(card, burst=0), assets_dir, layout=type_layout, crop=False)
+    bbox = ImageChops.difference(base.convert("RGB"), empty.convert("RGB")).getbbox()
+    assert bbox is not None
+
+    moved_layout = copy.deepcopy(type_layout)
+    moved_layout["elements"]["level"]["pos"][0] += 7
+    moved_layout["elements"]["level"]["pos"][1] += 9
+    moved = render_card(card, assets_dir, layout=moved_layout, crop=False)
+    moved_empty = render_card(dict(card, burst=0), assets_dir,
+                              layout=moved_layout, crop=False)
+    moved_bbox = ImageChops.difference(
+        moved.convert("RGB"), moved_empty.convert("RGB")).getbbox()
+    assert moved_bbox is not None
+    for before, after, delta in zip(bbox, moved_bbox, (7, 9, 7, 9)):
+        assert abs(after - before - delta) <= 1
+
+    name_x, name_y = type_layout["elements"]["name"]["pos"]
+    name_x += _anchor_x(assets_dir, "法术")
+    name_box = (name_x - 90, name_y - 25, name_x + 90, name_y + 25)
+    assert base.crop(name_box).tobytes() == moved.crop(name_box).tobytes()
+
+
+@pytest.mark.parametrize("value", [True, 1.5, 10**12])
+def test_burst_rejects_non_integer_and_overlong_values(assets_dir, sample_art, value):
+    card = make_card(sample_art.parent, "法术", burst=value)
+    with pytest.raises(ValueError, match="爆能"):
+        render_card(card, assets_dir)
+
+
+def test_burst_native_size_scales_layout_offset(assets_dir, sample_art):
+    from PIL import ImageChops
+
+    card = make_card(sample_art.parent, "法术", burst=10, description="")
+    base = render_card(card, assets_dir, crop=False)
+    base_empty = render_card(dict(card, burst=0), assets_dir, crop=False)
+    large = render_card(card, assets_dir, height=base.height * 2, crop=False)
+    large_empty = render_card(dict(card, burst=0), assets_dir,
+                              height=base.height * 2, crop=False)
+    base_box = ImageChops.difference(base.convert("RGB"), base_empty.convert("RGB")).getbbox()
+    large_box = ImageChops.difference(large.convert("RGB"), large_empty.convert("RGB")).getbbox()
+    assert base_box is not None and large_box is not None
+    assert large.size == large_empty.size == (base.width * 2, base.height * 2)
+    for small, big in zip(base_box, large_box):
+        assert abs(big - small * 2) <= 2
+
+
 def test_footer_rendered(assets_dir, sample_art):
     card = {"type": "战斗", "name": "sample_art", "shikigami": "测试式神",
             "level": 1, "rarity": "N", "_base_dir": str(sample_art.parent)}

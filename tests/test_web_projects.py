@@ -954,9 +954,11 @@ def test_battle_preview_temporary_fields_return_png_without_writes(client, proje
     assert client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card()).status_code == 200
     paths = sorted((library_dir / project).glob("*/*.yaml"))
     before = {path: path.read_bytes() for path in paths}
+    temporary_card = {**_battle_card(), "level": 0, "level_color": "cyan", "burst": 2}
+    render_card = dict(temporary_card)
+    del render_card["level"]  # 前端大卡等级 0 的渲染副本口径：缺省 level，而非传 0
     card_response = client.post(
-        f"/api/projects/{project}/cards/测试斩/preview",
-        json={"card": {**_battle_card(), "level": 2, "level_color": "cyan", "burst": 2}})
+        f"/api/projects/{project}/cards/测试斩/preview", json={"card": render_card})
     assert card_response.status_code == 200
     assert card_response.content[:8] == b"\x89PNG\r\n\x1a\n"
     entity_response = client.post("/api/entity-preview", json={

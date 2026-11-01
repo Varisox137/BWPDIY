@@ -2675,6 +2675,58 @@ async function fetch(url, options) {{
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_battle_card_level_zero_is_omitted_for_preview_and_export(tmp_path):
+    """大卡等级 0 在渲染副本中删 level；小卡 state.level=0 仍原样提交。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function battleRequest(style, project, stem, card, state)",
+        "async function handleBattlePreviewResponse(r, seq, session)",
+        "async function battlePreview()",
+        "async function exportBattlePreview()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let battleActive = true, battleSession = 1, battleStyle = 'card';
+let battleCardState = {{type: '战斗', name: '斩', level: 0, burst: 2}};
+let battleEntityState = {{level: 0}};
+let curProject = '项目', curCard = 'stem';
+let battlePreviewSeq = 0, battlePreviewAppliedSeq = 0, battlePreviewUrl = null;
+let battleExporting = false;
+const image = {{src: ''}}, error = {{textContent: ''}}, button = {{disabled: false}};
+const document = {{getElementById: id => ({{
+  'b-preview': image, 'b-error': error, 'b-btn-export': button,
+}})[id], createElement: () => ({{click() {{}}}})}};
+const URL = {{createObjectURL: () => 'blob:new', revokeObjectURL() {{}}}};
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function enc(value) {{ return value; }}
+function setTimeout() {{}}
+const requests = [];
+async function fetch(url, options) {{
+  requests.push({{url, options}});
+  return {{ok: true, blob: async () => ({{png: 'ok'}})}};
+}}
+{functions}
+(async () => {{
+  await battlePreview();
+  await exportBattlePreview();
+  assert.strictEqual(requests.length, 2);
+  for (const request of requests) {{
+    const card = JSON.parse(request.options.body).card;
+    assert.strictEqual('level' in card, false);
+    assert.strictEqual(card.burst, 2);
+  }}
+  assert.strictEqual(battleCardState.level, 0);
+  battleStyle = 'entity';
+  await battlePreview();
+  const entityBody = JSON.parse(requests[2].options.body);
+  assert.strictEqual(entityBody.state.level, 0);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_battle_export_style_switch_cancels_download_and_unlocks(tmp_path):
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (

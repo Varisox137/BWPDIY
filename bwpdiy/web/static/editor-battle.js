@@ -315,9 +315,11 @@ function battleRequest(style, project, stem, card, state) {
       body: JSON.stringify({project, card, state}),
     });
   }
+  const renderCard = {...card};
+  if (renderCard.level === 0) delete renderCard.level;
   return fetch(`/api/projects/${enc(project)}/cards/${enc(stem)}/preview`, {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({card}),
+    body: JSON.stringify({card: renderCard}),
   });
 }
 

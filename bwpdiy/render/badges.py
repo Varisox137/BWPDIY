@@ -56,37 +56,71 @@ def _paste_element(canvas: Image.Image, img: Image.Image,
     return paste_centered(canvas, img, pos, fit, composite=composite)
 
 
-# 数值变色（游戏内采样 examples/colored_num_ref.png + 用户调校）：白=常态，红=debuff/受伤
-# （大红顶色、向下过渡橙红），绿=buff（近似均匀青绿），紫=中毒（竖直渐变上深下亮）
+# 数值渐变端色：采样 assets/ref/{白,红,绿,紫,黄}字.png 的数字内部亮像素。
 STAT_COLORS = {
-    "red": ((224, 44, 22), (245, 116, 48)),
-    "green": ((8, 213, 173), (35, 197, 170)),
-    "purple": ((105, 12, 120), (223, 97, 235)),
+    "white": ((253, 255, 226), (247, 253, 242)),
+    "red": ((230, 33, 2), (234, 105, 43)),
+    "green": ((15, 204, 172), (71, 213, 156)),
+    "purple": ((150, 34, 187), (241, 100, 252)),
+    "yellow": ((255, 162, 63), (255, 255, 199)),
 }
+STAT_VALUE_COLORS = {"red", "green", "purple"}
 
 
 def _vertical_gradient(size: tuple[int, int], top: tuple[int, int, int],
                        bottom: tuple[int, int, int]) -> Image.Image:
     """竖直线性渐变 RGB 图（顶→底）。"""
     w, h = size
-    grad = Image.new("RGB", (1, h))
+    grad = Image.new("RGB", size)
+    draw = ImageDraw.Draw(grad)
     for y in range(h):
         t = y / max(1, h - 1)
-        grad.putpixel((0, y), tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)))
-    return grad.resize((w, h))
+        color = tuple(round(a + (b - a) * t) for a, b in zip(top, bottom))
+        draw.line((0, y, w, y), fill=color)
+    return grad
 
 
 def _tint(img: Image.Image, top: tuple[int, int, int],
           bottom: tuple[int, int, int]) -> Image.Image:
     """亮色填充重着色为竖直渐变、深色描边原样保留（亮度软掩膜过渡）。"""
     lum = img.convert("L").point(lambda v: min(255, max(0, (v - 60) * 3)))
-    grad = _vertical_gradient(img.size, top, bottom)
+    solid_bbox = lum.point(lambda v: 255 if v == 255 else 0).getbbox()
+    if solid_bbox:
+        top_y, bottom_y = solid_bbox[1], solid_bbox[3]
+        grad = Image.new("RGB", img.size, top)
+        grad.paste(_vertical_gradient((img.width, bottom_y - top_y), top, bottom),
+                   (0, top_y))
+        if bottom_y < img.height:
+            grad.paste(bottom, (0, bottom_y, img.width, img.height))
+    else:
+        grad = _vertical_gradient(img.size, top, bottom)
     out = Image.composite(grad, img.convert("RGB"), lum).convert("RGBA")
     out.putalpha(img.getchannel("A"))
     return out
 
 
 _tint_sign = _tint  # 符号贴图与白字数字同一口径：填充换渐变、描边保留
+
+
+def _render_infinity(font_size: int, stroke_width: int) -> Image.Image:
+    """以两个横向相切椭圆绘制无限符号，不依赖字体字形。"""
+    loop_w = max(2, round(font_size * 0.75))
+    loop_h = max(2, round(font_size * 0.5))
+    white_width = max(1, round(font_size / 6))
+    pad = stroke_width + 2
+    img = Image.new("RGBA", (loop_w * 2 + pad * 2 + 1,
+                             loop_h + pad * 2 + 1), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    boxes = [(pad + i * loop_w, pad, pad + (i + 1) * loop_w, pad + loop_h)
+             for i in range(2)]
+    for left, top, right, bottom in boxes:
+        draw.ellipse((left - stroke_width, top - stroke_width,
+                      right + stroke_width, bottom + stroke_width),
+                     outline=(0, 0, 0, 220), width=white_width + stroke_width * 2)
+    for box in boxes:
+        draw.ellipse(box, outline=(255, 255, 255, 255), width=white_width)
+    bbox = img.getchannel("A").getbbox()
+    return _tint(img.crop(bbox), *STAT_COLORS["white"])
 
 
 def _render_ink(text: str, font, stroke_width: int = 2):
@@ -148,6 +182,7 @@ def _render_digits(text: str, font, stroke_width: int,
     水平：不按字形 box 等距排（「41」这类窄字会嫌稀），按相邻字墨迹的
     最小水平距离 = _DIGIT_GAP 约束排放（逐行区间求最大可行左移量）。
     """
+    color = color or "white"
     parts = []
     for ch in text:
         ink = _render_ink(ch, font, stroke_width)
@@ -310,7 +345,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         font = lib.font("name", elem["font_size"])
         stroke_width = elem.get("stroke_width", 2)
         signed = _stat_mode(elem, card) == "signed"
-        color = card.get(f"{field}_color")  # 数值变色：red/green/purple，缺省白
+        color = card.get(f"{field}_color") or "white"  # 外部可选 red/green/purple
         digits = str(abs(value)) if signed else str(value)
         # 符号贴图（如有）+ 数字作为一个整体块，块的视觉中心对齐 num_pos；
         # sign_offset 为符号相对数字块的微调偏移
@@ -325,8 +360,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
             sign_size = elem.get(f"sign_size_{sign_name}",
                                  elem.get("sign_size", round(elem["font_size"] * 0.5)))
             sign_img = _render_sign(lib, sign_name, sign_size)
-            if color is not None:
-                sign_img = _tint_sign(sign_img, *STAT_COLORS[color])
+            sign_img = _tint_sign(sign_img, *STAT_COLORS[color])
         sign_w = sign_img.width if sign_img is not None else 0
         gap = elem.get("_sign_gap", 2) if sign_img is not None else 0
         left = round(num_pos[0] - (sign_w + gap + digit_img.width) / 2)

@@ -79,6 +79,7 @@ def test_validate_entity_state_defaults_and_discards_unknown_keys():
     ("level_color", "orange"), ("level_color", None),
     ("power_color", "orange"), ("health_color", 1),
     ("combat_power_color", False), ("shield_color", "white"),
+    ("power_color", "yellow"),
     ("art_scale", 0), ("art_scale", -1),
     ("art_scale", math.nan), ("art_scale", math.inf),
     ("art_scale", "2"),

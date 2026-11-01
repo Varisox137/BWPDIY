@@ -156,6 +156,26 @@ def test_stat_digit_spacing(assets_dir):
     assert rowsL == rowsR
 
 
+@pytest.mark.parametrize("color", ["white", "red", "green", "purple", "yellow"])
+def test_five_number_gradients(assets_dir, color):
+    from bwpdiy.render.badges import STAT_COLORS, _render_digits
+    lib = AssetLibrary(assets_dir)
+    img = _render_digits("6", lib.font("name", 40), 2, color)
+    top = STAT_COLORS[color][0]
+    assert any(all(abs(pixel[i] - top[i]) <= 3 for i in range(3))
+               for pixel in img.getdata() if pixel[3] > 200)
+
+
+def test_infinity_has_white_ink_and_stroke(assets_dir):
+    from bwpdiy.render.badges import _render_infinity
+    img = _render_infinity(36, 2)
+    assert img.width > img.height > 0
+    assert any(p[:3] == (0, 0, 0) and p[3] > 0 for p in img.getdata())
+    assert any(img.getpixel((x, 0))[:3] == (0, 0, 0) and img.getpixel((x, 0))[3] > 0
+               for x in range(img.width))
+    assert any(p[0] > 180 and p[3] > 200 for p in img.getdata())
+
+
 @pytest.mark.parametrize("color", ["red", "green", "purple"])
 def test_stat_value_colors(assets_dir, color):
     """数值变色（<field>_color）：与默认白字渲染不同；带符号时符号同步变色。"""

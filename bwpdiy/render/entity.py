@@ -11,7 +11,7 @@ from bwpdiy.render.artwork import (
     ARTWORK_MAX_PIXELS, artwork_ref, fit_artwork, load_card_artwork)
 from bwpdiy.render.assets import AssetLibrary, get_library
 from bwpdiy.render.badges import (
-    _DIGIT_GAP, STAT_COLORS, TYPE_FRAME_CODE, _paste_element, _render_digits)
+    _DIGIT_GAP, STAT_VALUE_COLORS, TYPE_FRAME_CODE, _paste_element, _render_digits)
 from bwpdiy.render.pipeline import _normalize_frame
 from bwpdiy.render.size import fit_target_canvas, resolve_target_size, scale_layout
 
@@ -144,7 +144,7 @@ def validate_entity_state(state: dict) -> dict:
         if abs(normalized[field]) > max_value:
             raise ValueError(f"{field} 数值位数不得超过 {ENTITY_MAX_STAT_DIGITS} 位")
         color = normalized[f"{field}_color"]
-        if color is not None and (not isinstance(color, str) or color not in STAT_COLORS):
+        if color is not None and (not isinstance(color, str) or color not in STAT_VALUE_COLORS):
             raise ValueError(f"{field}_color 非法")
     if normalized["level"] not in (0, 1, 2, 3):
         raise ValueError("level 必须是 0、1、2 或 3")
@@ -176,7 +176,7 @@ def _card_state(card: dict, state: dict) -> dict:
     for field in ("power", "health", "combat_power", "shield"):
         key = f"{field}_color"
         color = card.get(key)
-        if key not in state and isinstance(color, str) and color in STAT_COLORS:
+        if key not in state and isinstance(color, str) and color in STAT_VALUE_COLORS:
             normalized[key] = color
     return normalized
 

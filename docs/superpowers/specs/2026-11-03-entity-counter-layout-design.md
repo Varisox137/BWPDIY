@@ -14,6 +14,7 @@
 - `defeated` 保持独立且最后绘制；0 级仍只绘制底框与卡图。
 - 加载旧布局时，若存在 `elements.right_top`，将其参数复制到缺失的 `energy/countdown`，随后移除旧元素；已有新元素不被覆盖。缺新元素时仍从包内默认补齐。
 - 对局预览页与 `state` 契约不变；仅全局布局结构和布局编辑器改变。
+- 开发版与正式版统一读写 `$HOME/.bwpdiy/layout.json`，包内 `bwpdiy/render/default_layout.json` 仅作缺省回退；删除不再作为开发版配置使用的 `assets/layout.json`。
 
 ## 布局编辑器
 

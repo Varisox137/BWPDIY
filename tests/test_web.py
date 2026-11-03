@@ -1,5 +1,6 @@
 """web 层（FastAPI 编辑器后端）测试：布局读写 API 与样卡预览。"""
 
+import json
 import shutil
 from pathlib import Path
 
@@ -18,7 +19,11 @@ def assets_dir(web_assets_dir) -> Path:
 
 @pytest.fixture()
 def client(assets_dir):
-    return TestClient(create_app(assets_dir))
+    client = TestClient(create_app(assets_dir))
+    config = Path.home() / ".bwpdiy" / "layout.json"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(json.dumps(client.get("/api/layout").json()), encoding="utf-8")
+    return client
 
 
 def test_get_layout(client):
@@ -148,7 +153,7 @@ def test_put_layout_roundtrip(client, assets_dir, tmp_path):
     assert r.status_code == 200 and r.json()["ok"]
     assert client.get("/api/layout").json()["战斗"]["elements"]["rarity"]["pos"] == [200, 200]
     # 写盘字节格式：UTF-8 未转义中文 + indent=2 风格
-    raw = (assets_dir / "layout.json").read_text(encoding="utf-8")
+    raw = (Path.home() / ".bwpdiy" / "layout.json").read_text(encoding="utf-8")
     assert '"战斗"' in raw and "\\u" not in raw
     assert '\n  "战斗"' in raw
 
@@ -160,7 +165,6 @@ def test_frozen_put_layout_writes_home_not_packaged_assets(assets_dir, tmp_path,
     monkeypatch.setattr(resources, "is_frozen", lambda: True)
     monkeypatch.setattr(resources.Path, "home", lambda: home)
     client = TestClient(create_app(assets_dir, library_dir=tmp_path / "library"))
-    before = (assets_dir / "layout.json").read_bytes()
     layouts = client.get("/api/layout").json()
     layouts["战斗"]["elements"]["name"]["pos"] = [9, 10]
 
@@ -168,7 +172,7 @@ def test_frozen_put_layout_writes_home_not_packaged_assets(assets_dir, tmp_path,
     config = home / ".bwpdiy" / "layout.json"
     assert config.is_file()
     assert client.get("/api/layout").json()["战斗"]["elements"]["name"]["pos"] == [9, 10]
-    assert (assets_dir / "layout.json").read_bytes() == before
+    assert not (assets_dir / "layout.json").exists()
 
 
 def test_put_layout_frame_variant_sparse_roundtrip(client, assets_dir):
@@ -185,7 +189,7 @@ def test_put_layout_frame_variant_sparse_roundtrip(client, assets_dir):
     assert loaded["战斗"]["elements"]["name"]["pos"] != [12, 34]
     assert loaded["战斗"]["frame_variants"]["black"]["elements"]["name"]["pos"] == [12, 34]
     assert loaded["战斗"]["frame_variants"]["blue"] == base
-    raw = json.loads((assets_dir / "layout.json").read_text(encoding="utf-8"))
+    raw = json.loads((Path.home() / ".bwpdiy" / "layout.json").read_text(encoding="utf-8"))
     assert raw["战斗"]["frame_variants"] == {"black": sparse}
 
 
@@ -198,12 +202,12 @@ def test_put_layout_frame_variant_sparse_roundtrip(client, assets_dir):
 def test_put_layout_rejects_invalid_frame_variants(client, assets_dir, card_type, variants):
     layouts = client.get("/api/layout").json()
     base = {key: layouts[card_type][key] for key in ("elements", "text_regions")}
-    before = (assets_dir / "layout.json").read_bytes()
+    before = (Path.home() / ".bwpdiy" / "layout.json").read_bytes()
     response = client.put("/api/layout", json={
         card_type: {**base, "frame_variants": variants},
     })
     assert response.status_code == 422
-    assert (assets_dir / "layout.json").read_bytes() == before
+    assert (Path.home() / ".bwpdiy" / "layout.json").read_bytes() == before
 
 
 def test_put_layout_partial_types(client, assets_dir):
@@ -222,9 +226,9 @@ def test_put_layout_entity_section(client, assets_dir):
     entity["art_window"]["offset_y"] = 2
     assert client.put("/api/layout", json={"对局式神": entity}).status_code == 200
     assert client.get("/api/layout").json()["对局式神"] == entity
-    before = (assets_dir / "layout.json").read_bytes()
+    before = (Path.home() / ".bwpdiy" / "layout.json").read_bytes()
     assert client.put("/api/layout", json={"对局式神": {"elements": []}}).status_code == 422
-    assert (assets_dir / "layout.json").read_bytes() == before
+    assert (Path.home() / ".bwpdiy" / "layout.json").read_bytes() == before
 
 
 @pytest.mark.parametrize("patch", [
@@ -245,10 +249,10 @@ def test_put_layout_entity_section(client, assets_dir):
 def test_put_layout_rejects_invalid_entity_window(client, assets_dir, patch):
     entity = client.get("/api/layout").json()["对局式神"]
     entity.update(patch)
-    before = (assets_dir / "layout.json").read_bytes()
+    before = (Path.home() / ".bwpdiy" / "layout.json").read_bytes()
     response = client.put("/api/layout", json={"对局式神": entity})
     assert response.status_code == 422
-    assert (assets_dir / "layout.json").read_bytes() == before
+    assert (Path.home() / ".bwpdiy" / "layout.json").read_bytes() == before
 
 
 def test_put_layout_mech_section(client, assets_dir):
@@ -259,10 +263,10 @@ def test_put_layout_mech_section(client, assets_dir):
     assert client.put("/api/layout", json=layouts).status_code == 200
     assert client.get("/api/layout").json()["机制"]["text_size"] == 28
     # 机制段形状非法（非对象）拒绝且不动文件
-    before = (assets_dir / "layout.json").read_bytes()
+    before = (Path.home() / ".bwpdiy" / "layout.json").read_bytes()
     r = client.put("/api/layout", json={"机制": "不是对象"})
     assert r.status_code == 422
-    assert (assets_dir / "layout.json").read_bytes() == before
+    assert (Path.home() / ".bwpdiy" / "layout.json").read_bytes() == before
 
 
 def test_mech_layout_preview(client):
@@ -325,9 +329,9 @@ def test_put_layout_backup(client, assets_dir):
     """二次 PUT 前旧文件留 layout.json.bak。"""
     layouts = client.get("/api/layout").json()
     assert client.put("/api/layout", json=layouts).status_code == 200
-    bak = assets_dir / "layout.json.bak"
+    bak = Path.home() / ".bwpdiy" / "layout.json.bak"
     assert bak.is_file()
-    assert not (assets_dir / "layout.json.tmp").exists()
+    assert not (Path.home() / ".bwpdiy" / "layout.json.tmp").exists()
 
 
 @pytest.mark.parametrize("bad", [
@@ -337,10 +341,10 @@ def test_put_layout_backup(client, assets_dir):
     {"战斗": {"text_regions": {}}},  # 缺 elements
 ])
 def test_put_layout_invalid_shape(client, assets_dir, bad):
-    before = (assets_dir / "layout.json").read_bytes()
+    before = (Path.home() / ".bwpdiy" / "layout.json").read_bytes()
     r = client.put("/api/layout", json=bad)
     assert r.status_code == 422
-    assert (assets_dir / "layout.json").read_bytes() == before  # 校验失败不得动文件
+    assert (Path.home() / ".bwpdiy" / "layout.json").read_bytes() == before  # 校验失败不得动文件
 
 
 def test_preview_png(client):

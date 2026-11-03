@@ -104,8 +104,8 @@ _tint_sign = _tint  # 符号贴图与白字数字同一口径：填充换渐变�
 
 def _render_infinity(font_size: int, stroke_width: int) -> Image.Image:
     """以两个横向相切椭圆绘制无限符号，不依赖字体字形。"""
-    loop_w = max(2, round(font_size * 0.75))
-    loop_h = max(2, round(font_size * 0.5))
+    loop_w = max(2, round(font_size * 0.55))
+    loop_h = max(2, round(font_size * 0.65))
     white_width = max(1, round(font_size / 6))
     pad = stroke_width + 2
     img = Image.new("RGBA", (loop_w * 2 + pad * 2 + 1,

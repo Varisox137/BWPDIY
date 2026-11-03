@@ -1542,7 +1542,21 @@
         "font_size": 22,
         "stroke_width": 2
       },
-      "right_top": {
+      "energy": {
+        "kind": "counter",
+        "pos": [
+          82,
+          18
+        ],
+        "icon_size": 28,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 24,
+        "stroke_width": 2
+      },
+      "countdown": {
         "kind": "counter",
         "pos": [
           82,

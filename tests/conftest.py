@@ -8,6 +8,14 @@ ASSETS = ROOT / "assets"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def isolated_layout_home(tmp_path, monkeypatch):
+    from bwpdiy import resources
+
+    home = tmp_path / "home"
+    monkeypatch.setattr(resources.Path, "home", lambda: home)
+
+
 @pytest.fixture()
 def assets_dir() -> Path:
     return ASSETS
@@ -23,17 +31,8 @@ def web_assets_copy(tmp_path_factory) -> Path:
 
 @pytest.fixture()
 def web_assets_dir(web_assets_copy) -> Path:
-    """逐用例恢复唯一可写的布局文件，其余美术资源保持只读共享。"""
-    layout = web_assets_copy / "layout.json"
-    backup = web_assets_copy / "layout.json.bak"
-    before = layout.read_bytes()
-    backup_before = backup.read_bytes() if backup.exists() else None
-    yield web_assets_copy
-    layout.write_bytes(before)
-    if backup_before is None:
-        backup.unlink(missing_ok=True)
-    else:
-        backup.write_bytes(backup_before)
+    """布局写入逐用例隔离的 HOME，共享美术资源保持只读。"""
+    return web_assets_copy
 
 
 @pytest.fixture()

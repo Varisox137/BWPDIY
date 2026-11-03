@@ -36,6 +36,13 @@ def _scale_legacy_entity(value, key=None, element_name=None):
 
 
 def _fill_entity_defaults(entity: dict, default: dict) -> None:
+    elements = entity.get("elements")
+    if isinstance(elements, dict):
+        legacy = elements.pop("right_top", None)
+        if isinstance(legacy, dict):
+            for name in ("energy", "countdown"):
+                if name not in elements:
+                    elements[name] = copy.deepcopy(legacy)
     for key, value in default.items():
         if key not in entity:
             entity[key] = copy.deepcopy(value)

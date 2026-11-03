@@ -24,12 +24,10 @@ def default_assets_dir() -> Path:
 
 
 def layout_config_path(assets_dir: Path) -> Path:
-    """开发版读写项目 assets；正式版读写 $HOME/.bwpdiy/layout.json。"""
-    if is_frozen():
-        path = Path.home() / ".bwpdiy"
-        path.mkdir(parents=True, exist_ok=True)
-        return path / "layout.json"
-    return Path(assets_dir) / "layout.json"
+    """开发版与正式版统一读写 $HOME/.bwpdiy/layout.json。"""
+    path = Path.home() / ".bwpdiy"
+    path.mkdir(parents=True, exist_ok=True)
+    return path / "layout.json"
 
 
 def default_library_dir() -> Path:

@@ -248,7 +248,9 @@ def _validate_entity_elements(elements: dict, state: dict) -> None:
             for key in ("base_size", "num_size"):
                 if not _bounded_number(level.get(key), ENTITY_MAX_ELEMENT_SIZE, True):
                     raise ValueError(f"等级标 {key} 必须是有限且限幅的正数")
-    for field in ("power", "health", "combat_power", "shield", "right_top", "defeated"):
+    right_top = _right_top_counter(state)
+    for field in ("power", "health", "combat_power", "shield",
+                  "energy", "countdown", "defeated"):
         elem = elements.get(field)
         if elem is None:
             continue
@@ -258,7 +260,7 @@ def _validate_entity_elements(elements: dict, state: dict) -> None:
             continue
         if field in ("combat_power", "shield") and state[field] == 0:
             continue
-        if field == "right_top" and _right_top_counter(state) is None:
+        if field in ("energy", "countdown") and (right_top is None or right_top[0] != field):
             continue
         if field == "defeated" and state["defeated_countdown"] is None:
             continue
@@ -360,11 +362,11 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
             continue
         add_centered(elem["pos"], (elem["icon_size"], elem["icon_size"]))
     right_top = _right_top_counter(state)
-    for field in ("right_top", "defeated"):
+    for field in ("energy", "countdown", "defeated"):
         elem = elements.get(field)
         if elem is None or not elem.get("enabled", True):
             continue
-        if field == "right_top" and right_top is None:
+        if field in ("energy", "countdown") and (right_top is None or right_top[0] != field):
             continue
         if field == "defeated" and state["defeated_countdown"] is None:
             continue
@@ -381,12 +383,12 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
                                 round(elem.get("stroke_width", 1)), state[f"{field}_color"],
                                 elem.get("_digit_gap", _DIGIT_GAP))
         add_prepared(field, elem, digits)
-    for field in ("right_top", "defeated"):
+    for field in ("energy", "countdown", "defeated"):
         elem = elements.get(field)
         if elem is None or not elem.get("enabled", True):
             continue
-        if field == "right_top":
-            if right_top is None:
+        if field in ("energy", "countdown"):
+            if right_top is None or right_top[0] != field:
                 continue
             _, value, color = right_top
         else:
@@ -498,9 +500,10 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
             canvas = _render_stat(canvas, lib, shifted(elements[field]), state,
                                   prepared_digits.get(field))
     right_top = _right_top_counter(state)
-    if right_top is not None and "right_top" in elements:
-        canvas = _render_counter(canvas, lib, shifted(elements["right_top"]),
-                                 right_top[0], prepared_digits.get("right_top"))
+    if right_top is not None and right_top[0] in elements:
+        field = right_top[0]
+        canvas = _render_counter(canvas, lib, shifted(elements[field]),
+                                 field, prepared_digits.get(field))
     if state["defeated_countdown"] is not None and "defeated" in elements:
         canvas = _render_counter(canvas, lib, shifted(elements["defeated"]),
                                  "defeated_countdown", prepared_digits.get("defeated"))

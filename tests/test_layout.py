@@ -8,6 +8,12 @@ from bwpdiy.render import layout
 TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"]
 
 
+def _config_path(tmp_path):
+    path = tmp_path / "home" / ".bwpdiy" / "layout.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def test_default_layout_covers_all_types():
     layouts = layout.load_layouts(Path("不存在的目录"))
     for t in TYPES:
@@ -25,12 +31,16 @@ def test_default_layout_covers_all_types():
             assert elem.get("font", "name") in ("name", "desc")
 
 
-def test_assets_layout_takes_precedence(tmp_path):
+def test_source_layout_uses_home_config(tmp_path):
     custom = {t: {"elements": {}, "text_regions": {}} for t in TYPES}
     custom["战斗"]["elements"]["rarity"] = {"kind": "rarity_flank", "pos": [1, 2], "gap": 16, "size": 24}
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    _config_path(tmp_path).write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
     layouts = layout.load_layouts(tmp_path)
     assert layouts["战斗"]["elements"]["rarity"]["pos"] == [1, 2]
+
+
+def test_source_layout_file_removed():
+    assert not Path("assets/layout.json").exists()
 
 
 def test_frozen_layout_uses_home_config(tmp_path, monkeypatch):
@@ -53,7 +63,7 @@ def test_frozen_layout_uses_home_config(tmp_path, monkeypatch):
 
 
 def test_entity_layout_backfilled(tmp_path):
-    (tmp_path / "layout.json").write_text(
+    _config_path(tmp_path).write_text(
         '{"式神": {"elements": {}, "text_regions": {}}}', encoding="utf-8")
     layouts = layout.load_layouts(tmp_path)
     entity = layouts["对局式神"]
@@ -70,7 +80,7 @@ def test_entity_layout_backfilled(tmp_path):
 def test_entity_layout_independent_from_card_types(tmp_path):
     custom = {t: {"elements": {"power": _stat(30)}, "text_regions": {}} for t in TYPES}
     custom["对局式神"] = {"version": 2, "elements": {"power": _stat(18)}}
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    _config_path(tmp_path).write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
     layouts = layout.load_layouts(tmp_path)
     assert layouts["对局式神"]["elements"]["power"]["font_size"] == 18
     assert all(layouts[t]["elements"]["power"]["font_size"] == 30 for t in TYPES)
@@ -97,7 +107,7 @@ def test_burst_backfilled_without_overriding_existing_layout(tmp_path):
     custom = {t: {"elements": {}, "text_regions": {}} for t in TYPES}
     existing = {"kind": "burst", "offset": [9, 8]}
     custom["法术"]["elements"]["burst"] = existing.copy()
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    _config_path(tmp_path).write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
 
     layouts = layout.load_layouts(tmp_path)
     for card_type in TYPES:
@@ -168,7 +178,7 @@ def test_card_layout_fields_independent_across_types(tmp_path):
     custom["法术"]["elements"]["power"].update(font_size=24, num_offset=[30, 0])
     custom["法术"]["text_regions"]["desc"].update(
         width=300, font_range=[18, 10], icon_scale=1.25)
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    _config_path(tmp_path).write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
     layouts = layout.load_layouts(tmp_path)
 
     assert layouts["法术"]["elements"]["power"]["font_size"] == 24
@@ -192,7 +202,7 @@ def test_frame_variant_sparse_layout_merges_without_polluting_norm(tmp_path):
         "text_regions": {},
         "frame_variants": {"black": {"elements": {"name": {"pos": [12, 34]}}}},
     }}
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    _config_path(tmp_path).write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
     layouts = layout.load_layouts(tmp_path)
 
     norm = layout.get_type_layout(layouts, "战斗")
@@ -214,7 +224,7 @@ def test_frame_variant_layout_independent_across_types(tmp_path):
         }
     custom["法术"]["frame_variants"]["black"]["elements"]["power"]["font_size"] = 18
     custom["战斗"]["frame_variants"]["black"]["elements"]["power"]["pos"] = [8, 9]
-    (tmp_path / "layout.json").write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
+    _config_path(tmp_path).write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
     layouts = layout.load_layouts(tmp_path)
 
     for card_type in layout.FRAME_LAYOUT_TYPES:
@@ -249,7 +259,7 @@ def test_merge_card_layout():
 
 
 def _write_entity_layout(tmp_path, entity):
-    (tmp_path / "layout.json").write_text(
+    _config_path(tmp_path).write_text(
         json.dumps({"对局式神": entity}, ensure_ascii=False), encoding="utf-8")
 
 
@@ -364,21 +374,36 @@ def test_entity_counter_layout_backfilled_and_shipped(tmp_path):
 
     _write_entity_layout(tmp_path, {"version": 2, "elements": {}})
     backfilled = layout.load_layouts(tmp_path)["对局式神"]["elements"]
-    assert backfilled["right_top"] == {
-        "kind": "counter", "pos": [82, 18], "icon_size": 28,
-        "num_offset": [0, 0], "font_size": 24, "stroke_width": 2,
-    }
+    for name in ("energy", "countdown"):
+        assert backfilled[name] == {
+            "kind": "counter", "pos": [82, 18], "icon_size": 28,
+            "num_offset": [0, 0], "font_size": 24, "stroke_width": 2,
+        }
+    assert "right_top" not in backfilled
     assert backfilled["defeated"] == {
         "kind": "counter", "pos": [48, 66], "icon_size": 44,
         "num_offset": [0, 0], "font_size": 40, "stroke_width": 2,
     }
     for path in (Path("assets"), Path("bwpdiy/render")):
         elements = layout.load_layouts(path)["对局式神"]["elements"]
-        assert elements["right_top"] == _DEFAULT_LAYOUT["elements"]["right_top"]
-        assert elements["defeated"] == _DEFAULT_LAYOUT["elements"]["defeated"]
+        for name in ("energy", "countdown", "defeated"):
+            assert elements[name] == _DEFAULT_LAYOUT["elements"][name]
 
 
-def test_three_default_entity_layouts_are_synchronized():
+def test_entity_right_top_layout_migrates_without_overriding_new_elements(tmp_path):
+    legacy = {"kind": "counter", "pos": [80, 20], "icon_size": 26,
+              "num_offset": [1, 2], "font_size": 22, "stroke_width": 1}
+    existing = {**legacy, "pos": [70, 30], "font_size": 20}
+    _write_entity_layout(tmp_path, {"version": 2, "elements": {
+        "right_top": legacy, "energy": existing,
+    }})
+    elements = layout.load_layouts(tmp_path)["对局式神"]["elements"]
+    assert elements["energy"] == existing
+    assert elements["countdown"] == legacy
+    assert "right_top" not in elements
+
+
+def test_default_entity_layouts_are_synchronized():
     from bwpdiy.render.entity import _DEFAULT_LAYOUT
 
     packaged = layout.load_layouts(Path("bwpdiy/render"))["对局式神"]

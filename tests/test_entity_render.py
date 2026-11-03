@@ -122,9 +122,13 @@ def test_entity_rejects_excess_counter_digits(field):
 def make_counter_layout():
     layout = deepcopy(_DEFAULT_LAYOUT)
     layout["elements"] = {
-        "right_top": {
+        "energy": {
             "kind": "counter", "pos": [82, 18], "icon_size": 28,
             "num_offset": [0, 0], "font_size": 24, "stroke_width": 2,
+        },
+        "countdown": {
+            "kind": "counter", "pos": [70, 30], "icon_size": 24,
+            "num_offset": [2, -1], "font_size": 24, "stroke_width": 2,
         },
         "defeated": {
             "kind": "counter", "pos": [48, 66], "icon_size": 44,
@@ -213,7 +217,7 @@ def test_entity_defeat_preserves_energy_icon_color(assets_dir, sample_art, monke
     import bwpdiy.render.entity as entity
 
     layout = make_counter_layout()
-    layout["elements"]["right_top"]["pos"] = [48, 72]
+    layout["elements"]["energy"]["pos"] = [48, 72]
     layout["elements"]["defeated"]["enabled"] = False
     lib = get_library(assets_dir)
     monkeypatch.setattr(lib, "stat_badge",
@@ -229,7 +233,7 @@ def test_entity_defeated_counter_draws_above_energy(assets_dir, sample_art, monk
     import bwpdiy.render.entity as entity
 
     layout = make_counter_layout()
-    layout["elements"]["right_top"]["pos"] = [48, 72]
+    layout["elements"]["energy"]["pos"] = [48, 72]
     layout["elements"]["defeated"]["pos"] = [48, 72]
     lib = get_library(assets_dir)
     colors = {"energy": (255, 0, 0, 255), "defeated_countdown": (0, 0, 255, 255)}
@@ -243,7 +247,8 @@ def test_entity_defeated_counter_draws_above_energy(assets_dir, sample_art, monk
 
 
 @pytest.mark.parametrize("element, state", [
-    ("right_top", {"energy": 0}),
+    ("energy", {"energy": 0}),
+    ("countdown", {"countdown": 2}),
     ("defeated", {"defeated_countdown": 2}),
     ("defeated", {"defeated_countdown": "infinity"}),
 ])
@@ -259,7 +264,8 @@ def test_entity_counter_overflow_expands_work_canvas(
 
 
 @pytest.mark.parametrize("element, state", [
-    ("right_top", {"energy": 0}),
+    ("energy", {"energy": 0}),
+    ("countdown", {"countdown": 2}),
     ("defeated", {"defeated_countdown": 2}),
     ("defeated", {"defeated_countdown": "infinity"}),
 ])
@@ -277,7 +283,7 @@ def test_entity_counter_ink_overflow_expands_work_canvas(
 
 def test_entity_hidden_countdown_does_not_expand_work_canvas(assets_dir, sample_art):
     layout = make_counter_layout()
-    layout["elements"]["right_top"]["pos"] = [1000, 1000]
+    layout["elements"]["countdown"]["pos"] = [1000, 1000]
     full = render_entity(make_card(sample_art),
                          {"countdown": 2, "defeated_countdown": 2}, assets_dir,
                          layout=layout, crop=False)
@@ -324,7 +330,7 @@ def test_entity_counter_native_scaling_covers_geometry_and_ink(
     assert ink_calls[-1][1] == 4
     if state.get("defeated_countdown") != "infinity":
         assert ink_calls[-1][2] == entity._DIGIT_GAP * 2
-    for name in ("right_top", "defeated"):
+    for name in ("energy", "countdown", "defeated"):
         before = layout["elements"][name]
         after = scaled_elements[-1][name]
         for key in ("pos", "num_offset"):
@@ -794,12 +800,12 @@ def test_validate_entity_state_rejects_excess_digits(field, value):
     ("power", "stroke_width", -1),
     ("power", "stroke_width", 33),
     ("power", "num_offset", [math.inf, 0]),
-    ("right_top", "pos", [True, 0]),
-    ("right_top", "pos", [5000, 0]),
-    ("right_top", "num_offset", [math.inf, 0]),
-    ("right_top", "icon_size", 1025),
-    ("right_top", "font_size", 0),
-    ("right_top", "stroke_width", 33),
+    ("energy", "pos", [True, 0]),
+    ("energy", "pos", [5000, 0]),
+    ("energy", "num_offset", [math.inf, 0]),
+    ("energy", "icon_size", 1025),
+    ("energy", "font_size", 0),
+    ("energy", "stroke_width", 33),
     ("defeated", "pos", [True, 0]),
     ("defeated", "pos", [5000, 0]),
     ("defeated", "num_offset", [math.inf, 0]),

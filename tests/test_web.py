@@ -1525,8 +1525,10 @@ const layouts = {{
     defeated: {{kind: 'counter', pos: [48, 66], icon_size: 44, num_offset: [0, 0],
       font_size: 40, stroke_width: 2}},
     shield: {{kind: 'stat', pos: [0, 100]}},
-    right_top: {{kind: 'counter', pos: [82, 18], icon_size: 28, num_offset: [0, 0],
+    energy: {{kind: 'counter', pos: [82, 18], icon_size: 28, num_offset: [0, 0],
       font_size: 24, stroke_width: 2}},
+    countdown: {{kind: 'counter', pos: [70, 30], icon_size: 24, num_offset: [2, -1],
+      font_size: 22, stroke_width: 1}},
     health: {{kind: 'stat', pos: [40, 100]}}, combat_power: {{kind: 'stat', pos: [10, 100]}},
     power: {{kind: 'stat', pos: [30, 100]}}, level: {{kind: 'level_badge', pos: [48, 137]}},
   }}, art_window: {{center: [48, 72], width: 84, height: 132}}}},
@@ -1568,7 +1570,7 @@ assert.deepStrictEqual(layouts['战斗'].elements.level.pos, [10, 10]);
 controls['偏移 x'].value = '9'; controls['偏移 x'].onchange();
 assert.deepStrictEqual(layouts['战斗'].elements.burst.offset, [9, 70]);
 entityLayoutMode = true;
-sel = {{kind: 'element', name: 'right_top'}};
+sel = {{kind: 'element', name: 'energy'}};
 buildProps();
 const counterControls = {{}};
 function collectCounter(node) {{
@@ -1581,9 +1583,15 @@ assert.deepStrictEqual(Object.keys(counterControls),
   ['位置 x', '位置 y', '图标尺寸', '数字偏移 x', '数字偏移 y', '字号', '描边宽度']);
 assert(!Object.keys(counterControls).some(label => label.includes('符号') || label.includes('加号') ||
                                                    label.includes('减号')));
+counterControls['数字偏移 x'].value = '7'; counterControls['数字偏移 x'].onchange();
+assert.deepStrictEqual(layouts['对局式神'].elements.energy.num_offset, [7, 0]);
+sel = {{kind: 'element', name: 'countdown'}};
+buildProps(); collectCounter(props);
+assert.strictEqual(counterControls['数字偏移 x'].value, 2);
+assert.strictEqual(layouts['对局式神'].elements.energy.num_offset[0], 7);
 buildLists();
 assert.deepStrictEqual(elems.children.map(x => x.textContent),
-  ['等级', '卡图内窗', '力量', '生命', '战力', '护甲', '右上组件', '气绝倒计时']);
+  ['等级', '卡图内窗', '力量', '生命', '战力', '护甲', '能量', '倒计时', '气绝倒计时']);
 console.log('OK');
 """
     _run_node(tmp_path, driver)
@@ -1671,7 +1679,7 @@ def test_layout_entity_counter_samples_and_requests_without_dirty(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 let entityLayoutMode = true, cardLayoutMode = null, dirty = false, scheduled = 0, previewSeq = 0;
-const layout = {{version: 2, elements: {{right_top: {{kind: 'counter', pos: [82, 18]}},
+const layout = {{version: 2, elements: {{energy: {{kind: 'counter', pos: [82, 18]}},
   defeated: {{kind: 'counter', pos: [48, 66]}}}}, art_window: {{center: [48, 72]}}}};
 const before = JSON.stringify(layout);
 function typeLayout() {{ return layout; }}
@@ -1700,18 +1708,21 @@ function control(label) {{
 }}
 (async () => {{
   buildCardProps();
-  const mode = control('右上组件');
-  assert(mode && control('气绝') && control('永久'));
+  assert(control('能量') && control('倒计时') && control('气绝') && control('永久'));
+  assert.strictEqual(control('右上组件'), null);
   assert.strictEqual(control('永久').disabled, true);
-  mode.value = 'countdown'; mode.onchange();
+  control('倒计时').checked = true; control('倒计时').onchange();
   assert.strictEqual(entityLayoutSample.countdown, 1);
   assert.strictEqual(entityLayoutSample.energy, null);
-  const countdown = control('右上数值');
-  countdown.value = '2'; countdown.onchange();
+  assert.strictEqual(control('倒计时数值').disabled, false);
+  assert.strictEqual(control('能量数值').disabled, true);
+  control('倒计时数值').value = '2'; control('倒计时数值').onchange();
   assert.strictEqual(entityLayoutSample.countdown, 2);
-  control('右上组件').value = 'energy'; control('右上组件').onchange();
-  const energy = control('右上数值');
-  energy.value = '3'; energy.onchange();
+  control('能量').checked = true; control('能量').onchange();
+  assert.strictEqual(entityLayoutSample.energy, 0);
+  assert.strictEqual(entityLayoutSample.countdown, null);
+  assert.strictEqual(control('倒计时').checked, false);
+  control('能量数值').value = '3'; control('能量数值').onchange();
   await refreshEntityLayoutPreview();
   let state = JSON.parse(requests[0].options.body).state;
   assert.strictEqual(state.energy, 3);
@@ -1729,7 +1740,10 @@ function control(label) {{
   assert.strictEqual(state.defeated_countdown, 'infinity');
   assert.strictEqual(JSON.stringify(layout), before);
   assert.strictEqual(dirty, false);
-  assert.strictEqual(scheduled, 6);
+  control('能量').checked = false; control('能量').onchange();
+  assert.strictEqual(entityLayoutSample.energy, null);
+  assert.strictEqual(entityLayoutSample.countdown, null);
+  assert.strictEqual(scheduled, 7);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """

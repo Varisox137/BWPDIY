@@ -9,7 +9,7 @@ const DISP = {
   level: '等级标', faction: '派系标', rarity: '稀有度', power: '力量', health: '生命',
   shield: '护甲', durability: '耐久', name: '卡名', footer: '脚注', desc: '描述',
   duo_frame: '双式神框', art_window: '卡图内窗', burst: '爆能',
-  right_top: '右上组件', defeated: '气绝倒计时',
+  energy: '能量', countdown: '倒计时', defeated: '气绝倒计时',
   // 元素 kind
   stat: '数值', rarity_flank: '稀有度双标', level_badge: '等级标', text: '文本',
   counter: '计数',
@@ -405,30 +405,24 @@ function buildCardProps() {
         schedulePreview();
       }, null, 999999999999);
     }
-    const mode = entityLayoutSample.energy !== null ? 'energy'
-      : (entityLayoutSample.countdown !== null ? 'countdown' : 'none');
-    const modeLabels = {none: '无', energy: '能量', countdown: '倒计时'};
-    selRowC(div, '右上组件', ['none', 'energy', 'countdown'], mode, v => {
-      if (v === 'energy') {
-        entityLayoutSample.energy = Number.isInteger(entityLayoutSample.energy)
-          ? Math.max(0, entityLayoutSample.energy) : 0;
-        entityLayoutSample.countdown = null;
-      } else if (v === 'countdown') {
-        entityLayoutSample.countdown = Number.isInteger(entityLayoutSample.countdown)
-          ? Math.max(1, entityLayoutSample.countdown) : 1;
-        entityLayoutSample.energy = null;
-      } else {
-        entityLayoutSample.energy = null;
-        entityLayoutSample.countdown = null;
-      }
-      buildCardProps();
-      schedulePreview();
-    }, key => modeLabels[key]);
-    if (mode !== 'none') {
-      numRowC(div, '右上数值', entityLayoutSample[mode], true, v => {
-        entityLayoutSample[mode] = v;
+    for (const [field, label, initial, min] of [
+      ['energy', '能量', 0, 0], ['countdown', '倒计时', 1, 1],
+    ]) {
+      const other = field === 'energy' ? 'countdown' : 'energy';
+      battleCheckbox(div, label, entityLayoutSample[field] !== null, checked => {
+        entityLayoutSample[field] = checked
+          ? (Number.isInteger(entityLayoutSample[field])
+            ? Math.max(min, entityLayoutSample[field]) : initial) : null;
+        if (checked) entityLayoutSample[other] = null;
+        buildCardProps();
         schedulePreview();
-      }, null, 999999999999, mode === 'energy' ? 0 : 1);
+      });
+      const row = div.children.length;
+      numRowC(div, `${label}数值`, entityLayoutSample[field] ?? initial, true, v => {
+        entityLayoutSample[field] = v;
+        schedulePreview();
+      }, null, 999999999999, min);
+      div.children[row].children[0].disabled = entityLayoutSample[field] === null;
     }
     const defeated = entityLayoutSample.defeated_countdown !== null;
     const permanent = entityLayoutSample.defeated_countdown === 'infinity';
@@ -521,7 +515,7 @@ function textRow(div, label, val, set) {
 
 // 左栏列表（显示中文名，内部键存 dataset.key 供选中高亮比对）
 // 元素与文本区合并为一列：普通类型按卡面区域排序，stat 按 pos.x 升序；
-// 对局式神固定为等级 / 卡图内窗 / 力量 / 生命 / 战力 / 护甲 / 右上组件 / 气绝倒计时。
+// 对局式神固定为等级 / 卡图内窗 / 力量 / 生命 / 战力 / 护甲 / 能量 / 倒计时 / 气绝倒计时。
 function buildLists() {
   const tl = typeLayout();
   const ed = document.getElementById('l-elems'); ed.innerHTML = '';
@@ -533,7 +527,8 @@ function buildLists() {
   if (regions.desc) items.push({kind: 'region', name: 'desc'});
   if (regions.art_window) items.push({kind: 'region', name: 'art_window'});
   const stats = entityLayoutMode
-    ? ['power', 'health', 'combat_power', 'shield', 'right_top', 'defeated'].filter(n => tl.elements[n])
+    ? ['power', 'health', 'combat_power', 'shield', 'energy', 'countdown', 'defeated']
+      .filter(n => tl.elements[n])
     : Object.entries(tl.elements)
       .filter(([, e]) => e.kind === 'stat')
       .sort((a, b) => a[1].pos[0] - b[1].pos[0])

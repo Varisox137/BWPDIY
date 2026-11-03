@@ -445,7 +445,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         """主要式神头像预览：双式神框单槽位（底图+头像+斜方框+派系标），按布局 2 倍渲染。
 
         变换取表单/落盘的 portrait 段（缺省 0/0/1/0）；派系标随式神 faction；
-        缺卡图只画空槽位。布局取当前 assets/layout.json 协战 duo_frame 元素。
+        缺卡图只画空槽位。布局取当前全局配置的协战 duo_frame 元素。
         衍生物式神不使用头像预览/导出。
         """
         card_data = load_card(library_dir, project, card)

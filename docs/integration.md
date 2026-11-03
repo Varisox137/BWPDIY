@@ -168,7 +168,7 @@ entity.save("entity.png")
 - `level` 为 0–3；0 只绘制底框和卡图，不绘制等级标、数值角标及状态组件。
 - `power/health` 必须非负；`combat_power/shield` 可为负。四个数值颜色均可选 `red/green/purple`，缺省白色。
 - `energy/countdown/defeated_countdown` 为临时状态，不写入卡牌。energy 与 countdown 同时非空会抛出 `ValueError`；气绝保留 energy 并隐藏 countdown，仅灰化底框和卡图，气绝组件最后绘制。永久气绝只接受精确字符串 `"infinity"`。
-- `layout` 使用布局字典的「对局式神」独立段；缺省读取包内默认段。小卡基础框为 96×144，外扩元素会扩大最终紧致边界；`right_top` 与 `defeated` 是两个 counter 元素，复用数字渲染、边界准备与原生缩放。
+- `layout` 使用布局字典的「对局式神」独立段；缺省读取包内默认段。小卡基础框为 96×144，外扩元素会扩大最终紧致边界；`energy`、`countdown` 与 `defeated` 是独立的 counter 元素，分别配置图标和数字，复用数字渲染、边界准备与原生缩放；旧 `right_top` 配置加载时自动复制到能量与倒计时。
 - `entity_eligible(card)` 可预先判断来源是否支持；`validate_entity_state(state)` 可单独取得规范化状态。
 
 ## 5. 式神头像 `render_portrait`

@@ -135,7 +135,7 @@ def test_name_top_left(assets_dir):
     assert gold_xs and min(gold_xs) <= MARGIN_X + 4  # 左对齐：金色墨迹贴近左边距
 
 
-# ---------- 布局参数（layout 段，对应 assets/layout.json「机制」） ----------
+# ---------- 布局参数（layout 段，对应全局布局「机制」） ----------
 
 def test_layout_none_and_unknown_keys_equal_default(assets_dir):
     """layout=None / 未知键 / 畸形值（含嵌套键）均回退默认，渲染逐像素一致。"""

@@ -1,6 +1,6 @@
 """布局配置加载：用户布局优先，缺省回退包内 default_layout.json。
 
-开发版用户文件为 assets/layout.json，正式版为 $HOME/.bwpdiy/layout.json。
+开发版与正式版用户文件均为 $HOME/.bwpdiy/layout.json。
 布局 schema 见 docs/terminology.md「布局配置」。
 """
 

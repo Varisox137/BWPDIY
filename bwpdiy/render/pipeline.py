@@ -9,7 +9,7 @@
 stat 数值层（符号+数字，压在描述文本之上）→
 最终导出按整卡 tightest alpha bbox 裁剪后**原尺寸直接返回**（高 512 顶格、
 宽按内容，无 512 画布留白）；crop=False 返回 512 全画布（管线内部分层断言用）。
-布局元素由 assets/layout.json 驱动，探出框缘的元素不受影响。
+布局元素由 $HOME/.bwpdiy/layout.json 驱动，探出框缘的元素不受影响。
 框品：card["frame_variant"]（缺省 norm），协战恒 norm。
 """
 

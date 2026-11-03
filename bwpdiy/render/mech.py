@@ -1,7 +1,7 @@
 """机制描述框渲染：灵咒框（invocation）/关键字框（skill，技能描述黑框素材）/加护蚀印框（seal）。
 
 排版口径（样式参考 assets/psd_export/文字描述-EX，取色与字号由素材实测定值）：
-- 字号由机制布局配置（DEFAULT_LAYOUT，可被 assets/layout.json「机制」段覆盖）：
+- 字号由机制布局配置（DEFAULT_LAYOUT，可被 $HOME/.bwpdiy/layout.json「机制」段覆盖）：
   正文 text_size 默认 24（方正北魏楷书 desc 字体；技能描述.png 96px/4 字实测），
   关键字名 name_size 默认 26 略大于正文（不做加粗描边）；行距 = 正文字号。
   原生行距 LINE_PITCH=24 = 灵咒框相邻行数素材高度差（三/四/五行字 102/126/150，
@@ -63,7 +63,7 @@ MARGIN_X = 12        # 文本左缘默认值
 BADGE_POS = (6, 6)   # 加护/蚀印角标贴框左上角默认值
 BADGE_NAME_GAP = 6   # 角标存在时关键字名与角标右缘的间距
 
-# 机制布局默认配置（assets/layout.json「机制」段覆盖；GUI 布局设置「机制」页编辑）。
+# 机制布局默认配置（$HOME/.bwpdiy/layout.json「机制」段覆盖；GUI 布局设置「机制」页编辑）。
 # 字号/小图标三类框共用；文本区域完全分框独立（frames.<框>），无共用基础偏移；
 # 加护/蚀印角标仅 seal 框合法，其尺寸/坐标配置在 frames.seal 区域下。
 _DEFAULT_REGION = {"text_x": MARGIN_X, "text_dy": 0, "width": 288}
@@ -246,7 +246,7 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
 
     mech 字段：name 关键字名、frame（invocation/skill/seal）、text 多行描述、
     badge（bless/eclipse，仅 seal 框合法，贴框左上角）。
-    layout：机制布局配置（assets/layout.json「机制」段），缺省/缺键回退 DEFAULT_LAYOUT。
+    layout：机制布局配置（$HOME/.bwpdiy/layout.json「机制」段），缺省/缺键回退 DEFAULT_LAYOUT。
     info：传入 dict 时回填实际文本块矩形（裁剪后坐标系）
     {text_x, text_top, text_width, text_height}，供 GUI 画文本区域轮廓。
     chars_per_line：每行汉字数，覆盖布局文本宽；缺省按布局值（出厂默认 12）。

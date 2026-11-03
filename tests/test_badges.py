@@ -174,8 +174,10 @@ def test_infinity_has_white_ink_and_stroke(assets_dir):
     from bwpdiy.render.badges import _render_infinity
     img = _render_infinity(36, 2)
     assert img.width > img.height > 0
-    assert img.width < 54 and img.height > 25  # 36px 字号：窄高双环，不再宽扁
-    assert img.height > img.width * 0.55
+    assert 25 <= img.width <= 34 and 10 <= img.height <= 16  # 参考永久气绝的小巧横向符号
+    assert any(img.getpixel((img.width // 2, y))[0] > 180
+               and img.getpixel((img.width // 2, y))[3] > 200
+               for y in range(img.height))  # 中央交叉连续，不画成两个分离圆环
     assert any(p[:3] == (0, 0, 0) and p[3] > 0 for p in img.getdata())
     assert any(img.getpixel((x, 0))[:3] == (0, 0, 0) and img.getpixel((x, 0))[3] > 0
                for x in range(img.width))

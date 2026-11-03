@@ -1,5 +1,7 @@
 """元素渲染：按布局元素定义渲染 等级标/稀有度双标/派系标/数值标/点文本。"""
 
+import math
+
 from PIL import Image, ImageDraw
 
 from bwpdiy.render.assets import AssetLibrary
@@ -103,22 +105,26 @@ _tint_sign = _tint  # 符号贴图与白字数字同一口径：填充换渐变�
 
 
 def _render_infinity(font_size: int, stroke_width: int) -> Image.Image:
-    """以两个横向相切椭圆绘制无限符号，不依赖字体字形。"""
-    loop_w = max(2, round(font_size * 0.55))
-    loop_h = max(2, round(font_size * 0.65))
-    white_width = max(1, round(font_size / 6))
+    """按永久气绝参考图绘制连续交叉的细线无限符号，不依赖字体字形。"""
+    width = max(2, round(font_size * 0.65))
+    height = max(2, round(font_size * 0.24))
+    white_width = max(1, round(font_size / 18))
     pad = stroke_width + 2
-    img = Image.new("RGBA", (loop_w * 2 + pad * 2 + 1,
-                             loop_h + pad * 2 + 1), (0, 0, 0, 0))
+    scale = 4
+    size = (width + pad * 2 + 1, height + pad * 2 + 1)
+    img = Image.new("RGBA", (size[0] * scale, size[1] * scale), (0, 0, 0, 0))
+    points = []
+    for i in range(257):
+        t = math.tau * i / 256
+        x = pad + width / 2 + width / 2 * math.sin(t)
+        y = pad + height / 2 + height / 2 * math.sin(t) * math.cos(t)
+        points.append((round(x * scale), round(y * scale)))
     draw = ImageDraw.Draw(img)
-    boxes = [(pad + i * loop_w, pad, pad + (i + 1) * loop_w, pad + loop_h)
-             for i in range(2)]
-    for left, top, right, bottom in boxes:
-        draw.ellipse((left - stroke_width, top - stroke_width,
-                      right + stroke_width, bottom + stroke_width),
-                     outline=(0, 0, 0, 220), width=white_width + stroke_width * 2)
-    for box in boxes:
-        draw.ellipse(box, outline=(255, 255, 255, 255), width=white_width)
+    draw.line(points, fill=(0, 0, 0, 220),
+              width=(white_width + stroke_width * 2) * scale, joint="curve")
+    draw.line(points, fill=(255, 255, 255, 255),
+              width=white_width * scale, joint="curve")
+    img = img.resize(size, Image.Resampling.LANCZOS)
     bbox = img.getchannel("A").getbbox()
     return _tint(img.crop(bbox), *STAT_COLORS["white"])
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** 将能量与倒计时拆成独立布局元素和互斥样例勾选框，并把永久气绝 `∞` 调整为窄高轮廓。
+**Goal:** 将能量与倒计时拆成独立布局元素和互斥样例勾选框，并把永久气绝 `∞` 调整为参考图连续细线轮廓。
 
 **Architecture:** 渲染状态契约不变，仅将布局元素 `right_top` 拆为 `energy/countdown`；旧配置加载时复制迁移。布局编辑器复用现有 counter 拖拽、数字锚点和右栏控件。
 
@@ -42,7 +42,7 @@ Expected: 因新元素尚未接入且 ∞ 仍为旧比例而失败。
 
 - [x] **Step 3: 实现最小改动**
 
-`_right_top_counter` 返回 `(字段名, 数值, 颜色)`，字段名直接为 `energy/countdown`；校验、边界准备和最终绘制按激活状态选择对应元素。布局加载在默认深补全前迁移旧 `right_top`。包内默认 JSON 用旧 `right_top` 参数生成两个独立元素。`_render_infinity` 环宽/高改为字号 ×0.55/×0.65。
+`_right_top_counter` 返回 `(字段名, 数值, 颜色)`，字段名直接为 `energy/countdown`；校验、边界准备和最终绘制按激活状态选择对应元素。布局加载在默认深补全前迁移旧 `right_top`。包内默认 JSON 用旧 `right_top` 参数生成两个独立元素。`_render_infinity` 按参考图改为连续交叉细线，主体尺寸为字号 ×0.65/×0.24。
 
 - [x] **Step 4: 运行相关测试并提交**
 
@@ -79,7 +79,7 @@ Expected: 因仍使用 `right_top` 与下拉框而失败。
 
 - [x] **Step 3: 实现界面并同步文档**
 
-用两个 `battleCheckbox` 替代下拉，勾选互斥、取消即关闭；保留各组件数值输入。`DISP`、元素顺序、拖拽和右栏改用 energy/countdown。文档将 right_top 旧术语标为已迁移，changelog 在 1.8.0 补充独立布局与窄高 ∞；不新增版本号。
+用两个 `battleCheckbox` 替代下拉，勾选互斥、取消即关闭；保留各组件数值输入。`DISP`、元素顺序、拖拽和右栏改用 energy/countdown。文档将 right_top 旧术语标为已迁移，changelog 在 1.8.0 补充独立布局与参考图连续细线 ∞；不新增版本号。
 
 - [x] **Step 4: 全量验证与真实服务验收**
 

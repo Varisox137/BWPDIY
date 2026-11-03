@@ -107,7 +107,7 @@ _tint_sign = _tint  # 符号贴图与白字数字同一口径：填充换渐变�
 def _render_infinity(font_size: int, stroke_width: int) -> Image.Image:
     """按永久气绝参考图绘制连续交叉的细线无限符号，不依赖字体字形。"""
     width = max(2, round(font_size * 0.65))
-    height = max(2, round(font_size * 0.24))
+    height = max(2, round(font_size * 0.42))
     white_width = max(1, round(font_size / 18))
     pad = stroke_width + 2
     scale = 4

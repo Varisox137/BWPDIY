@@ -42,7 +42,7 @@ Expected: 因新元素尚未接入且 ∞ 仍为旧比例而失败。
 
 - [x] **Step 3: 实现最小改动**
 
-`_right_top_counter` 返回 `(字段名, 数值, 颜色)`，字段名直接为 `energy/countdown`；校验、边界准备和最终绘制按激活状态选择对应元素。布局加载在默认深补全前迁移旧 `right_top`。包内默认 JSON 用旧 `right_top` 参数生成两个独立元素。`_render_infinity` 按参考图改为连续交叉细线，主体尺寸为字号 ×0.65/×0.24。
+`_right_top_counter` 返回 `(字段名, 数值, 颜色)`，字段名直接为 `energy/countdown`；校验、边界准备和最终绘制按激活状态选择对应元素。布局加载在默认深补全前迁移旧 `right_top`。包内默认 JSON 用旧 `right_top` 参数生成两个独立元素。`_render_infinity` 按参考图改为连续交叉细线，主体尺寸为字号 ×0.65/×0.42。
 
 - [x] **Step 4: 运行相关测试并提交**
 

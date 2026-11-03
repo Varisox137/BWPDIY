@@ -174,7 +174,7 @@ def test_infinity_has_white_ink_and_stroke(assets_dir):
     from bwpdiy.render.badges import _render_infinity
     img = _render_infinity(36, 2)
     assert img.width > img.height > 0
-    assert 25 <= img.width <= 34 and 10 <= img.height <= 16  # 参考永久气绝的小巧横向符号
+    assert 25 <= img.width <= 34 and 17 <= img.height <= 24  # 宽度不变，高度约为初版细线的 1.75 倍
     assert any(img.getpixel((img.width // 2, y))[0] > 180
                and img.getpixel((img.width // 2, y))[3] > 200
                for y in range(img.height))  # 中央交叉连续，不画成两个分离圆环

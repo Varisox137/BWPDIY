@@ -151,8 +151,6 @@ def validate_entity_state(state: dict) -> dict:
         if color is not None and (not isinstance(color, str) or color not in STAT_VALUE_COLORS):
             raise ValueError(f"{field}_color 非法")
     energy, countdown = normalized["energy"], normalized["countdown"]
-    if energy is not None and countdown is not None:
-        raise ValueError("energy/countdown 至多一个非空")
     for field in ("energy", "countdown"):
         value = normalized[field]
         if value is not None and not _is_int(value):
@@ -225,12 +223,13 @@ def _stat_icon(lib: AssetLibrary, field: str, value: int) -> Image.Image:
     return lib.stat_badge(field)
 
 
-def _right_top_counter(state: dict) -> tuple[str, int, str] | None:
+def _right_top_counters(state: dict) -> tuple[tuple[str, int, str], ...]:
+    counters = []
     if state["energy"] is not None:
-        return "energy", state["energy"], "yellow"
+        counters.append(("energy", state["energy"], "yellow"))
     if state["defeated_countdown"] is None and state["countdown"] is not None:
-        return "countdown", state["countdown"], "white"
-    return None
+        counters.append(("countdown", state["countdown"], "white"))
+    return tuple(counters)
 
 
 def _validate_entity_elements(elements: dict, state: dict) -> None:
@@ -248,7 +247,7 @@ def _validate_entity_elements(elements: dict, state: dict) -> None:
             for key in ("base_size", "num_size"):
                 if not _bounded_number(level.get(key), ENTITY_MAX_ELEMENT_SIZE, True):
                     raise ValueError(f"等级标 {key} 必须是有限且限幅的正数")
-    right_top = _right_top_counter(state)
+    right_top_fields = {item[0] for item in _right_top_counters(state)}
     for field in ("power", "health", "combat_power", "shield",
                   "energy", "countdown", "defeated"):
         elem = elements.get(field)
@@ -260,7 +259,7 @@ def _validate_entity_elements(elements: dict, state: dict) -> None:
             continue
         if field in ("combat_power", "shield") and state[field] == 0:
             continue
-        if field in ("energy", "countdown") and (right_top is None or right_top[0] != field):
+        if field in ("energy", "countdown") and field not in right_top_fields:
             continue
         if field == "defeated" and state["defeated_countdown"] is None:
             continue
@@ -361,12 +360,12 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         if field in ("combat_power", "shield") and state[field] == 0:
             continue
         add_centered(elem["pos"], (elem["icon_size"], elem["icon_size"]))
-    right_top = _right_top_counter(state)
+    right_top = {field: (value, color) for field, value, color in _right_top_counters(state)}
     for field in ("energy", "countdown", "defeated"):
         elem = elements.get(field)
         if elem is None or not elem.get("enabled", True):
             continue
-        if field in ("energy", "countdown") and (right_top is None or right_top[0] != field):
+        if field in ("energy", "countdown") and field not in right_top:
             continue
         if field == "defeated" and state["defeated_countdown"] is None:
             continue
@@ -388,9 +387,9 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         if elem is None or not elem.get("enabled", True):
             continue
         if field in ("energy", "countdown"):
-            if right_top is None or right_top[0] != field:
+            if field not in right_top:
                 continue
-            _, value, color = right_top
+            value, color = right_top[field]
         else:
             value = state["defeated_countdown"]
             if value is None:
@@ -499,11 +498,10 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
         if field in elements:
             canvas = _render_stat(canvas, lib, shifted(elements[field]), state,
                                   prepared_digits.get(field))
-    right_top = _right_top_counter(state)
-    if right_top is not None and right_top[0] in elements:
-        field = right_top[0]
-        canvas = _render_counter(canvas, lib, shifted(elements[field]),
-                                 field, prepared_digits.get(field))
+    for field, _value, _color in _right_top_counters(state):
+        if field in elements:
+            canvas = _render_counter(canvas, lib, shifted(elements[field]),
+                                     field, prepared_digits.get(field))
     if state["defeated_countdown"] is not None and "defeated" in elements:
         canvas = _render_counter(canvas, lib, shifted(elements["defeated"]),
                                  "defeated_countdown", prepared_digits.get("defeated"))

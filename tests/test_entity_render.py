@@ -98,7 +98,7 @@ def test_validate_entity_state_rejects_non_mapping():
 
 
 @pytest.mark.parametrize("state", [
-    {"energy": 0, "countdown": 1}, {"energy": -1}, {"energy": True},
+    {"energy": -1}, {"energy": True},
     {"countdown": 0}, {"countdown": 1.5}, {"defeated_countdown": 0},
     {"defeated_countdown": -1}, {"defeated_countdown": "inf"},
     {"defeated_countdown": True},
@@ -111,6 +111,11 @@ def test_entity_rejects_invalid_counter_states(state):
 def test_entity_permanent_defeat_accepts_infinity():
     assert validate_entity_state(
         {"defeated_countdown": "infinity"})["defeated_countdown"] == "infinity"
+
+
+def test_entity_allows_energy_with_countdown_for_integration():
+    state = validate_entity_state({"energy": 0, "countdown": 1})
+    assert state["energy"] == 0 and state["countdown"] == 1
 
 
 @pytest.mark.parametrize("field", ["energy", "countdown", "defeated_countdown"])
@@ -244,6 +249,23 @@ def test_entity_defeated_counter_draws_above_energy(assets_dir, sample_art, monk
                            {"energy": 0, "defeated_countdown": 2}, assets_dir,
                            layout=layout, crop=False)
     assert actual.getpixel((48, 72)) == (0, 0, 255, 255)
+
+
+def test_entity_countdown_draws_above_energy(assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
+    layout = make_counter_layout()
+    layout["elements"]["energy"]["pos"] = [48, 72]
+    layout["elements"]["countdown"]["pos"] = [48, 72]
+    lib = get_library(assets_dir)
+    colors = {"energy": (255, 0, 0, 255), "countdown": (0, 255, 0, 255)}
+    monkeypatch.setattr(lib, "stat_badge",
+                        lambda name: Image.new("RGBA", (20, 20), colors[name]))
+    monkeypatch.setattr(entity, "_render_digits", lambda *args: None)
+    actual = render_entity(make_card(sample_art),
+                           {"energy": 0, "countdown": 2}, assets_dir,
+                           layout=layout, crop=False)
+    assert actual.getpixel((48, 72)) == (0, 255, 0, 255)
 
 
 @pytest.mark.parametrize("element, state", [

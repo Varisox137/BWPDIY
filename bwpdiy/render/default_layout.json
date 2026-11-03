@@ -19,30 +19,6 @@
           0
         ]
       },
-      "burst": {
-        "kind": "burst",
-        "offset": [
-          0,
-          55
-        ],
-        "icon_size": 56,
-        "num_offset": [
-          0,
-          0
-        ],
-        "font_size": 40,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "group_offset": [
-          0,
-          0
-        ],
-        "stroke_width": 2,
-        "sign_size_plus": 24,
-        "sign_size_minus": 16
-      },
       "faction": {
         "kind": "faction",
         "pos": [
@@ -111,6 +87,30 @@
         ],
         "font_size": 15,
         "font": "desc"
+      },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
       }
     },
     "text_regions": {
@@ -281,30 +281,6 @@
           0
         ]
       },
-      "burst": {
-        "kind": "burst",
-        "offset": [
-          0,
-          55
-        ],
-        "icon_size": 56,
-        "num_offset": [
-          0,
-          0
-        ],
-        "font_size": 40,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "group_offset": [
-          0,
-          0
-        ],
-        "stroke_width": 2,
-        "sign_size_plus": 24,
-        "sign_size_minus": 16
-      },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
@@ -395,6 +371,30 @@
         ],
         "font_size": 15,
         "font": "desc"
+      },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
       }
     },
     "text_regions": {
@@ -565,30 +565,6 @@
           0
         ]
       },
-      "burst": {
-        "kind": "burst",
-        "offset": [
-          0,
-          55
-        ],
-        "icon_size": 56,
-        "num_offset": [
-          0,
-          0
-        ],
-        "font_size": 40,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "group_offset": [
-          0,
-          0
-        ],
-        "stroke_width": 2,
-        "sign_size_plus": 24,
-        "sign_size_minus": 16
-      },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
@@ -666,6 +642,30 @@
         ],
         "font_size": 15,
         "font": "desc"
+      },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
       }
     },
     "text_regions": {
@@ -846,30 +846,6 @@
           0
         ]
       },
-      "burst": {
-        "kind": "burst",
-        "offset": [
-          0,
-          55
-        ],
-        "icon_size": 56,
-        "num_offset": [
-          0,
-          0
-        ],
-        "font_size": 40,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "group_offset": [
-          0,
-          0
-        ],
-        "stroke_width": 2,
-        "sign_size_plus": 24,
-        "sign_size_minus": 16
-      },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
@@ -939,6 +915,30 @@
         ],
         "font_size": 15,
         "font": "desc"
+      },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
       }
     },
     "text_regions": {
@@ -1115,30 +1115,6 @@
           0
         ]
       },
-      "burst": {
-        "kind": "burst",
-        "offset": [
-          0,
-          55
-        ],
-        "icon_size": 56,
-        "num_offset": [
-          0,
-          0
-        ],
-        "font_size": 40,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "group_offset": [
-          0,
-          0
-        ],
-        "stroke_width": 2,
-        "sign_size_plus": 24,
-        "sign_size_minus": 16
-      },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
@@ -1187,6 +1163,30 @@
         ],
         "font_size": 15,
         "font": "desc"
+      },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
       }
     },
     "text_regions": {
@@ -1381,30 +1381,6 @@
           0
         ]
       },
-      "burst": {
-        "kind": "burst",
-        "offset": [
-          0,
-          55
-        ],
-        "icon_size": 56,
-        "num_offset": [
-          0,
-          0
-        ],
-        "font_size": 40,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "group_offset": [
-          0,
-          0
-        ],
-        "stroke_width": 2,
-        "sign_size_plus": 24,
-        "sign_size_minus": 16
-      },
       "rarity": {
         "kind": "rarity_flank",
         "pos": [
@@ -1432,6 +1408,30 @@
         ],
         "font_size": 15,
         "font": "desc"
+      },
+      "burst": {
+        "kind": "burst",
+        "offset": [
+          0,
+          55
+        ],
+        "icon_size": 56,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 40,
+        "sign_offset": [
+          0,
+          0
+        ],
+        "group_offset": [
+          0,
+          0
+        ],
+        "stroke_width": 2,
+        "sign_size_plus": 24,
+        "sign_size_minus": 16
       }
     },
     "text_regions": {
@@ -1542,15 +1542,29 @@
         "font_size": 22,
         "stroke_width": 2
       },
+      "defeated": {
+        "kind": "counter",
+        "pos": [
+          48,
+          76
+        ],
+        "icon_size": 48,
+        "num_offset": [
+          0,
+          0
+        ],
+        "font_size": 36,
+        "stroke_width": 2
+      },
       "energy": {
         "kind": "counter",
         "pos": [
           82,
           18
         ],
-        "icon_size": 28,
+        "icon_size": 36,
         "num_offset": [
-          0,
+          1,
           0
         ],
         "font_size": 24,
@@ -1562,26 +1576,12 @@
           82,
           18
         ],
-        "icon_size": 28,
+        "icon_size": 32,
         "num_offset": [
           0,
           0
         ],
         "font_size": 24,
-        "stroke_width": 2
-      },
-      "defeated": {
-        "kind": "counter",
-        "pos": [
-          48,
-          66
-        ],
-        "icon_size": 44,
-        "num_offset": [
-          0,
-          0
-        ],
-        "font_size": 40,
         "stroke_width": 2
       }
     }

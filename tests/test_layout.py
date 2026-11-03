@@ -374,16 +374,9 @@ def test_entity_counter_layout_backfilled_and_shipped(tmp_path):
 
     _write_entity_layout(tmp_path, {"version": 2, "elements": {}})
     backfilled = layout.load_layouts(tmp_path)["对局式神"]["elements"]
-    for name in ("energy", "countdown"):
-        assert backfilled[name] == {
-            "kind": "counter", "pos": [82, 18], "icon_size": 28,
-            "num_offset": [0, 0], "font_size": 24, "stroke_width": 2,
-        }
+    for name in ("energy", "countdown", "defeated"):
+        assert backfilled[name] == _DEFAULT_LAYOUT["elements"][name]
     assert "right_top" not in backfilled
-    assert backfilled["defeated"] == {
-        "kind": "counter", "pos": [48, 66], "icon_size": 44,
-        "num_offset": [0, 0], "font_size": 40, "stroke_width": 2,
-    }
     for path in (Path("assets"), Path("bwpdiy/render")):
         elements = layout.load_layouts(path)["对局式神"]["elements"]
         for name in ("energy", "countdown", "defeated"):

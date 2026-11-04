@@ -620,46 +620,69 @@ def test_artwork_upload_preserves_offset_scale_and_keeps_old(client, project, li
     assert got["path"] == "测试斩.jpg" and got["offset_x"] == 5 and got["scale"] == 1.2
 
 
-def test_artwork_upload_reused_name_does_not_overwrite_renamed_cards(
-        client, project, library_dir):
-    """无 id 卡改名后仍引用旧图名；复用旧卡名上传新图时必须另分配文件名。"""
-    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
-    renamed = ["改名卡", "再改名"]
-    offsets = [11, 22, 33]
-    scales = [0.8, 1.2, 1.4]
-    paths = []
-    for index, color in enumerate(colors):
-        stem = "旧名"
-        if index == 0:
-            card = _battle_card(stem)
-        else:
-            card = client.get(f"/api/projects/{project}/cards/{stem}").json()
-            card.update(name=renamed[index - 1],
-                        artwork={"images": [{"path": paths[-1],
-                                             "offset_x": offsets[index - 1],
-                                             "scale": scales[index - 1]}]})
-        assert client.put(f"/api/projects/{project}/cards/{stem}", json=card).status_code == 200
-        assert client.put(f"/api/projects/{project}/cards/{stem}",
-                          json=_battle_card(stem)).status_code == 200
-        buf = BytesIO()
-        Image.new("RGB", (16, 16), color).save(buf, "PNG")
-        r = client.post(f"/api/projects/{project}/cards/{stem}/artwork?filename=source.png&id=",
-                        content=buf.getvalue())
-        assert r.status_code == 200
-        paths.append(r.json()["path"])
-        if index == 2:
-            saved = client.get(f"/api/projects/{project}/cards/{stem}").json()
-            saved["artwork"]["images"][0].update(offset_x=offsets[index], scale=scales[index])
-            assert client.put(f"/api/projects/{project}/cards/{stem}", json=saved).status_code == 200
+def _upload_solid(client, project, stem, color):
+    buf = BytesIO()
+    Image.new("RGB", (16, 16), color).save(buf, "PNG")
+    r = client.post(f"/api/projects/{project}/cards/{stem}/artwork?filename=source.png&id=",
+                    content=buf.getvalue())
+    assert r.status_code == 200
+    return r.json()["path"]
 
-    assert paths == ["旧名.png", "旧名_2.png", "旧名_3.png"]
-    for name, path, color, offset, scale in zip(
-            [*renamed, "旧名"], paths, colors, offsets, scales):
-        saved = client.get(f"/api/projects/{project}/cards/{name}").json()
-        ref = saved["artwork"]["images"][0]
-        assert ref == {"path": path, "offset_x": offset, "scale": scale}
-        image = Image.open(library_dir / project / "images" / path)
-        assert image.getpixel((0, 0)) == color
+
+def test_card_rename_without_id_renames_local_artwork(client, project, library_dir):
+    """无 id 卡改名时卡图同步改名，保留独立变换；旧卡名可安全用于新卡。"""
+    client.put(f"/api/projects/{project}/cards/旧名", json=_battle_card("旧名"))
+    assert _upload_solid(client, project, "旧名", (255, 0, 0)) == "旧名.png"
+    card = client.get(f"/api/projects/{project}/cards/旧名").json()
+    card["name"] = "新名"
+    card["artwork"]["images"][0].update(offset_x=17, scale=1.2)
+    assert client.put(f"/api/projects/{project}/cards/旧名", json=card).status_code == 200
+    renamed = client.get(f"/api/projects/{project}/cards/新名").json()
+    assert renamed["artwork"]["images"][0] == {
+        "path": "新名.png", "offset_x": 17, "scale": 1.2}
+    images = library_dir / project / "images"
+    assert Image.open(images / "新名.png").getpixel((0, 0)) == (255, 0, 0)
+
+    client.put(f"/api/projects/{project}/cards/旧名", json=_battle_card("旧名"))
+    assert _upload_solid(client, project, "旧名", (0, 255, 0)) == "旧名.png"
+    assert Image.open(images / "旧名.png").getpixel((0, 0)) == (0, 255, 0)
+    assert Image.open(images / "新名.png").getpixel((0, 0)) == (255, 0, 0)
+
+
+def test_card_rename_with_shared_artwork_copies_image(client, project, library_dir):
+    """其他卡仍引用原图时，改名卡复制出新图，其他卡路径与内容均不变。"""
+    client.put(f"/api/projects/{project}/cards/共享A", json=_battle_card("共享A"))
+    assert _upload_solid(client, project, "共享A", (255, 0, 0)) == "共享A.png"
+    other = _battle_card("共享B")
+    other["artwork"] = {"images": [{"path": "共享A.png", "offset_x": 22}]}
+    client.put(f"/api/projects/{project}/cards/共享B", json=other)
+    card = client.get(f"/api/projects/{project}/cards/共享A").json()
+    card["name"] = "共享甲"
+    assert client.put(f"/api/projects/{project}/cards/共享A", json=card).status_code == 200
+    renamed = client.get(f"/api/projects/{project}/cards/共享甲").json()
+    unchanged = client.get(f"/api/projects/{project}/cards/共享B").json()
+    assert renamed["artwork"]["images"][0]["path"] == "共享甲.png"
+    assert unchanged["artwork"]["images"][0] == {"path": "共享A.png", "offset_x": 22}
+    images = library_dir / project / "images"
+    assert Image.open(images / "共享甲.png").getpixel((0, 0)) == (255, 0, 0)
+    assert Image.open(images / "共享A.png").getpixel((0, 0)) == (255, 0, 0)
+
+
+def test_artwork_upload_reused_name_does_not_overwrite_legacy_reference(
+        client, project, library_dir):
+    """旧版遗留的改名卡仍引用旧图名时，新卡上传另分配文件名而非覆盖。"""
+    client.put(f"/api/projects/{project}/cards/旧名", json=_battle_card("旧名"))
+    _upload_solid(client, project, "旧名", (255, 0, 0))
+    card = client.get(f"/api/projects/{project}/cards/旧名").json()
+    card["name"] = "改名卡"
+    client.put(f"/api/projects/{project}/cards/旧名", json=card)
+    card["artwork"]["images"][0]["path"] = "旧名.png"  # 模拟修复前留下的数据
+    client.put(f"/api/projects/{project}/cards/改名卡", json=card)
+    client.put(f"/api/projects/{project}/cards/旧名", json=_battle_card("旧名"))
+    assert _upload_solid(client, project, "旧名", (0, 255, 0)) == "旧名_2.png"
+    images = library_dir / project / "images"
+    assert Image.open(images / "旧名.png").getpixel((0, 0)) == (255, 0, 0)
+    assert Image.open(images / "旧名_2.png").getpixel((0, 0)) == (0, 255, 0)
 
 
 def test_artwork_upload_write_failure_preserves_existing_file(client, project, library_dir, monkeypatch):

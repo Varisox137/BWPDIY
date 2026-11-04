@@ -341,12 +341,13 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
     updated: list[str] = []
     old = _read_yaml(path) if not is_new else None
     old_name = old.get("name") if isinstance(old, dict) else None
-    # 无 id 且文件名是卡名回退命名（stem == 旧卡名）：改名时同步重命名 yaml。
+    # 无 id 且文件名是卡名回退命名（stem == 旧卡名）：改名时同步重命名 yaml 与本地卡图。
     # 有 id 或文件名本就与卡名脱钩（如数字 stem）时不动，供 BWPro 按 id 取文件。
     # 校验必须先于引用联动落盘：冲突/非法名报错时不得留下悬空引用
     rename_to: Path | None = None
-    if (not is_new and not data.get("id") and isinstance(old_name, str)
-            and old_name == card_name and data["name"] != card_name):
+    renaming_card_name = (not is_new and not data.get("id") and isinstance(old_name, str)
+                          and old_name == card_name and data["name"] != card_name)
+    if renaming_card_name:
         try:
             _check_name(data["name"], "卡名")
         except StoreError as e:
@@ -370,7 +371,8 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
             raise SchemaError([f"版本日期「{data['version_date']}」对应的文件 {target.name} 已存在，"
                                f"无法重命名；请更换日期"])
         rename_to = target
-    # 联动引用/主文件/重命名/共享段是一个逻辑事务：先备份所有可能被改写的文件，
+    copied_artwork = None
+    # 卡图复制/联动引用/主文件/重命名/共享段是一个逻辑事务：先备份所有可能被改写的文件，
     # 任一步失败都尽力回滚，避免主卡旧名未改而其他卡已指向新名等半完成状态。
     affected = {path}
     if rename_to is not None:
@@ -387,6 +389,8 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
     affected.update(p for p, _ in _card_group(pdir, sub, _group_key(data)))
     backups = {p: p.read_bytes() if p.is_file() else None for p in affected}
     try:
+        if renaming_card_name:
+            copied_artwork = _copy_renamed_artwork(library, project, data, data["name"])
         if renaming_shiki:
             updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
         _dump_yaml(path, data)
@@ -403,6 +407,11 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
                     p.write_bytes(content)
             except OSError:
                 pass  # 保留原异常；回滚失败须由用户从备份/版本控制恢复
+        if copied_artwork is not None:
+            try:
+                copied_artwork.unlink(missing_ok=True)
+            except OSError:
+                pass
         raise
     return path, updated
 
@@ -505,6 +514,43 @@ def artwork_file_in_use(library: Path, project: str, filename: str,
             if _referenced_image_path(data, images_dir) == target:
                 return True
     return False
+
+
+def _copy_renamed_artwork(library: Path, project: str, data: dict,
+                          new_name: str) -> Path | None:
+    """无 id 卡改名：把本地首图复制到新卡名，返回新建目标供事务回滚。"""
+    pdir = _require_project(library, project)
+    images_dir = pdir / "images"
+    source = _referenced_image_path(data, images_dir)
+    try:
+        source.relative_to(images_dir.resolve())
+    except ValueError:
+        return None
+    if not source.is_file() or source.suffix.lower() not in _IMAGE_EXTS:
+        return None
+    target = images_dir / f"{new_name}{source.suffix.lower()}"
+    if source == target:
+        return None
+    suffix = 2
+    while target.exists() or artwork_file_in_use(library, project, target.name):
+        target = images_dir / f"{new_name}_{suffix}{source.suffix.lower()}"
+        suffix += 1
+    fd, tmp = tempfile.mkstemp(dir=images_dir, prefix=f".{target.name}.", suffix=".tmp")
+    os.close(fd)
+    try:
+        shutil.copy2(source, tmp)
+        os.replace(tmp, target)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    artwork = dict(data.get("artwork") or {})
+    images = artwork.get("images")
+    images = list(images) if isinstance(images, list) else []
+    first = dict(images[0]) if images and isinstance(images[0], dict) else {}
+    first["path"] = target.name
+    artwork["images"] = [first, *images[1:]]
+    data["artwork"] = artwork
+    return target
 
 
 def cleanup_unused_images(library: Path) -> list[str]:

@@ -478,6 +478,35 @@ def new_card_version(library: Path, project: str, card_name: str, version_date) 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
+def _referenced_image_path(data: dict, images_dir: Path) -> Path:
+    artwork = data.get("artwork")
+    images = artwork.get("images") if isinstance(artwork, dict) else None
+    first = images[0] if isinstance(images, list) and images else None
+    ref = first if isinstance(first, dict) else {}
+    raw = ref.get("path")
+    name = raw if isinstance(raw, str) and raw else f"{data.get('id') or data.get('name', '')}.png"
+    path = Path(name)
+    return (path if path.is_absolute() else images_dir / path).resolve()
+
+
+def artwork_file_in_use(library: Path, project: str, filename: str,
+                        exclude_card: dict | None = None) -> bool:
+    """目标图片是否被其他卡组引用；同卡多版本属于同一组，换图时允许覆盖。"""
+    pdir = _require_project(library, project)
+    images_dir = pdir / "images"
+    target = (images_dir / filename).resolve()
+    excluded = _group_key(exclude_card) if isinstance(exclude_card, dict) else None
+    for sub in ("shikigami", "cards"):
+        cdir = pdir / sub
+        for path in cdir.glob("*.yaml") if cdir.is_dir() else []:
+            data = _read_yaml(path)
+            if not data or (excluded is not None and _group_key(data) == excluded):
+                continue
+            if _referenced_image_path(data, images_dir) == target:
+                return True
+    return False
+
+
 def cleanup_unused_images(library: Path) -> list[str]:
     """删除各项目 images/ 下未被任何卡牌版本引用的图片（png/jpg/jpeg/webp）。
 
@@ -503,14 +532,7 @@ def cleanup_unused_images(library: Path) -> list[str]:
                 if not data:
                     unreadable = True
                     continue
-                artwork = data.get("artwork")
-                images = artwork.get("images") if isinstance(artwork, dict) else None
-                first = images[0] if isinstance(images, list) and images else None
-                ref = first if isinstance(first, dict) else {}
-                raw = ref.get("path")
-                name = raw if isinstance(raw, str) and raw else f"{data.get('id') or data.get('name', '')}.png"
-                ref_path = Path(name)
-                used.add((ref_path if ref_path.is_absolute() else images_dir / ref_path).resolve())
+                used.add(_referenced_image_path(data, images_dir))
         if unreadable:
             continue
         for img in images_dir.rglob("*"):

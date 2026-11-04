@@ -620,6 +620,48 @@ def test_artwork_upload_preserves_offset_scale_and_keeps_old(client, project, li
     assert got["path"] == "测试斩.jpg" and got["offset_x"] == 5 and got["scale"] == 1.2
 
 
+def test_artwork_upload_reused_name_does_not_overwrite_renamed_cards(
+        client, project, library_dir):
+    """无 id 卡改名后仍引用旧图名；复用旧卡名上传新图时必须另分配文件名。"""
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
+    renamed = ["改名卡", "再改名"]
+    offsets = [11, 22, 33]
+    scales = [0.8, 1.2, 1.4]
+    paths = []
+    for index, color in enumerate(colors):
+        stem = "旧名"
+        if index == 0:
+            card = _battle_card(stem)
+        else:
+            card = client.get(f"/api/projects/{project}/cards/{stem}").json()
+            card.update(name=renamed[index - 1],
+                        artwork={"images": [{"path": paths[-1],
+                                             "offset_x": offsets[index - 1],
+                                             "scale": scales[index - 1]}]})
+        assert client.put(f"/api/projects/{project}/cards/{stem}", json=card).status_code == 200
+        assert client.put(f"/api/projects/{project}/cards/{stem}",
+                          json=_battle_card(stem)).status_code == 200
+        buf = BytesIO()
+        Image.new("RGB", (16, 16), color).save(buf, "PNG")
+        r = client.post(f"/api/projects/{project}/cards/{stem}/artwork?filename=source.png&id=",
+                        content=buf.getvalue())
+        assert r.status_code == 200
+        paths.append(r.json()["path"])
+        if index == 2:
+            saved = client.get(f"/api/projects/{project}/cards/{stem}").json()
+            saved["artwork"]["images"][0].update(offset_x=offsets[index], scale=scales[index])
+            assert client.put(f"/api/projects/{project}/cards/{stem}", json=saved).status_code == 200
+
+    assert paths == ["旧名.png", "旧名_2.png", "旧名_3.png"]
+    for name, path, color, offset, scale in zip(
+            [*renamed, "旧名"], paths, colors, offsets, scales):
+        saved = client.get(f"/api/projects/{project}/cards/{name}").json()
+        ref = saved["artwork"]["images"][0]
+        assert ref == {"path": path, "offset_x": offset, "scale": scale}
+        image = Image.open(library_dir / project / "images" / path)
+        assert image.getpixel((0, 0)) == color
+
+
 def test_artwork_upload_write_failure_preserves_existing_file(client, project, library_dir, monkeypatch):
     """写盘异常不得截断同名旧图；原子替换失败时旧内容原样保留。"""
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())

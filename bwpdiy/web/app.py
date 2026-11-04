@@ -486,6 +486,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
         落盘名 = <id 或卡名><ext>（id 字段可留空，留空回退卡名）：对齐 BWPro 按 id 取
         卡图的约定；同 id/卡名复用同名文件（覆盖写），不同版本不同 id 各自成文。
+        若目标图已被其他卡组引用（如无 id 卡改名后仍引用旧图名），改用 _2/_3 后缀，
+        避免新卡上传覆盖旧卡图片；同组多版本仍共享并允许覆盖。
         修改 id 不重命名已有卡图（其他卡可能正引用该文件）；不做旧图清理（孤儿文件用户自理）。
         图片真实性/像素上限在写盘前校验；写盘后走 save_card 更新 artwork.images[0].path
         （保留已有 offset/scale），schema 不过则删图回滚（仅当本次真正写了新文件）。
@@ -508,7 +510,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         card_data = load_card(library_dir, project, card)  # 卡牌不存在 → 404；卡名合法性在此校验
         if "id" in request.query_params:
             card_data["id"] = request.query_params["id"]  # 表单当前 id（可尚未保存）
-        from bwpdiy.store.projects import _expand_shorthand_id
+        from bwpdiy.store.projects import _expand_shorthand_id, artwork_file_in_use
         _expand_shorthand_id(library_dir / project, card_data)  # 两位简写与保存同口径展开
         stem = card_data.get("id") or card_data.get("name", "")
         stem = "".join(c for c in str(stem) if c not in '<>:"/\\|?*').strip().rstrip(". ")
@@ -523,6 +525,14 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         old_images = raw_images if isinstance(raw_images, list) else []
         first = dict(old_images[0]) if old_images and isinstance(old_images[0], dict) else {}
         filename = f"{stem}{ext}"
+        suffix = 2
+        while artwork_file_in_use(library_dir, project, filename, exclude_card=card_data):
+            filename = f"{stem}_{suffix}{ext}"
+            suffix += 1
+        if filename != f"{stem}{ext}":
+            logging.getLogger("bwpdiy.web").info(
+                "卡图文件名冲突规避：%s/%s 使用 %s（%s 已被其他卡引用）",
+                project, card, filename, f"{stem}{ext}")
         first["path"] = filename
         artwork["images"] = [first, *old_images[1:]]
         card_data["artwork"] = artwork

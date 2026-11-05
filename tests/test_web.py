@@ -1526,9 +1526,12 @@ def test_layout_burst_and_entity_counter_props_drag_and_order(tmp_path):
 const assert = require('node:assert');
 let entityLayoutMode = false, mechLayoutMode = false, cardLayoutMode = null;
 let curType = '战斗', sel = null, dirty = false, scheduled = 0;
+const SIGNED_STATS = ['power+', 'health+', 'shield+'];
 const layouts = {{
   '战斗': {{elements: {{
     level: {{kind: 'level_badge', pos: [10, 10]}},
+    power: {{kind: 'stat', field: 'power+', pos: [0, 100], icon_size: 12,
+      num_offset: [12, 0], font_size: 14, stroke_width: 2}},
     burst: {{kind: 'burst', offset: [30, 40], icon_size: 12, num_offset: [12, 0],
       font_size: 14, stroke_width: 2, sign_offset: [0, 0], group_offset: [0, 0],
       sign_size_plus: 7, sign_size_minus: 6}},
@@ -1560,20 +1563,21 @@ const document = {{getElementById: id => id === 'l-elems' ? elems : props,
 {disp_map}
 {functions}
 buildLists();
-assert.deepStrictEqual(elems.children.map(x => x.textContent), ['等级标', '爆能']);
+assert.deepStrictEqual(elems.children.map(x => x.textContent), ['等级标', '爆能', '力量']);
 sel = {{kind: 'element', name: 'burst'}};
 buildProps();
 const controls = {{}};
-function collect(node) {{
-  if (node.tag === 'label' && node.children[0]) controls[node.textContent.trim()] = node.children[0];
-  for (const child of node.children || []) collect(child);
+function collect(node, target = controls) {{
+  if (node.tag === 'label' && node.children[0]) target[node.textContent.trim()] = node.children[0];
+  for (const child of node.children || []) collect(child, target);
 }}
 collect(props);
 for (const label of ['偏移 x', '偏移 y', '图标尺寸', '数字偏移 x', '数字偏移 y', '字号',
-                     '描边宽度', '符号偏移 x', '符号偏移 y', '符号数字整体偏移 x',
+                     '符号偏移 x', '符号偏移 y', '符号数字整体偏移 x',
                      '符号数字整体偏移 y', '加号尺寸', '减号尺寸'])
   assert(controls[label], `缺少爆能参数：${{label}}`);
 assert(!controls['位置 x']);
+assert(!controls['描边宽度']);
 const target = pick(40, 50);
 assert(target && target.sel.name === 'burst');
 target.set(70, 80);
@@ -1581,6 +1585,12 @@ assert.deepStrictEqual(layouts['战斗'].elements.burst.offset, [60, 70]);
 assert.deepStrictEqual(layouts['战斗'].elements.level.pos, [10, 10]);
 controls['偏移 x'].value = '9'; controls['偏移 x'].onchange();
 assert.deepStrictEqual(layouts['战斗'].elements.burst.offset, [9, 70]);
+sel = {{kind: 'element', name: 'power'}};
+buildProps();
+const statControls = {{}};
+collect(props, statControls);
+assert(statControls['字号']);
+assert(!statControls['描边宽度']);
 entityLayoutMode = true;
 sel = {{kind: 'element', name: 'energy'}};
 buildProps();
@@ -1592,7 +1602,7 @@ function collectCounter(node) {{
 }}
 collectCounter(props);
 assert.deepStrictEqual(Object.keys(counterControls),
-  ['位置 x', '位置 y', '图标尺寸', '数字偏移 x', '数字偏移 y', '字号', '描边宽度']);
+  ['位置 x', '位置 y', '图标尺寸', '数字偏移 x', '数字偏移 y', '字号']);
 assert(!Object.keys(counterControls).some(label => label.includes('符号') || label.includes('加号') ||
                                                    label.includes('减号')));
 counterControls['数字偏移 x'].value = '7'; counterControls['数字偏移 x'].onchange();

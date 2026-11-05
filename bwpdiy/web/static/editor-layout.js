@@ -807,7 +807,6 @@ function buildProps() {
         numRow(div, '符号数字整体偏移 x', e.group_offset[0], v => { e.group_offset[0] = v; draw(); });
         numRow(div, '符号数字整体偏移 y', e.group_offset[1], v => { e.group_offset[1] = v; draw(); });
       }
-      numRow(div, '描边宽度', e.stroke_width ?? 2, v => e.stroke_width = v);
       if (curType === '战斗' && e.field === 'shield+') {
         div.appendChild(title('破甲（负护甲）'));
         selRow(div, '破甲样式', ['1', '2'], String(e.fragile_variant ?? 2),
@@ -830,7 +829,6 @@ function buildProps() {
       numRow(div, '数字偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; draw(); });
       numRow(div, '数字偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; draw(); });
       numRow(div, '字号', e.font_size, v => e.font_size = v);
-      numRow(div, '描边宽度', e.stroke_width ?? 2, v => e.stroke_width = v);
       if (e.kind === 'burst') {
         e.sign_offset ??= [0, 0];
         numRow(div, '符号偏移 x', e.sign_offset[0], v => { e.sign_offset[0] = v; draw(); });

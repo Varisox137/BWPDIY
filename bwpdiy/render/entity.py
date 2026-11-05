@@ -409,9 +409,8 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         value = state[field]
         if field in ("combat_power", "shield") and value == 0:
             continue
-        digits = _render_digits(str(abs(value)), lib.font("name", elem["font_size"]),
-                                round(elem.get("stroke_width", 1)), state[f"{field}_color"],
-                                elem.get("_digit_gap", _DIGIT_GAP))
+        digits = _render_digits(str(abs(value)), lib, elem["font_size"],
+                                state[f"{field}_color"], elem.get("_digit_gap", _DIGIT_GAP))
         add_prepared(field, elem, digits)
     for field in ("energy", "countdown", "defeated"):
         elem = elements.get(field)
@@ -427,10 +426,9 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
                 continue
             color = "white"
         if value == "infinity":
-            ink = _render_infinity(elem["font_size"], round(elem.get("stroke_width", 1)))
+            ink = _render_infinity(lib, elem["font_size"])
         else:
-            ink = _render_digits(str(value), lib.font("name", elem["font_size"]),
-                                 round(elem.get("stroke_width", 1)), color,
+            ink = _render_digits(str(value), lib, elem["font_size"], color,
                                  elem.get("_digit_gap", _DIGIT_GAP))
         add_prepared(field, elem, ink)
     return checked_bounds(), prepared_digits

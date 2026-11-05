@@ -125,20 +125,31 @@ def test_faction_style(assets_dir):
         canvas(), lib, "faction", elem, {"faction": "红莲"}).getdata())
 
 
+def test_bitmap_digits_use_assets_scale_and_ink_gap(assets_dir):
+    from bwpdiy.render.badges import _render_digits
+
+    lib = AssetLibrary(assets_dir)
+    one = _render_digits("1", lib, 64, "white")
+    bbox = lib.number("white", "1").getchannel("A").getbbox()
+    assert one.size == (bbox[2] - bbox[0], bbox[3] - bbox[1])
+    yellow = _render_digits("1", lib, 64, "yellow")
+    orange = _render_digits("1", lib, 64, "orange")
+    assert yellow.tobytes() == orange.tobytes()
+    four = _render_digits("4", lib, 64, "white")
+    pair = _render_digits("41", lib, 64, "white")
+    assert pair.height == four.height and pair.width > one.width
+
+
 def test_stat_digit_spacing(assets_dir):
-    """多位数逐字拼接：相邻字墨迹最小水平间距=_DIGIT_GAP（窄字「41」不按 box 等距）；
-    各字墨迹中点竖直对齐。"""
+    """位图数字逐字拼接仍按逐行墨迹最小间距排放，并保持竖直中点对齐。"""
     from bwpdiy.render.badges import _DIGIT_GAP, _render_digits, _row_ink_extents
     lib = AssetLibrary(assets_dir)
-    font = lib.font("name", 40)
-    one = _render_digits("1", font, 2)
-    four = _render_digits("4", font, 2)
-    pair = _render_digits("41", font, 2)
-    # 「41」宽度应明显小于 box 等距（4 右缘与 1 左缘的 box 间距被墨迹间距取代）
+    one = _render_digits("1", lib, 40)
+    four = _render_digits("4", lib, 40)
+    pair = _render_digits("41", lib, 40)
     assert pair.width < four.width + one.width + _DIGIT_GAP
-    # 精确间距用对称「22」验证：第二字恒位于 pair 右端，逐行回算最小墨迹间距
-    two = _render_digits("2", font, 2)
-    pair2 = _render_digits("22", font, 2)
+    two = _render_digits("2", lib, 40)
+    pair2 = _render_digits("22", lib, 40)
     h2 = pair2.height
     x1 = pair2.width - two.width
     off1 = (h2 - two.height) // 2
@@ -148,8 +159,7 @@ def test_stat_digit_spacing(assets_dir):
              for y in range(h2)
              if 0 <= y - off1 < two.height and extL[y] and extR[y - off1]]
     assert min(dists) == _DIGIT_GAP
-    # 竖直中点对齐：对称「11」两字墨迹行区间完全一致（同字形同中线）
-    pair11 = _render_digits("11", font, 2)
+    pair11 = _render_digits("11", lib, 40)
     x1 = pair11.width - one.width
     rowsL = [y for y, e in enumerate(_row_ink_extents(pair11.crop((0, 0, x1, pair11.height)))) if e]
     rowsR = [y for y, e in enumerate(_row_ink_extents(pair11.crop((x1, 0, pair11.width, pair11.height)))) if e]
@@ -157,31 +167,74 @@ def test_stat_digit_spacing(assets_dir):
 
 
 @pytest.mark.parametrize("color", ["white", "red", "green", "purple", "yellow"])
-def test_five_number_gradients(assets_dir, color):
-    from bwpdiy.render.badges import STAT_COLORS, _render_digits
+def test_bitmap_digit_colors_come_from_assets(assets_dir, color):
+    from bwpdiy.render.badges import _render_digits
+
     lib = AssetLibrary(assets_dir)
-    img = _render_digits("6", lib.font("name", 40), 2, color)
-    top, bottom = STAT_COLORS[color]
-    assert any(all(abs(pixel[i] - top[i]) <= 3 for i in range(3))
-               for pixel in img.getdata() if pixel[3] > 200)
-    assert any(all(abs(pixel[i] - bottom[i]) <= 3 for i in range(3))
-               for pixel in img.getdata() if pixel[3] > 200)
-    assert any(pixel[:3] == (0, 0, 0) and pixel[3] > 0
-               for pixel in img.getdata())
+    file_color = "orange" if color == "yellow" else color
+    source = lib.number(file_color, "6")
+    expected = source.crop(source.getchannel("A").getbbox())
+    actual = _render_digits("6", lib, 64, color)
+    assert actual.size == expected.size
+    assert actual.tobytes() == expected.tobytes()
 
 
-def test_infinity_has_white_ink_and_stroke(assets_dir):
+def test_bitmap_digits_native_double_scale(assets_dir):
+    from bwpdiy.render.badges import _render_digits
+
+    lib = AssetLibrary(assets_dir)
+    source = lib.number("white", "1").resize((72, 128), Image.Resampling.LANCZOS)
+    expected = source.crop(source.getchannel("A").getbbox())
+    actual = _render_digits("1", lib, 128)
+    assert actual.size == (57, 112) == expected.size
+    assert actual.getchannel("A").getbbox() is not None
+    assert actual.tobytes() == expected.tobytes()
+
+
+def test_bitmap_infinity_uses_white_inf_asset(assets_dir):
     from bwpdiy.render.badges import _render_infinity
-    img = _render_infinity(36, 2)
-    assert img.width > img.height > 0
-    assert 25 <= img.width <= 34 and 17 <= img.height <= 24  # 宽度不变，高度约为初版细线的 1.75 倍
-    assert any(img.getpixel((img.width // 2, y))[0] > 180
-               and img.getpixel((img.width // 2, y))[3] > 200
-               for y in range(img.height))  # 中央交叉连续，不画成两个分离圆环
-    assert any(p[:3] == (0, 0, 0) and p[3] > 0 for p in img.getdata())
-    assert any(img.getpixel((x, 0))[:3] == (0, 0, 0) and img.getpixel((x, 0))[3] > 0
-               for x in range(img.width))
-    assert any(p[0] > 180 and p[3] > 200 for p in img.getdata())
+
+    lib = AssetLibrary(assets_dir)
+    for font_size, expected_size in ((64, (46, 25)), (128, (96, 60))):
+        source = lib.number("white", "inf")
+        source = source.resize((source.width * font_size // 64, font_size),
+                               Image.Resampling.LANCZOS)
+        expected = source.crop(source.getchannel("A").getbbox())
+        actual = _render_infinity(lib, font_size)
+        assert actual.size == expected_size == expected.size
+        assert actual.getchannel("A").getbbox() is not None
+        assert actual.tobytes() == expected.tobytes()
+
+
+@pytest.mark.parametrize("color,name,size", [
+    ("orange", "minus", (21, 64)),
+    ("purple", "plus", (27, 64)),
+    ("purple", "minus", (21, 64)),
+])
+def test_bitmap_sign_assets_and_rendering(assets_dir, color, name, size):
+    from bwpdiy.render.badges import _render_sign
+
+    lib = AssetLibrary(assets_dir)
+    source = lib.number(color, name)
+    assert source.size == size
+    bbox = source.getchannel("A").getbbox()
+    assert bbox is not None
+    cropped = source.crop(bbox)
+    scale = min(32 / cropped.width, 32 / cropped.height)
+    expected = cropped.resize((round(cropped.width * scale), round(cropped.height * scale)),
+                              Image.Resampling.LANCZOS)
+    actual = _render_sign(lib, name, 32, color)
+    assert actual.size == expected.size
+    assert actual.getchannel("A").getbbox() is not None
+    assert actual.tobytes() == expected.tobytes()
+
+
+def test_bitmap_sign_yellow_uses_orange_asset(assets_dir):
+    from bwpdiy.render.badges import _render_sign
+
+    lib = AssetLibrary(assets_dir)
+    assert (_render_sign(lib, "plus", 32, "yellow").tobytes()
+            == _render_sign(lib, "plus", 32, "orange").tobytes())
 
 
 @pytest.mark.parametrize("color", ["red", "green", "purple"])
@@ -316,8 +369,8 @@ def _cy(bbox):
 def test_stat_signed_block_centered(assets_dir, value):
     """带号 stat（战斗）：符号贴图+数字整体块的视觉中心对齐 num_pos（容差 1px）。
 
-    覆盖 + 与 -：符号为 signs/plus|minus.png 贴图（裁 bbox 等比 contain 进
-    sign_size 见方框），与数字墨迹中心竖直对齐组成整体块。
+    覆盖 + 与 -：符号为 numbers/<color>_plus|minus.png 贴图（裁 bbox 等比
+    contain 进 sign_size 见方框），与数字墨迹中心竖直对齐组成整体块。
     """
     lib = AssetLibrary(assets_dir)
     # num_offset 拉大，使数字带与图标像素分离便于测量；num_pos=(160,485)
@@ -331,8 +384,7 @@ def test_stat_signed_block_centered(assets_dir, value):
     assert abs((block[0] + block[2]) / 2 - 160) <= 1  # 块视觉中心对齐 num_pos.x
     # 符号/数字竖直居中：数字带 = 块右侧 digit_ink 宽（与渲染同源 _render_digits 口径）
     from bwpdiy.render.badges import _render_digits
-    font = lib.font("name", 30)
-    dw = _render_digits(str(abs(value)), font, 2).width
+    dw = _render_digits(str(abs(value)), lib, 30).width
     s_digits = _band_bbox(signed, block[2] - dw, block[2])
     s_sign = _band_bbox(signed, block[0], block[2] - dw - 1)
     assert s_digits and s_sign  # alpha 含符号区（贴图）与数字区
@@ -587,7 +639,7 @@ def test_stat_mask_composite_covers_faint_edges(assets_dir):
     d = ImageDraw.Draw(icon)
     d.rectangle((8, 8, 23, 23), fill=(10, 10, 10, 255))
     d.rectangle((4, 4, 27, 27), outline=(10, 10, 10, 20), width=4)
-    fake_lib = SimpleNamespace(stat_badge=lambda *a, **k: icon, font=lib.font)
+    fake_lib = SimpleNamespace(stat_badge=lambda *a, **k: icon, number=lib.number)
     elem = {"kind": "stat", "field": "power",
             "pos": [100, 100], "icon_size": 32, "num_offset": [60, 0], "font_size": 30}
     card = {"type": "式神", "power": 3}

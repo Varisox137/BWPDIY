@@ -159,16 +159,16 @@ def test_entity_counter_asset_and_digit_selection(assets_dir, sample_art, monkey
     original_badge = lib.stat_badge
     original_digits = entity._render_digits
 
-    def tracked_digits(text, font, stroke_width, color=None, gap=3):
+    def tracked_digits(text, library, font_size, color="white", gap=3):
         digits.append((text, color))
-        return original_digits(text, font, stroke_width, color, gap)
+        return original_digits(text, library, font_size, color, gap)
 
     monkeypatch.setattr(lib, "stat_badge",
                         lambda name: badges.append(name) or original_badge(name))
     monkeypatch.setattr(entity, "_render_digits", tracked_digits)
     monkeypatch.setattr(entity, "_render_infinity",
-                        lambda font_size, stroke_width: infinities.append(
-                            (font_size, stroke_width)) or Image.new("RGBA", (40, 20)),
+                        lambda library, font_size: infinities.append(font_size)
+                        or Image.new("RGBA", (40, 20)),
                         raising=False)
 
     def render(state):
@@ -186,7 +186,7 @@ def test_entity_counter_asset_and_digit_selection(assets_dir, sample_art, monkey
     assert render({"countdown": 2, "defeated_countdown": 2}) == (
         ["defeated_countdown"], [("2", "white")], [])
     assert render({"defeated_countdown": "infinity"}) == (
-        ["defeated_countdown"], [], [(40, 2)])
+        ["defeated_countdown"], [], [40])
 
 
 @pytest.mark.parametrize("right_state", [{"energy": 0}, {"countdown": 2}])
@@ -335,12 +335,12 @@ def test_entity_counter_native_scaling_covers_geometry_and_ink(
     original_digits = entity._render_digits
     original_bounds = entity._entity_work_bounds
 
-    def tracked_digits(text, font, stroke_width, *args):
-        ink_calls.append((font.size, stroke_width, args[-1]))
-        return original_digits(text, font, stroke_width, *args)
+    def tracked_digits(text, library, font_size, color="white", gap=3):
+        ink_calls.append((font_size, gap))
+        return original_digits(text, library, font_size, color, gap)
 
-    def tracked_infinity(font_size, stroke_width):
-        ink_calls.append((font_size, stroke_width, None))
+    def tracked_infinity(library, font_size):
+        ink_calls.append((font_size, None))
         return Image.new("RGBA", (font_size, font_size // 2))
 
     def tracked_bounds(lib, elements, current_state, factor=1.0):
@@ -355,9 +355,8 @@ def test_entity_counter_native_scaling_covers_geometry_and_ink(
 
     assert scaled.size == (base.width * 2, base.height * 2)
     assert ink_calls[-1][0] == expected_font_size * 2
-    assert ink_calls[-1][1] == 4
     if state.get("defeated_countdown") != "infinity":
-        assert ink_calls[-1][2] == entity._DIGIT_GAP * 2
+        assert ink_calls[-1][1] == entity._DIGIT_GAP * 2
     for name in ("energy", "countdown", "defeated"):
         before = layout["elements"][name]
         after = scaled_elements[-1][name]
@@ -399,9 +398,9 @@ def test_entity_stat_digits_share_card_spacing(assets_dir, sample_art, monkeypat
     calls = []
     original = entity._render_digits
 
-    def tracked(text, font, stroke_width, color=None, gap=_DIGIT_GAP):
+    def tracked(text, library, font_size, color="white", gap=_DIGIT_GAP):
         calls.append((text, gap))
-        return original(text, font, stroke_width, color, gap)
+        return original(text, library, font_size, color, gap)
 
     monkeypatch.setattr(entity, "_render_digits", tracked)
     render_entity(make_card(sample_art),
@@ -413,8 +412,8 @@ def test_entity_stat_digits_share_card_spacing(assets_dir, sample_art, monkeypat
 
 
 @pytest.mark.parametrize("field", ["power", "health", "combat_power", "shield"])
-def test_entity_stat_colors_render_with_shared_gradient(assets_dir, sample_art, field):
-    """四个小卡数值均接受 <field>_color，并复用大卡的红/绿/紫渐变。"""
+def test_entity_stat_colors_render_with_shared_bitmap_assets(assets_dir, sample_art, field):
+    """四个小卡数值均接受 <field>_color，并复用大卡的红/绿/紫位图资源。"""
     card = make_card(sample_art)
     state = {"power": 3, "health": 4, "combat_power": 2, "shield": 2}
     base = render_entity(card, state, assets_dir, crop=False)
@@ -573,6 +572,7 @@ def test_entity_rejects_oversized_artwork_before_resize(
         pytest.fail("超限对局卡图不得进入 resize")
 
     monkeypatch.setattr(entity, "_normalize_frame", lambda frame: frame)
+    monkeypatch.setattr(entity, "_render_digits", lambda *args: None)
     monkeypatch.setattr(Image.Image, "resize", forbidden_resize)
     with pytest.raises(ValueError, match="超像素上限"):
         render_entity(make_card(sample_art), {"art_scale": 1e100}, assets_dir)

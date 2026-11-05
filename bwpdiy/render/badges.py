@@ -1,7 +1,5 @@
 """元素渲染：按布局元素定义渲染 等级标/稀有度双标/派系标/数值标/点文本。"""
 
-import math
-
 from PIL import Image, ImageDraw
 
 from bwpdiy.render.assets import AssetLibrary
@@ -58,7 +56,7 @@ def _paste_element(canvas: Image.Image, img: Image.Image,
     return paste_centered(canvas, img, pos, fit, composite=composite)
 
 
-# 数值渐变端色：采样 assets/ref/{白,红,绿,紫,黄}字.png 的数字内部亮像素。
+# 数值颜色语义的历史渐变端色；运行时数字与符号直接使用 assets/numbers/ 位图。
 STAT_COLORS = {
     "white": ((253, 255, 226), (247, 253, 242)),
     "red": ((230, 33, 2), (234, 105, 43)),
@@ -101,57 +99,22 @@ def _tint(img: Image.Image, top: tuple[int, int, int],
     return out
 
 
-_tint_sign = _tint  # 符号贴图与白字数字同一口径：填充换渐变、描边保留
+_NUMBER_FILE_COLOR = {"yellow": "orange"}
 
 
-def _render_infinity(font_size: int, stroke_width: int) -> Image.Image:
-    """按永久气绝参考图绘制连续交叉的细线无限符号，不依赖字体字形。"""
-    width = max(2, round(font_size * 0.65))
-    height = max(2, round(font_size * 0.42))
-    white_width = max(1, round(font_size / 18))
-    pad = stroke_width + 2
-    scale = 4
-    size = (width + pad * 2 + 1, height + pad * 2 + 1)
-    img = Image.new("RGBA", (size[0] * scale, size[1] * scale), (0, 0, 0, 0))
-    points = []
-    for i in range(257):
-        t = math.tau * i / 256
-        x = pad + width / 2 + width / 2 * math.sin(t)
-        y = pad + height / 2 + height / 2 * math.sin(t) * math.cos(t)
-        points.append((round(x * scale), round(y * scale)))
-    draw = ImageDraw.Draw(img)
-    draw.line(points, fill=(0, 0, 0, 220),
-              width=(white_width + stroke_width * 2) * scale, joint="curve")
-    draw.line(points, fill=(255, 255, 255, 255),
-              width=white_width * scale, joint="curve")
-    img = img.resize(size, Image.Resampling.LANCZOS)
+def _number_image(lib: AssetLibrary, color: str, name: str,
+                  font_size: int) -> Image.Image | None:
+    color = _NUMBER_FILE_COLOR.get(color, color)
+    img = lib.number(color, name)
+    height = max(1, round(font_size))
+    img = img.resize((max(1, round(img.width * height / img.height)), height),
+                     Image.Resampling.LANCZOS)
     bbox = img.getchannel("A").getbbox()
-    return _tint(img.crop(bbox), *STAT_COLORS["white"])
+    return img.crop(bbox) if bbox else None
 
 
-def _render_ink(text: str, font, stroke_width: int = 2):
-    """离屏渲染文本（白字黑描边），返回 (裁到墨迹的 RGBA 图, 相对 mm 锚点的真墨迹 bbox)。
-
-    不能用 textbbox 的预测口径：田氏颜体 `-` 字形轮廓含不产墨的延伸点，
-    预测 bbox 底边虚报（报 y20..36 实际墨迹 y20..24），按预测中心对齐必错位。
-    """
-    probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    predicted = probe.textbbox((0, 0), text, font=font, anchor="mm",
-                               stroke_width=stroke_width)
-    pad = 8
-    ox = -predicted[0] + pad
-    oy = -predicted[1] + pad
-    img = Image.new("RGBA", (predicted[2] - predicted[0] + pad * 2,
-                             predicted[3] - predicted[1] + pad * 2), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    draw.text((ox, oy), text, font=font, anchor="mm",
-              fill=(255, 255, 255, 255), stroke_width=stroke_width,
-              stroke_fill=(0, 0, 0, 220))
-    bbox = img.getchannel("A").getbbox()
-    if bbox is None:
-        return None
-    img = img.crop(bbox)
-    return img, (bbox[0] - ox, bbox[1] - oy, bbox[2] - ox, bbox[3] - oy)
+def _render_infinity(lib: AssetLibrary, font_size: int) -> Image.Image:
+    return _number_image(lib, "white", "inf", font_size)
 
 
 _DIGIT_GAP = 3  # 相邻数字墨迹的最小水平间距 px
@@ -180,24 +143,18 @@ def _row_ink_extents(img: Image.Image) -> list[tuple[int, int] | None]:
     return rows
 
 
-def _render_digits(text: str, font, stroke_width: int,
-                   color: str | None = None, gap: float = _DIGIT_GAP) -> Image.Image | None:
-    """数字串渲染：逐字离屏渲染后横向拼接，变色在拼接后整体施加（渐变以整串墨迹计）。
-
-    竖直：各字墨迹中点在同一水平线（不同字高取中点对齐）。
-    水平：不按字形 box 等距排（「41」这类窄字会嫌稀），按相邻字墨迹的
-    最小水平距离 = _DIGIT_GAP 约束排放（逐行区间求最大可行左移量）。
-    """
+def _render_digits(text: str, lib: AssetLibrary, font_size: int,
+                   color: str = "white", gap: float = _DIGIT_GAP) -> Image.Image | None:
+    """位图数字串：逐字缩放到字号高度、裁紧后按逐行墨迹最小间距横向拼接。"""
     color = color or "white"
     parts = []
     for ch in text:
-        ink = _render_ink(ch, font, stroke_width)
+        ink = _number_image(lib, color, ch, font_size)
         if ink is None:
             return None
-        parts.append(ink[0])
+        parts.append(ink)
     if len(parts) == 1:
-        img = parts[0]
-        return _tint(img, *STAT_COLORS[color]) if color is not None else img
+        return parts[0]
     h = max(p.height for p in parts)
     offs = [(h - p.height) // 2 for p in parts]
     acc = Image.new("RGBA", (parts[0].width, h), (0, 0, 0, 0))
@@ -220,7 +177,7 @@ def _render_digits(text: str, font, stroke_width: int,
         grown.alpha_composite(p, (x, off_y))
         acc = grown
         acc_ext = _row_ink_extents(acc)
-    return _tint(acc, *STAT_COLORS[color]) if color is not None else acc
+    return acc
 
 
 # stat 适用矩阵（用户裁定唯一口径，渲染/文本避让/GUI 输入同表）：
@@ -251,9 +208,10 @@ def stat_rendered(elem: dict, card: dict) -> bool:
     return not (card[elem["field"]] == 0 and mode == "signed")
 
 
-def _render_sign(lib: AssetLibrary, name: str, size: int) -> Image.Image:
-    """正负号贴图：裁 alpha bbox 后等比 contain 进 size 见方框（与元素贴图同口径）。"""
-    img = lib.sign(name)
+def _render_sign(lib: AssetLibrary, name: str, size: int, color: str) -> Image.Image:
+    """按颜色读取正负号位图，裁 alpha bbox 后等比 contain 进 size 见方框。"""
+    color = _NUMBER_FILE_COLOR.get(color, color)
+    img = lib.number(color, name)
     bbox = img.getchannel("A").getbbox()
     if bbox:
         img = img.crop(bbox)
@@ -266,10 +224,8 @@ def _render_sign(lib: AssetLibrary, name: str, size: int) -> Image.Image:
 def _render_number_block(out: Image.Image, lib: AssetLibrary, elem: dict,
                          value: int, num_pos: tuple[float, float], signed: bool,
                          color: str, sign_offset) -> Image.Image:
-    font = lib.font("name", elem["font_size"])
-    stroke_width = elem.get("stroke_width", 2)
     digits = str(abs(value)) if signed else str(value)
-    digit_img = _render_digits(digits, font, stroke_width, color,
+    digit_img = _render_digits(digits, lib, elem["font_size"], color,
                                elem.get("_digit_gap", _DIGIT_GAP))
     if digit_img is None:
         return out
@@ -278,8 +234,7 @@ def _render_number_block(out: Image.Image, lib: AssetLibrary, elem: dict,
         sign_name = "plus" if value >= 0 else "minus"
         sign_size = elem.get(f"sign_size_{sign_name}",
                              elem.get("sign_size", round(elem["font_size"] * 0.5)))
-        sign_img = _render_sign(lib, sign_name, sign_size)
-        sign_img = _tint_sign(sign_img, *STAT_COLORS[color])
+        sign_img = _render_sign(lib, sign_name, sign_size, color)
     sign_w = sign_img.width if sign_img is not None else 0
     gap = elem.get("_sign_gap", 2) if sign_img is not None else 0
     left = round(num_pos[0] - (sign_w + gap + digit_img.width) / 2)
@@ -374,7 +329,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                     and len(str(abs(value))) > 10):
                 raise ValueError(f"{field} 数值位数不得超过 10 位")
             # 破甲（战斗负护甲）四键分离：坐标/图标大小/数字偏移/符号偏移读 fragile_* 键，
-            # 缺省回退基础键；字号/描边/符号尺寸/group_offset 与护甲共享，不为破甲单设
+            # 缺省回退基础键；字号/符号尺寸/group_offset 与护甲共享，不为破甲单设
             fragile = (card["type"] == "战斗" and field == "shield+" and value < 0)
             if fragile:
                 # 破甲贴图变体可配（fragile_variant 1/2，缺省 2）

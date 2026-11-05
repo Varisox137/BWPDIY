@@ -14,7 +14,7 @@
 - 普通与墨染牌框使用更新后的 `rarity/{N,R,SR,SSR}.png`。协战不再引用已删除的 `reinforce_{R,SR,SSR}.png`，同样回退基础版；琉璃、百炼专版保持 `{R,SR,SSR}_{blue,red}.png` 不变。稀有度仍按可见 alpha bbox 等比缩放到布局尺寸。
 - `assets/badges/` 统一存放 `badge_bless.png`、`badge_eclipse.png`、`badge_shown.png`。机制框的左上角仍只使用加护/蚀印；已展示只用于大卡特殊状态。
 - `icons/faction_<color>_<1/2/3>.png` 替代旧内嵌派系图及 `_black` 变体；`icons/bounty.png` 补齐描述内嵌 `#sj` 赏金图标，但赏金大角标仍不在本批实现。
-- `stats/combat_power.png` 与 `stats/weak.png` 是对局小卡的大角标，替代此前复用的 `icons/` 小图标。其他更新后的 stats/icons/levels/mech 素材继续按现有可见尺寸规则缩放。
+- 对局小卡的战力/乏力继续使用 `icons/combat_power.png` 与 `icons/weak.png`，它们是专门绘制的内嵌小图标版本；`stats/combat_power.png` 与 `stats/weak.png` 大图标仅保留备用，不缩小用于对局小卡。其他更新后的 stats/icons/levels/mech 素材继续按现有可见尺寸规则缩放。
 - 勾玉颜色新增 `greyblue`（灰蓝）与 `orange`（橙），仅使用现有 1–3 级素材。`level_4_*` 与 `level_3_4_*` 全部保留备用，不开放 4 级，也不替换 3 级引用。
 
 ## 位图数字与符号

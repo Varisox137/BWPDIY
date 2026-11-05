@@ -13,7 +13,7 @@
 图标处于行首/行尾时该侧无空格（空格只存在于同一行内的文字-图标相邻处，
 图标与图标相邻不加）。
 '#' 后跟两个英文字母才视为图标代码：未知代码 ValueError；其余 '#' 为字面字符。
-派系图标暂统一使用 _1（含墨染框，icon_variant 不改变派系样式）。
+派系图标按条目 inline_faction_style 使用 _1/_2/_3（缺省 _1，icon_variant 不改变派系样式）。
 """
 
 import re
@@ -131,13 +131,17 @@ def _plain(items: list[tuple[str, str, bool]]) -> str:
     return "".join(v for k, v, _ in items if k == "char")
 
 
-def _icon_image(code: str, lib: AssetLibrary, icon_variant: str | None) -> Image.Image:
+def _icon_image(code: str, lib: AssetLibrary, icon_variant: str | None,
+                inline_faction_style: int = 1) -> Image.Image:
     """图标原图按 alpha≥128 碰撞轮廓紧致裁剪（抗锯齿淡边缘不算墨迹，仿牌框阈值
     预处理）后，alpha_composite 透明扩展为容纳内容的最紧方形 box（保真源 alpha、
-    内容居中，内嵌前预处理：图标占位恒为正方形）；派系图标暂统一使用 _1。"""
+    内容居中，内嵌前预处理：图标占位恒为正方形）；派系图标按条目选择 1/2/3 样式。"""
     stem = ICON_CODES[code]
     if stem.startswith("faction_"):
-        stem += "_1"
+        if (isinstance(inline_faction_style, bool)
+                or inline_faction_style not in (1, 2, 3)):
+            raise ValueError("inline_faction_style 必须是 1、2 或 3")
+        stem = f"{stem}_{inline_faction_style}"
     img = lib.icon(stem)
     bbox = img.getchannel("A").point(lambda v: 255 if v >= 128 else 0).getbbox()
     if bbox:
@@ -151,7 +155,8 @@ def _icon_image(code: str, lib: AssetLibrary, icon_variant: str | None) -> Image
 
 
 def _icon_size(code: str, height: int, lib: AssetLibrary,
-               icon_variant: str | None, scale: float = 1.0) -> tuple[int, int]:
+               icon_variant: str | None, scale: float = 1.0,
+               inline_faction_style: int = 1) -> tuple[int, int]:
     """图标缩放目标尺寸：高=字号×scale（icon_scale 布局字段，缺省 1.0）；
     源图已预处理为方形，宽=高。"""
     h = max(1, round(height * scale))
@@ -160,8 +165,8 @@ def _icon_size(code: str, height: int, lib: AssetLibrary,
 
 def _icon_widths(items: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
                  lib: AssetLibrary, icon_variant: str | None,
-                 scale: float = 1.0) -> dict[str, int]:
-    return {v: _icon_size(v, font.size, lib, icon_variant, scale)[0]
+                 scale: float = 1.0, inline_faction_style: int = 1) -> dict[str, int]:
+    return {v: _icon_size(v, font.size, lib, icon_variant, scale, inline_faction_style)[0]
             for k, v, _ in items if k == "icon"}
 
 
@@ -206,7 +211,8 @@ def _line_height(font: ImageFont.FreeTypeFont, gap: float = _LINE_GAP) -> float:
 def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
                     region: dict, wrap: bool,
                     row_runs: dict | None = None, dy: float = 0,
-                    lib: AssetLibrary | None = None, icon_variant: str | None = None):
+                    lib: AssetLibrary | None = None, icon_variant: str | None = None,
+                    inline_faction_style: int = 1):
     """按给定字号在矩形区内排版，成功返回 [(行 item 列表, cx, cy)]，失败返回 None。
 
     文本块（行数 × 行高）在区域内水平逐行居中、竖直整体居中：
@@ -223,7 +229,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
     lh = _line_height(font, region.get("_line_gap", _LINE_GAP))
     gap = region.get("obstacle_gap", 4)
     icon_scale = region.get("icon_scale", 1.0)  # 内嵌图标相对文字大小（高=字号×scale）
-    icon_w = (_icon_widths(items, font, lib, icon_variant, icon_scale)
+    icon_w = (_icon_widths(items, font, lib, icon_variant, icon_scale, inline_faction_style)
               if lib is not None else {})
 
     def span_at(y: float):
@@ -308,7 +314,8 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
 
 
 def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
-         row_runs: dict | None, icon_variant: str | None = None):
+         row_runs: dict | None, icon_variant: str | None = None,
+         inline_faction_style: int = 1):
     """字号从大到小适配；每个字号上先尝试逐 px 临时上移居中锚点（1px 步进、
     至多半行高）——接受条件：排得下且每一行都水平居中（未被障碍挤偏）。
     当前字号所有上移量都不行才减小字号。"""
@@ -319,7 +326,8 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
         max_dy = int(_line_height(font, region.get("_line_gap", _LINE_GAP)) / 2)
         for dy in range(0, max_dy + 1):
             lines = _layout_at_size(items, font, region, region["wrap"], row_runs,
-                                    dy=dy, lib=lib, icon_variant=icon_variant)
+                                    dy=dy, lib=lib, icon_variant=icon_variant,
+                                    inline_faction_style=inline_faction_style)
             if lines is not None and all(abs(cx - acx) < 1e-6 for _, cx, _ in lines):
                 return font, lines
     return None
@@ -346,17 +354,19 @@ def fit_in_region(text: str, region: dict, lib: AssetLibrary,
 def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
                 region: dict, obstacle_mask: Image.Image | None = None,
                 fill=TEXT_FILL, keyword_fill=None,
-                icon_variant: str | None = None) -> Image.Image:
+                icon_variant: str | None = None,
+                inline_faction_style: int = 1) -> Image.Image:
     """排版并绘制文本。[[关键字]] 段用 keyword_fill 异色绘制（None 时与正文同色）；
-    #xx 代码绘制为行内小图标（icon_variant="black" 时派系图标用墨染变体）。"""
+    #xx 代码绘制为行内小图标，派系图标使用 inline_faction_style 指定的 1/2/3 样式。"""
     text = _normalize_newlines(text)
     items = parse_items(text)
     row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None
-    fitted = _fit(items, region, lib, row_runs, icon_variant)
+    fitted = _fit(items, region, lib, row_runs, icon_variant, inline_faction_style)
     if fitted is None:
         font = lib.font(region["font"], region["font_range"][1])
         lines = _layout_at_size(items, font, region, region["wrap"], row_runs,
-                                lib=lib, icon_variant=icon_variant)
+                                lib=lib, icon_variant=icon_variant,
+                                inline_faction_style=inline_faction_style)
         if lines is None:  # 强排兜底：nowrap 超宽，或 wrap 最小字号仍排不下（含障碍封死）
             lines = [(items, region["center"][0], region["center"][1])]
         fitted = (font, lines)
@@ -365,14 +375,15 @@ def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
     icon_scale = region.get("icon_scale", 1.0)
     for line, cx, cy in lines:
         _draw_styled_line(out, line, cx, cy, font, fill, keyword_fill, lib,
-                          icon_variant, icon_scale)
+                          icon_variant, icon_scale, inline_faction_style)
     return out
 
 
 def _draw_styled_line(out: Image.Image, line: list[tuple[str, str, bool]],
                       cx: float, cy: float, font: ImageFont.FreeTypeFont,
                       fill, keyword_fill, lib: AssetLibrary,
-                      icon_variant: str | None, icon_scale: float = 1.0) -> None:
+                      icon_variant: str | None, icon_scale: float = 1.0,
+                      inline_faction_style: int = 1) -> None:
     """无关键字段且无图标时整行 anchor=mm 一次绘制；否则按段异色、anchor=lm 横向
     推进，图标项就地缩放粘贴（高=字号×icon_scale，竖直中心对齐行中心）。"""
     if not line:
@@ -383,7 +394,7 @@ def _draw_styled_line(out: Image.Image, line: list[tuple[str, str, bool]],
         ImageDraw.Draw(out).text((cx, cy), _plain(line), font=font, anchor="mm",
                                  fill=fill)
         return
-    icon_w = _icon_widths(line, font, lib, icon_variant, icon_scale)
+    icon_w = _icon_widths(line, font, lib, icon_variant, icon_scale, inline_faction_style)
     x = cx - _line_width(line, font, icon_w) / 2
     draw = ImageDraw.Draw(out)
     run, run_kw = "", line[0][2]
@@ -406,8 +417,10 @@ def _draw_styled_line(out: Image.Image, line: list[tuple[str, str, bool]],
             flush()
             if prev == "char":
                 x += gap
-            w, h = _icon_size(v, font.size, lib, icon_variant, icon_scale)
-            icon = _icon_image(v, lib, icon_variant).resize((w, h), Image.LANCZOS)
+            w, h = _icon_size(v, font.size, lib, icon_variant, icon_scale,
+                              inline_faction_style)
+            icon = _icon_image(v, lib, icon_variant, inline_faction_style).resize(
+                (w, h), Image.LANCZOS)
             out.paste(icon, (round(x), round(cy - h / 2)), icon)
             x += w
         else:

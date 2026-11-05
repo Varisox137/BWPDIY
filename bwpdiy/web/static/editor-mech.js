@@ -89,6 +89,13 @@ function buildMechForm() {
       v => { mechForm.badge = v || null; afterMechEdit(); },
       v => MECH_BADGES.find(([val]) => val === v)[1]);
   }
+  if (extOptions.marker) selRowC(div, '内嵌派系样式', ['1', '2', '3'],
+    String(mechForm.inline_faction_style ?? 1), v => {
+      const style = parseInt(v, 10);
+      if (style === 1) delete mechForm.inline_faction_style;
+      else mechForm.inline_faction_style = style;
+      afterMechEdit();
+    });
   const l = document.createElement('label');
   l.textContent = '描述 ';
   const ta = document.createElement('textarea');
@@ -131,6 +138,10 @@ function validateMechJS(d) {
   if (typeof d.text !== 'string') errors.push('字段 text：必须是字符串');
   if ('chars_per_line' in d && (!Number.isInteger(d.chars_per_line) || d.chars_per_line <= 0)) {
     errors.push('字段 chars_per_line：必须是正整数');
+  }
+  if ('inline_faction_style' in d &&
+      (!Number.isInteger(d.inline_faction_style) || !FACTION_STYLES.includes(d.inline_faction_style))) {
+    errors.push(`字段 inline_faction_style：内嵌派系样式必须是整数 ${FACTION_STYLES.join('/')} 之一`);
   }
   if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYYMMDD 日期（8 位数字，可留空）');
   return errors;

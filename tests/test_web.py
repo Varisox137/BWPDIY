@@ -517,6 +517,147 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_inline_faction_js_validation(tmp_path):
+    script = _script()
+    end = script.index(";", script.index("const STAT_VALUE_COLOR_VALUES =")) + 1
+    consts = script[script.index("const TYPES ="):end]
+    validate_card = _extract_js(script, "function validateCardJS(d)")
+    validate_mech = _extract_js(script, "function validateMechJS(d)")
+    driver = f"""
+const assert = require('node:assert');
+{consts}
+const MECH_FRAMES = [['invocation', '灵咒'], ['skill', '关键字'], ['seal', '加护蚀印']];
+const MECH_BADGES = [['', '无'], ['bless', '加护'], ['eclipse', '蚀印']];
+function validDateStr() {{ return true; }}
+{validate_card}
+{validate_mech}
+const card = {{type: '战斗', name: '斩', level: 1, rarity: 'R', shikigami: '山风',
+              'power+': 1, 'shield+': 1, description: '#hl'}};
+const mech = {{name: '示例', frame: 'skill', text: '#hl'}};
+for (const style of [1, 2, 3]) {{
+  assert.deepStrictEqual(validateCardJS({{...card, inline_faction_style: style}}), []);
+  assert.deepStrictEqual(validateMechJS({{...mech, inline_faction_style: style}}), []);
+}}
+for (const style of [0, 4, true, 1.5, '1']) {{
+  assert(validateCardJS({{...card, inline_faction_style: style}}).some(e => e.includes('inline_faction_style')));
+  assert(validateMechJS({{...mech, inline_faction_style: style}}).some(e => e.includes('inline_faction_style')));
+}}
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_inline_faction_controls_follow_marker_for_card_and_mechanism(tmp_path):
+    script = _script()
+    build_card = _extract_js(script, "function buildForm()")
+    build_mech = _extract_js(script, "function buildMechForm()")
+    driver = f"""
+const assert = require('node:assert');
+let activeAsk = null, cDirty = false, mDirty = false, curCard = null;
+let formData = {{type: '法术', name: '测试', level: 1, rarity: 'R', shikigami: '山风',
+                description: '#hl', inline_faction_style: 3}};
+let mechForm = {{name: '示例', frame: 'skill', text: '#hl', inline_faction_style: 3}};
+const extOptions = {{marker: false, layout: false}};
+const labels = [];
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', value: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const div = element('div');
+const document = {{getElementById: () => div, createElement: element}};
+function syncCardFrameButtons() {{}}
+function infoRow() {{}}
+function textRow() {{}}
+function versionRows() {{}}
+function levelRow() {{}}
+function shikigamiRow() {{}}
+function checkRowC() {{}}
+function numRowC() {{}}
+function artRow() {{}}
+function isMainShikigami() {{ return false; }}
+function rarityOptions() {{ return ['R']; }}
+function selRowC(div, label, opts, val, set) {{ labels.push({{label, val, set}}); }}
+function showFormErrors() {{}}
+function validateCardJS() {{ return []; }}
+function validateMechJS() {{ return []; }}
+function afterEdit() {{}}
+function afterMechEdit() {{}}
+function undoAll() {{}}
+function undoLast() {{}}
+function saveCard() {{}}
+function openExport() {{}}
+function saveMech() {{}}
+function exportMech() {{}}
+const MECH_FRAMES = [['invocation', '灵咒'], ['skill', '关键字'], ['seal', '加护蚀印']];
+const MECH_BADGES = [['', '无'], ['bless', '加护'], ['eclipse', '蚀印']];
+const EVOLVE_TYPES = new Set(['战斗', '法术', '形态', '幻境']);
+const NONNEG_TYPES = new Set(['式神', '形态', '幻境']);
+const STATS_BY_TYPE = {{法术: ['power+', 'health+']}};
+const STAT_MATRIX = {{法术: {{'power+': '力量+', 'health+': '生命+'}}}};
+{build_card}
+{build_mech}
+function inlineControl() {{ return labels.find(row => row.label === '内嵌派系样式'); }}
+buildForm();
+assert.strictEqual(inlineControl(), undefined);
+assert.strictEqual(formData.inline_faction_style, 3);
+buildMechForm();
+assert.strictEqual(inlineControl(), undefined);
+assert.strictEqual(mechForm.inline_faction_style, 3);
+extOptions.marker = true;
+labels.length = 0;
+buildForm();
+assert.strictEqual(inlineControl().val, '3');
+inlineControl().set('1');
+assert.strictEqual(formData.inline_faction_style, undefined);
+inlineControl().set('2');
+assert.strictEqual(formData.inline_faction_style, 2);
+labels.length = 0;
+buildMechForm();
+assert.strictEqual(inlineControl().val, '3');
+inlineControl().set('1');
+assert.strictEqual(mechForm.inline_faction_style, undefined);
+inlineControl().set('2');
+assert.strictEqual(mechForm.inline_faction_style, 2);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_inline_faction_marker_toggle_rebuilds_card_and_mechanism(tmp_path):
+    apply = _extract_js(_script(), "function applyExtOptions()")
+    driver = f"""
+const assert = require('node:assert');
+const extOptions = {{layout: true, marker: false}};
+let cardLayoutMode = false, formData = {{}}, mechForm = {{}};
+let cardBuilds = 0, mechBuilds = 0;
+const elements = {{
+  'ext-layout': {{checked: false}}, 'ext-marker': {{checked: false}},
+  'tab-layout': {{classList: {{contains: () => false}}}},
+}};
+const document = {{
+  getElementById: id => elements[id],
+  querySelector: () => ({{style: {{}}}}),
+}};
+function saveExtOptions() {{}}
+function showTab() {{}}
+function exitCardLayout() {{}}
+function buildForm() {{ cardBuilds++; }}
+function buildMechForm() {{ mechBuilds++; }}
+{apply}
+applyExtOptions();
+assert.strictEqual(cardBuilds, 1);
+assert.strictEqual(mechBuilds, 1);
+formData = null;
+applyExtOptions();
+assert.strictEqual(cardBuilds, 1);
+assert.strictEqual(mechBuilds, 2);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_derived_shikigami_skeleton_keeps_owner(tmp_path):
     """式神骨架有所属式神时保留引用，不能在提前返回时丢弃。"""
     skeleton = _extract_js(_script(), "function skeleton(type, name, shiki = {})")

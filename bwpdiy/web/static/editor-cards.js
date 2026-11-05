@@ -1020,6 +1020,13 @@ function buildForm() {
       numRowC(div, STAT_MATRIX[t][f], formData[f] ?? 0, nonneg, v => setField(f, v));
     }
   }
+  if (extOptions.marker) selRowC(div, '内嵌派系样式', ['1', '2', '3'],
+    String(formData.inline_faction_style ?? 1), v => {
+      const style = parseInt(v, 10);
+      if (style === 1) delete formData.inline_faction_style;
+      else formData.inline_faction_style = style;
+      afterEdit();
+    });
   const l = document.createElement('label');
   l.textContent = '描述 ';
   const ta = document.createElement('textarea');
@@ -1336,7 +1343,7 @@ function validateCardJS(d) {
   if (!TYPES.includes(t)) return [`字段 type：非法卡牌类型「${t}」，须为 ${TYPES.join('/')} 之一`];
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   if ('id' in d && typeof d.id !== 'string') errors.push('字段 id：必须是字符串');
-  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color', 'layout', 'version_date']);
+  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color', 'layout', 'version_date', 'inline_faction_style']);
   if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYYMMDD 日期（8 位数字，可留空）');
   (STATS_BY_TYPE[t] || []).forEach(f => allowed.add(`${f}_color`));  // 数值变色伴随字段
   if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', 'portrait', 'shikigami', 'special_type', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
@@ -1414,6 +1421,10 @@ function validateCardJS(d) {
   }
   if ('level_color' in d && !LEVEL_COLOR_VALUES.has(d.level_color)) {
     errors.push(`字段 level_color：非法勾玉颜色「${d.level_color}」，须为 ${[...LEVEL_COLOR_VALUES].join('/')} 之一`);
+  }
+  if ('inline_faction_style' in d &&
+      (!Number.isInteger(d.inline_faction_style) || !FACTION_STYLES.includes(d.inline_faction_style))) {
+    errors.push(`字段 inline_faction_style：内嵌派系样式必须是整数 ${FACTION_STYLES.join('/')} 之一`);
   }
   for (const f of STATS_BY_TYPE[t]) {
     const cf = `${f}_color`;

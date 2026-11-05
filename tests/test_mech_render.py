@@ -121,6 +121,17 @@ def test_inline_icon(assets_dir):
     assert not has_teal(without)
 
 
+def test_inline_faction_style_mechanism_pipeline(assets_dir, monkeypatch):
+    from bwpdiy.render.assets import get_library
+    lib = get_library(assets_dir)
+    calls = []
+    original = lib.icon
+    monkeypatch.setattr(lib, "icon", lambda name: calls.append(name) or original(name))
+    render_mechanism(_mech(text="#hl"), assets_dir)
+    render_mechanism(_mech(text="#hl", inline_faction_style=3), assets_dir)
+    assert calls == ["faction_red_1", "faction_red_3"]
+
+
 def test_unknown_icon_code_raises(assets_dir):
     with pytest.raises(ValueError, match="图标代码未知"):
         render_mechanism(_mech(text="非法 #zz 图标。"), assets_dir)

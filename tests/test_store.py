@@ -613,6 +613,23 @@ MECH = {"name": "蛊蚀", "frame": "skill", "text": "敌方式神气绝时结附
 MECH_SEAL = {"name": "加护", "frame": "seal", "text": "恢复2点生命。", "badge": "bless"}
 
 
+@pytest.mark.parametrize("style", [1, 2, 3])
+def test_inline_faction_style_store_round_trip(lib, style):
+    create_project(lib, "山风")
+    save_card(lib, "山风", "斩", {**FIGHT, "inline_faction_style": style})
+    save_mechanism(lib, "蛊蚀", {**MECH, "inline_faction_style": style})
+    assert load_card(lib, "山风", "斩")["inline_faction_style"] == style
+    assert load_mechanism(lib, "蛊蚀")["inline_faction_style"] == style
+
+
+@pytest.mark.parametrize("style", [0, 4, True])
+def test_inline_faction_style_store_rejects_invalid_values(style):
+    for data, validate in ((FIGHT, validate_card), (MECH, validate_mechanism)):
+        errors = validate({**data, "inline_faction_style": style})
+        assert any("inline_faction_style" in error and "必须是整数" in error
+                   for error in errors), errors
+
+
 def test_mechanism_round_trip(lib):
     path = save_mechanism(lib, "蛊蚀", MECH)
     assert path == lib / "mechanisms" / "蛊蚀.yaml"

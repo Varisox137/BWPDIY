@@ -146,8 +146,8 @@ function updateLayoutNavtab() {
 }
 
 // ================= 顶栏扩展选项（localStorage 持久化） =================
-// 标记扩展（marker）：N 稀有度 + 式神等级 + 派系样式；取消勾选只隐藏控件，
-// 已写进卡牌的数据（level_color 等）不回退、渲染照常生效
+// 标记扩展（marker）：N 稀有度 + 式神等级 + 派系/内嵌派系样式；取消勾选只隐藏控件，
+// 已写进卡牌/机制的数据（level_color、inline_faction_style 等）不回退、渲染照常生效
 const EXT_KEY = 'bwpdiy_ext_options';
 const extOptions = {layout: false, marker: false};
 try { Object.assign(extOptions, JSON.parse(localStorage.getItem(EXT_KEY) || '{}')); } catch (e) {}
@@ -162,7 +162,8 @@ function applyExtOptions() {
     if (cardLayoutMode) exitCardLayout();  // 单卡布局模式随扩展关闭退出（布局调整丢弃）
     if (document.getElementById('tab-layout').classList.contains('active')) showTab('cards');
   }
-  if (formData) buildForm();  // 稀有度/等级等下拉随扩展选项变化
+  if (formData) buildForm();  // 稀有度/等级/内嵌派系样式等下拉随扩展选项变化
+  if (mechForm) buildMechForm();
 }
 document.getElementById('ext-layout').onchange = ev => {
   extOptions.layout = ev.target.checked; saveExtOptions(); applyExtOptions();

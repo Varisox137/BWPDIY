@@ -214,10 +214,10 @@ def _resize_frame_width(img: Image.Image, width: int) -> Image.Image:
 
 def _wrap_items(items: list[tuple[str, str, bool]], font, lib: AssetLibrary,
                 width: float, icon_variant: str | None,
-                icon_scale: float = 1.0) -> list[list]:
+                icon_scale: float = 1.0, inline_faction_style: int = 1) -> list[list]:
     """固定字号按可用宽度贪心换行（图标宽度按 icon_scale 缩放计入），\n 强制断行
     （不产生空行，与 _normalize_newlines 口径一致）。"""
-    icon_w = _icon_widths(items, font, lib, icon_variant, icon_scale)
+    icon_w = _icon_widths(items, font, lib, icon_variant, icon_scale, inline_faction_style)
     paragraphs = [[]]
     for item in items:
         if item[0] == "char" and item[1] == "\n":
@@ -245,7 +245,8 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     """渲染机制描述框，默认返回按最紧 alpha box 裁剪的 PNG 图。
 
     mech 字段：name 关键字名、frame（invocation/skill/seal）、text 多行描述、
-    badge（bless/eclipse，仅 seal 框合法，贴框左上角）。
+    badge（bless/eclipse，仅 seal 框合法，贴框左上角）、inline_faction_style
+    内嵌派系样式（1/2/3，缺省 1）。
     layout：机制布局配置（$HOME/.bwpdiy/layout.json「机制」段），缺省/缺键回退 DEFAULT_LAYOUT。
     info：传入 dict 时回填实际文本块矩形（裁剪后坐标系）
     {text_x, text_top, text_width, text_height}，供 GUI 画文本区域轮廓。
@@ -300,7 +301,9 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
         raise ValueError(f"目标宽度超过边长上限 {MAX_RENDER_SIDE}")
     text_width = min(text_width, final_width - text_x)
     items = parse_items(_normalize_newlines(text))
-    lines = _wrap_items(items, font, lib, text_width, icon_variant, cfg["icon_scale"])
+    inline_faction_style = mech.get("inline_faction_style", 1)
+    lines = _wrap_items(items, font, lib, text_width, icon_variant, cfg["icon_scale"],
+                        inline_faction_style)
     if len(lines) > MAX_LINES:
         raise ValueError(f"机制描述行数 {len(lines)} 超软上限 {MAX_LINES} 行")
 
@@ -339,12 +342,13 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
               anchor="lm", fill=NAME_FILL)
     # 描述：与关键字名之间空一行，逐行左对齐（同行左缘 = 区域左缘；[[关键字]] 金色
     # 高亮、#xx 图标；正文色按框体 TEXT_FILL）
-    icon_w = _icon_widths(items, font, lib, icon_variant, cfg["icon_scale"])
+    icon_w = _icon_widths(items, font, lib, icon_variant, cfg["icon_scale"],
+                          inline_faction_style)
     for i, line in enumerate(lines):
         cx = text_x + _line_width(line, font, icon_w) / 2  # 左缘锚定换算为中心锚点
         _draw_styled_line(out, line, cx, y0 + pitch * (2.5 + i), font,
                           TEXT_FILL[frame], KEYWORD_FILL, lib, icon_variant,
-                          cfg["icon_scale"])
+                          cfg["icon_scale"], inline_faction_style)
 
     if info is not None:  # 实际文本块矩形（关键字名+空行+描述行）：左缘/顶/换行宽/行数×行距
         info.update(text_x=text_x, text_top=y0, text_width=text_width,

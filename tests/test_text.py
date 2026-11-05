@@ -300,7 +300,7 @@ def test_draw_region_inline_icon(assets_dir):
     ("zy", "faction_purple_1"),
 ])
 def test_faction_icons_default_to_style_one(assets_dir, monkeypatch, code, stem):
-    """过渡口径：派系默认与墨染框都使用 _1，不读取已删除的无编号/_black 资源。"""
+    """缺省样式：未指定条目样式时派系与墨染框都使用 _1，不读取无编号/_black 资源。"""
     from bwpdiy.render.text import _icon_image
     lib = AssetLibrary(assets_dir)
     names = []
@@ -310,6 +310,51 @@ def test_faction_icons_default_to_style_one(assets_dir, monkeypatch, code, stem)
     black = _icon_image(code, lib, "black")
     assert names == [stem, stem]
     assert normal.tobytes() == black.tobytes()
+
+
+@pytest.mark.parametrize("code, stem", [
+    ("hl", "faction_red"),
+    ("cy", "faction_green"),
+    ("ql", "faction_blue"),
+    ("zy", "faction_purple"),
+])
+def test_inline_faction_style_selects_variant(assets_dir, monkeypatch, code, stem):
+    from bwpdiy.render.text import _icon_image
+    lib = AssetLibrary(assets_dir)
+    calls = []
+    original = lib.icon
+    monkeypatch.setattr(lib, "icon", lambda name: calls.append(name) or original(name))
+    one = _icon_image(code, lib, None, 1)
+    three = _icon_image(code, lib, "black", 3)
+    assert calls == [f"{stem}_1", f"{stem}_3"]
+    assert one.tobytes() != three.tobytes()
+    with pytest.raises(ValueError, match="inline_faction_style"):
+        _icon_image(code, lib, None, 4)
+
+
+def test_inline_faction_style_leaves_other_icons_unchanged(assets_dir, monkeypatch):
+    from bwpdiy.render.text import _icon_image
+    lib = AssetLibrary(assets_dir)
+    calls = []
+    original = lib.icon
+    monkeypatch.setattr(lib, "icon", lambda name: calls.append(name) or original(name))
+    _icon_image("ll", lib, "black", 3)
+    assert calls == ["power"]
+
+
+def test_inline_faction_style_card_pipeline(assets_dir, monkeypatch):
+    from bwpdiy.render.assets import get_library
+    from bwpdiy.render.pipeline import render_card
+    lib = get_library(assets_dir)
+    calls = []
+    original = lib.icon
+    monkeypatch.setattr(lib, "icon", lambda name: calls.append(name) or original(name))
+    monkeypatch.setattr("bwpdiy.render.pipeline.load_card_artwork",
+                        lambda card, lib: ((744, 1039), Image.new("RGBA", (744, 1039))))
+    card = {"type": "法术", "name": "测试", "level": 1, "rarity": "R",
+            "shikigami": "山风", "description": "#hl", "inline_faction_style": 3}
+    render_card(card, assets_dir)
+    assert "faction_red_3" in calls
 
 
 def test_icon_image_tight_square(assets_dir):

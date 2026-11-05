@@ -19,7 +19,8 @@ frame 头像框开关，全可缺省；协战双式神框取该式神卡图作�
 缺省 yellow，凡可带 level 的类型皆可携带）；level 全类型可缺省（缺省 = 无等级，衍生牌/无等级卡口粮，
 GUI 等级下拉 0 = 删 level 键）；rarity 全类型可缺省（缺省 = 无稀有度，衍生牌口径，
 对齐 BWPro token 卡 rarity 须缺省）；式神另可携带可选 faction_style 派系样式
-（1/2/3，缺省 2）；各 stat 字段可带 <field>_color 数值变色（red/green/purple，缺省白）。
+（1/2/3，缺省 2）；卡牌与机制另可携带 inline_faction_style 内嵌派系样式
+（1/2/3，缺省 1）；各 stat 字段可带 <field>_color 数值变色（red/green/purple，缺省白）。
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ FRAME_VARIANTS = ("norm", "blue", "black", "red")
 LEVEL_COLORS = ("yellow", "cyan", "purple", "red", "blue", "brown", "greyblue", "orange")
 FACTION_STYLES = (1, 2, 3)
 
-_COMMON_FIELDS = ("type", "name", "id", "description", "version_date")
+_COMMON_FIELDS = ("type", "name", "id", "description", "version_date", "inline_faction_style")
 _SHIKIGAMI_ONLY = ("faction",)
 # 式神专属可选渲染段字段：portrait 头像设置（{offset_x, offset_y, scale, rotate} 变换 +
 # frame 头像框开关，全可缺省；协战双式神框引用该式神卡图作头像时使用；缺省 0/0/1.0/0/画框）
@@ -94,7 +95,8 @@ class SchemaError(Exception):
 
 MECH_FRAMES = ("invocation", "skill", "seal")  # 灵咒框 / 关键字框 / 加护蚀印框
 MECH_BADGES = ("bless", "eclipse")             # 圆形角标（加护/蚀印），仅 seal 框可携带
-_MECH_FIELDS = ("name", "frame", "text", "badge", "version_date", "chars_per_line")
+_MECH_FIELDS = ("name", "frame", "text", "badge", "version_date", "chars_per_line",
+                "inline_faction_style")
 
 
 def validate_mechanism(data) -> list[str]:
@@ -115,6 +117,11 @@ def validate_mechanism(data) -> list[str]:
             errors.append(f"字段 {key}：机制白名单之外的字段")
     if "text" in data and not isinstance(data["text"], str):
         errors.append("字段 text：必须是字符串")
+    if "inline_faction_style" in data and (
+            not _is_int(data["inline_faction_style"])
+            or data["inline_faction_style"] not in FACTION_STYLES):
+        errors.append(f"字段 inline_faction_style：内嵌派系样式必须是整数 "
+                      f"{'/'.join(map(str, FACTION_STYLES))} 之一")
     if "chars_per_line" in data:
         value = data["chars_per_line"]
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
@@ -234,6 +241,11 @@ def validate_card(data) -> list[str]:
     if "level_color" in data and data["level_color"] not in LEVEL_COLORS:
         errors.append(f"字段 level_color：非法勾玉颜色「{data['level_color']}」，"
                       f"须为 {'/'.join(LEVEL_COLORS)} 之一")
+    if "inline_faction_style" in data and (
+            not _is_int(data["inline_faction_style"])
+            or data["inline_faction_style"] not in FACTION_STYLES):
+        errors.append(f"字段 inline_faction_style：内嵌派系样式必须是整数 "
+                      f"{'/'.join(map(str, FACTION_STYLES))} 之一")
     # 单卡布局覆盖段：形状校验（键名合法性由渲染层兜底）
     if "layout" in data:
         lay = data["layout"]

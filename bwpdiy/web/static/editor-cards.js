@@ -1206,11 +1206,12 @@ function afterEdit(rebuild = false) {
   }
   scheduleCardPreview();
 }
-function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null) {
+function numRowC(div, label, val, nonneg, set, extra = null, max = 9999999999, min = null) {
   const l = document.createElement('label');
   l.textContent = label + ' ';
   const i = document.createElement('input');
   i.type = 'number'; i.value = val;
+  if (max !== null) i.max = max;
   if (nonneg) i.min = min ?? 0;
   else if (min !== null) i.min = min;
   let cur = val;
@@ -1426,7 +1427,7 @@ function validateCardJS(d) {
     if (t === '法术' && !evolve) { errors.push(`字段 ${f}：仅觉醒法术牌（evolve: true）可携带数值`); continue; }
     if (!Number.isInteger(d[f])) errors.push(`字段 ${f}：必须是整数`);
     else if (!SIGNED_STATS.includes(f) && d[f] < 0) errors.push(`字段 ${f}：必须是非负整数`);
-    else if (Math.abs(d[f]) > 999999999999) errors.push(`字段 ${f}：数值位数不得超过 12 位`);
+    else if (Math.abs(d[f]) > 9999999999) errors.push(`字段 ${f}：数值位数不得超过 10 位`);
   }
   // [[关键字]] 括号不校验：未匹配括号按字面文本显示（口径对齐渲染层 parse_keyword_segments）
   return errors;

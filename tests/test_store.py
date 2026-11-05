@@ -925,14 +925,15 @@ def test_list_cards_treats_malformed_group_key_as_broken_entry(lib):
 
 
 def test_schema_rejects_nonfinite_layout_values_and_overlong_stats(lib):
-    """NaN/Infinity 与超 12 位数值在保存前拒绝，避免异常渲染/巨量分配。"""
+    """NaN/Infinity 与超 10 位数值在保存前拒绝，避免异常渲染/巨量分配。"""
     base = {**SHIKIGAMI, "artwork": {"images": [{"scale": float("nan")}]}}
     assert any("scale" in e for e in validate_card(base))
     assert any("offset_x" in e for e in validate_card(
         {**SHIKIGAMI, "portrait": {"offset_x": float("inf")}}))
     assert any("layout" in e for e in validate_card(
         {**SHIKIGAMI, "layout": {"elements": {"name": {"pos": [float("inf"), 0]}}}}))
-    assert any("12 位" in e for e in validate_card({**SHIKIGAMI, "power": 10 ** 12}))
+    assert validate_card({**SHIKIGAMI, "power": 10 ** 10 - 1}) == []
+    assert any("10 位" in e for e in validate_card({**SHIKIGAMI, "power": 10 ** 10}))
 
 
 def test_legacy_dashed_version_date_normalized(lib):

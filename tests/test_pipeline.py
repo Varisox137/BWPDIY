@@ -110,11 +110,16 @@ def test_burst_follows_level_layout_without_card_level(assets_dir, sample_art):
     assert base.crop(name_box).tobytes() == moved.crop(name_box).tobytes()
 
 
-@pytest.mark.parametrize("value", [True, 1.5, 10**12])
+@pytest.mark.parametrize("value", [True, 1.5, 10**10])
 def test_burst_rejects_non_integer_and_overlong_values(assets_dir, sample_art, value):
     card = make_card(sample_art.parent, "法术", burst=value)
     with pytest.raises(ValueError, match="爆能"):
         render_card(card, assets_dir)
+
+
+def test_burst_accepts_ten_digits(assets_dir, sample_art):
+    card = make_card(sample_art.parent, "法术", burst=10**10 - 1, description="")
+    assert render_card(card, assets_dir).width > 0
 
 
 def test_burst_native_size_scales_layout_offset(assets_dir, sample_art):

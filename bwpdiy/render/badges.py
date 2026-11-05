@@ -352,8 +352,8 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
             value = card["burst"]
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ValueError("爆能必须是带符号整数")
-            if len(str(abs(value))) > 12:
-                raise ValueError("爆能绝对值最多 12 位")
+            if len(str(abs(value))) > 10:
+                raise ValueError("爆能绝对值最多 10 位")
             if value == 0:
                 return canvas
             anchor = elem["_anchor"]
@@ -370,6 +370,9 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                 return canvas
             value = card[elem["field"]]
             field = elem["field"]
+            if (isinstance(value, int) and not isinstance(value, bool)
+                    and len(str(abs(value))) > 10):
+                raise ValueError(f"{field} 数值位数不得超过 10 位")
             # 破甲（战斗负护甲）四键分离：坐标/图标大小/数字偏移/符号偏移读 fragile_* 键，
             # 缺省回退基础键；字号/描边/符号尺寸/group_offset 与护甲共享，不为破甲单设
             fragile = (card["type"] == "战斗" and field == "shield+" and value < 0)

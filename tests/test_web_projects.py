@@ -1036,7 +1036,7 @@ def test_battle_preview_temporary_fields_return_png_without_writes(client, proje
     assert entity_response.content[:8] == b"\x89PNG\r\n\x1a\n"
     countdown_response = client.post("/api/entity-preview", json={
         "project": project, "card": _entity_card("形态"),
-        "state": {"countdown": 2, "defeated_countdown": 3},
+        "state": {"countdown": 0},
     })
     assert countdown_response.status_code == 200
     assert {path: path.read_bytes() for path in paths} == before

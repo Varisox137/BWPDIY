@@ -14,14 +14,16 @@ from bwpdiy.render.badges import (
     _DIGIT_GAP, STAT_VALUE_COLORS, TYPE_FRAME_CODE, _paste_element, _render_digits,
     _render_infinity)
 from bwpdiy.render.pipeline import _normalize_frame
-from bwpdiy.render.size import fit_target_canvas, resolve_target_size, scale_layout
+from bwpdiy.render.size import (
+    MAX_RENDER_PIXELS, MAX_RENDER_SIDE,
+    fit_target_canvas, resolve_target_size, scale_layout)
 
 ENTITY_SIZE = (96, 144)
 ENTITY_MAX_COORD = 4096
 ENTITY_MAX_ELEMENT_SIZE = 1024
 ENTITY_MAX_FONT_SIZE = 256
 ENTITY_MAX_STROKE_WIDTH = 32
-ENTITY_MAX_STAT_DIGITS = 12
+ENTITY_MAX_STAT_DIGITS = 10
 ENTITY_MAX_ART_WINDOW_SIDE = 8000
 ENTITY_MAX_WORK_SIDE = 4096
 ENTITY_MAX_WORK_PIXELS = 16_000_000
@@ -157,8 +159,8 @@ def validate_entity_state(state: dict) -> dict:
             raise ValueError(f"{field} 必须是整数")
     if energy is not None and energy < 0:
         raise ValueError("energy 必须是非负整数")
-    if countdown is not None and countdown <= 0:
-        raise ValueError("countdown 必须是正整数")
+    if countdown is not None and countdown < 0:
+        raise ValueError("countdown 必须是非负整数")
     defeated = normalized["defeated_countdown"]
     if defeated is not None and defeated != "infinity":
         if not _is_int(defeated) or defeated <= 0:
@@ -232,20 +234,29 @@ def _right_top_counters(state: dict) -> tuple[tuple[str, int, str], ...]:
     return tuple(counters)
 
 
-def _validate_entity_elements(elements: dict, state: dict) -> None:
+def _validate_entity_elements(elements: dict, state: dict, factor: float = 1.0,
+                              include_disabled: bool = False) -> None:
     if not isinstance(elements, dict):
         raise ValueError("对局式神元素表必须是对象")
+    limit_factor = max(1.0, factor)
+
+    def bounded_pair(value) -> bool:
+        return (isinstance(value, (list, tuple)) and len(value) == 2
+                and all(_bounded_number(item, ENTITY_MAX_COORD * limit_factor)
+                        for item in value))
+
     level = elements.get("level")
     if level is not None:
         if not isinstance(level, dict):
             raise ValueError("等级标元素必须是对象")
         if level.get("enabled", True):
-            if not _bounded_pair(level.get("pos")):
+            if not bounded_pair(level.get("pos")):
                 raise ValueError("等级标 pos 必须是两个有限且限幅的数值")
-            if not _bounded_pair(level.get("num_offset", [0, 0])):
+            if not bounded_pair(level.get("num_offset", [0, 0])):
                 raise ValueError("等级标 num_offset 必须是两个有限且限幅的数值")
             for key in ("base_size", "num_size"):
-                if not _bounded_number(level.get(key), ENTITY_MAX_ELEMENT_SIZE, True):
+                if not _bounded_number(
+                        level.get(key), ENTITY_MAX_ELEMENT_SIZE * limit_factor, True):
                     raise ValueError(f"等级标 {key} 必须是有限且限幅的正数")
     right_top_fields = {item[0] for item in _right_top_counters(state)}
     for field in ("power", "health", "combat_power", "shield",
@@ -255,7 +266,7 @@ def _validate_entity_elements(elements: dict, state: dict) -> None:
             continue
         if not isinstance(elem, dict):
             raise ValueError(f"{field} 元素必须是对象")
-        if not elem.get("enabled", True):
+        if not include_disabled and not elem.get("enabled", True):
             continue
         if field in ("combat_power", "shield") and state[field] == 0:
             continue
@@ -264,16 +275,33 @@ def _validate_entity_elements(elements: dict, state: dict) -> None:
         if field == "defeated" and state["defeated_countdown"] is None:
             continue
         for key in ("pos", "num_offset"):
-            if not _bounded_pair(elem.get(key, [0, 0] if key == "num_offset" else None)):
+            if not bounded_pair(elem.get(key, [0, 0] if key == "num_offset" else None)):
                 raise ValueError(f"{field} {key} 必须是两个有限且限幅的数值")
-        if not _bounded_number(elem.get("icon_size"), ENTITY_MAX_ELEMENT_SIZE, True):
+        if not _bounded_number(
+                elem.get("icon_size"), ENTITY_MAX_ELEMENT_SIZE * limit_factor, True):
             raise ValueError(f"{field} icon_size 必须是有限且限幅的正数")
         font_size = elem.get("font_size")
-        if not _is_int(font_size) or not 0 < font_size <= ENTITY_MAX_FONT_SIZE:
+        if (not _is_int(font_size)
+                or not 0 < font_size <= ENTITY_MAX_FONT_SIZE * limit_factor):
             raise ValueError(f"{field} font_size 必须是有限且限幅的正整数")
         stroke_width = elem.get("stroke_width", 1)
-        if not _bounded_number(stroke_width, ENTITY_MAX_STROKE_WIDTH) or stroke_width < 0:
+        if (not _bounded_number(stroke_width, ENTITY_MAX_STROKE_WIDTH * limit_factor)
+                or stroke_width < 0):
             raise ValueError(f"{field} stroke_width 必须是有限且限幅的非负数")
+
+
+def validate_entity_layout(layout: dict) -> None:
+    """保存前校验完整对局布局；用全组件可见样例覆盖所有 counter。"""
+    if not isinstance(layout, dict):
+        raise ValueError("对局式神布局必须是对象")
+    validate_entity_art_window(layout.get("art_window"))
+    state = validate_entity_state({
+        "power": 1, "health": 1, "combat_power": 1, "shield": 1,
+        "energy": 0, "countdown": 0,
+    })
+    _validate_entity_elements(layout.get("elements"), state, include_disabled=True)
+    state["defeated_countdown"] = 1
+    _validate_entity_elements(layout.get("elements"), state, include_disabled=True)
 
 
 def _paste_centered_ink(canvas: Image.Image, elem: dict,
@@ -313,7 +341,10 @@ def _render_counter(canvas: Image.Image, lib: AssetLibrary, elem: dict,
 
 def _entity_work_bounds(lib: AssetLibrary, elements: dict,
                         state: dict, factor: float = 1.0) -> tuple[tuple[int, int, int, int], dict]:
-    _validate_entity_elements(elements, state)
+    _validate_entity_elements(elements, state, factor)
+    limit_factor = max(1.0, factor)
+    max_work_side = min(MAX_RENDER_SIDE, ENTITY_MAX_WORK_SIDE * limit_factor)
+    max_work_pixels = min(MAX_RENDER_PIXELS, ENTITY_MAX_WORK_PIXELS * limit_factor ** 2)
     rects = [(0, 0, max(1, round(ENTITY_SIZE[0] * factor)),
               max(1, round(ENTITY_SIZE[1] * factor)))]
     prepared_digits = {}
@@ -330,9 +361,9 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
                   math.ceil(max(rect[2] for rect in rects)),
                   math.ceil(max(rect[3] for rect in rects)))
         width, height = bounds[2] - bounds[0], bounds[3] - bounds[1]
-        if width > ENTITY_MAX_WORK_SIDE or height > ENTITY_MAX_WORK_SIDE:
+        if width > max_work_side or height > max_work_side:
             raise ValueError("对局式神工作画布宽高超尺寸上限")
-        if width * height > ENTITY_MAX_WORK_PIXELS:
+        if width * height > max_work_pixels:
             raise ValueError("对局式神工作画布面积超像素上限")
         return bounds
 
@@ -450,16 +481,22 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
     entity_layout = layout if layout is not None else _DEFAULT_LAYOUT
     if not isinstance(entity_layout, dict):
         raise ValueError("对局式神布局必须是对象")
-    if factor != 1:
-        entity_layout = scale_layout(entity_layout, factor)
-        for elem in (entity_layout.get("elements") or {}).values():
-            if elem.get("kind") in ("stat", "counter"):
-                elem["_digit_gap"] = _DIGIT_GAP * factor
     window = entity_layout.get("art_window", _DEFAULT_LAYOUT["art_window"])
     validate_entity_art_window(window)
     elements = entity_layout.get("elements")
     if state["level"] == 0:
         elements = {}
+    _validate_entity_elements(elements, state)
+    if factor != 1:
+        entity_layout = scale_layout(entity_layout, factor)
+        for elem in (entity_layout.get("elements") or {}).values():
+            if elem.get("kind") in ("stat", "counter"):
+                elem["_digit_gap"] = _DIGIT_GAP * factor
+        window = entity_layout.get("art_window", _DEFAULT_LAYOUT["art_window"])
+        validate_entity_art_window(window)
+        elements = entity_layout.get("elements")
+        if state["level"] == 0:
+            elements = {}
     lib = get_library(assets_dir)
     (left, top, right, bottom), prepared_digits = _entity_work_bounds(
         lib, elements, state, factor)
@@ -516,4 +553,4 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
 
 
 __all__ = ["entity_eligible", "frame_art_window_center", "render_entity",
-           "validate_entity_state"]
+           "validate_entity_layout", "validate_entity_state"]

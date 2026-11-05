@@ -28,7 +28,7 @@ from bwpdiy.changelog import CHANGELOG
 from bwpdiy.render.assets import get_library
 from bwpdiy.render.duo import render_portrait
 from bwpdiy.render.entity import (
-    entity_eligible, render_entity, validate_entity_art_window, validate_entity_state)
+    entity_eligible, render_entity, validate_entity_layout, validate_entity_state)
 from bwpdiy.render.layout import (
     FRAME_LAYOUT_TYPES, FRAME_LAYOUT_VARIANTS,
     get_type_layout, load_layouts, merge_card_layout)
@@ -196,7 +196,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
                     if type(type_layout.get("version")) is not int or type_layout["version"] != 2:
                         raise HTTPException(422, "布局数值非法: 「对局式神」version 必须为 2")
                     try:
-                        validate_entity_art_window(type_layout.get("art_window"))
+                        validate_entity_layout(type_layout)
                     except ValueError as e:
                         raise HTTPException(422, f"布局数值非法: {e}") from e
                 continue

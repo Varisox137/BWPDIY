@@ -132,6 +132,17 @@ def test_entity_native_size_and_level_zero(assets_dir, sample_art):
         render_entity(card, state, assets_dir, width=base.width, height=base.height * 2)
 
 
+def test_entity_native_size_scales_beyond_unscaled_element_limits(assets_dir, sample_art):
+    """原生放大后的合法字体/坐标不得再套用未放大的布局上限。"""
+    card = _card(sample_art)
+    state = {"energy": 0, "countdown": 1}
+    layout = load_layouts(assets_dir)["对局式神"]
+    base = render_entity(card, state, assets_dir, layout=layout)
+    enlarged = render_entity(card, state, assets_dir, layout=layout,
+                             height=base.height * 11)
+    assert enlarged.size == (base.width * 11, base.height * 11)
+
+
 def test_portrait_native_square_size_with_and_without_frame(assets_dir, sample_art):
     lib = AssetLibrary(assets_dir)
     elem = load_layouts(assets_dir)["协战"]["elements"]["duo_frame"]

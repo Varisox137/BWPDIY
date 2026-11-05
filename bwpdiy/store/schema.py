@@ -267,8 +267,8 @@ def validate_card(data) -> list[str]:
             errors.append(f"字段 {field}：必须是整数")
         elif field not in _SIGNED_STATS and data[field] < 0:
             errors.append(f"字段 {field}：必须是非负整数")
-        elif len(str(abs(data[field]))) > 12:
-            errors.append(f"字段 {field}：数值位数不得超过 12 位")
+        elif len(str(abs(data[field]))) > 10:
+            errors.append(f"字段 {field}：数值位数不得超过 10 位")
 
     if "artwork" in data:
         errors += _validate_artwork(data["artwork"])

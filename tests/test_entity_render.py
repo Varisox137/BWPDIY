@@ -99,7 +99,7 @@ def test_validate_entity_state_rejects_non_mapping():
 
 @pytest.mark.parametrize("state", [
     {"energy": -1}, {"energy": True},
-    {"countdown": 0}, {"countdown": 1.5}, {"defeated_countdown": 0},
+    {"countdown": -1}, {"countdown": 1.5}, {"defeated_countdown": 0},
     {"defeated_countdown": -1}, {"defeated_countdown": "inf"},
     {"defeated_countdown": True},
 ])
@@ -113,15 +113,16 @@ def test_entity_permanent_defeat_accepts_infinity():
         {"defeated_countdown": "infinity"})["defeated_countdown"] == "infinity"
 
 
-def test_entity_allows_energy_with_countdown_for_integration():
-    state = validate_entity_state({"energy": 0, "countdown": 1})
-    assert state["energy"] == 0 and state["countdown"] == 1
+def test_entity_allows_zero_countdown_with_energy_for_integration():
+    state = validate_entity_state({"energy": 0, "countdown": 0})
+    assert state["energy"] == 0 and state["countdown"] == 0
 
 
 @pytest.mark.parametrize("field", ["energy", "countdown", "defeated_countdown"])
-def test_entity_rejects_excess_counter_digits(field):
-    with pytest.raises(ValueError, match="位数"):
-        validate_entity_state({field: 10 ** 12})
+def test_entity_counter_accepts_ten_digits_and_rejects_eleven(field):
+    assert validate_entity_state({field: 10 ** 10 - 1})[field] == 10 ** 10 - 1
+    with pytest.raises(ValueError, match="10 位"):
+        validate_entity_state({field: 10 ** 10})
 
 
 def make_counter_layout():
@@ -794,15 +795,11 @@ def test_entity_disabled_and_zero_modifiers_do_not_expand_work_canvas(
     assert full.size == (96, 144)
 
 
-@pytest.mark.parametrize("field, value", [
-    ("power", 10 ** 12),
-    ("health", 10 ** 12),
-    ("combat_power", -(10 ** 12)),
-    ("shield", -(10 ** 12)),
-])
-def test_validate_entity_state_rejects_excess_digits(field, value):
-    with pytest.raises(ValueError, match="位数"):
-        validate_entity_state({field: value})
+@pytest.mark.parametrize("field", ["power", "health", "combat_power", "shield"])
+def test_validate_entity_state_accepts_ten_digits_and_rejects_eleven(field):
+    assert validate_entity_state({field: 10 ** 10 - 1})[field] == 10 ** 10 - 1
+    with pytest.raises(ValueError, match="10 位"):
+        validate_entity_state({field: 10 ** 10})
 
 
 @pytest.mark.parametrize("element, key, value", [

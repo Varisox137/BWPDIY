@@ -27,6 +27,8 @@ function makeEntityState(card) {
     power = Math.max(0, power + (Number.isInteger(card['power+']) ? card['power+'] : 0));
     health = Math.max(0, health + (Number.isInteger(card['health+']) ? card['health+'] : 0));
   }
+  power = Math.min(9999999999, power);
+  health = Math.min(9999999999, health);
   const state = {level, level_color: color, power, health,
     combat_power: 0, shield: 0, energy: null, countdown: null,
     defeated_countdown: null, art_scale: 1};
@@ -147,6 +149,7 @@ function battleNumberRow(div, label, value, set, min = null, id = null, disabled
   input.type = 'number';
   input.value = value;
   input.disabled = disabled;
+  input.max = 9999999999;
   if (min !== null) input.min = min;
   if (id) input.id = id;
   let current = value;
@@ -156,9 +159,9 @@ function battleNumberRow(div, label, value, set, min = null, id = null, disabled
       input.value = current;
       return;
     }
-    current = parsed;
-    input.value = parsed;
-    set(parsed);
+    current = Math.max(-9999999999, Math.min(9999999999, parsed));
+    input.value = current;
+    set(current);
   };
   row.appendChild(input);
   div.appendChild(row);
@@ -225,7 +228,7 @@ function setBattleCounterMode(mode) {
     battleEntityState.countdown = null;
   } else if (mode === 'countdown') {
     battleEntityState.countdown = Number.isInteger(battleEntityState.countdown)
-      ? Math.max(1, battleEntityState.countdown) : 1;
+      ? Math.max(0, battleEntityState.countdown) : 0;
     battleEntityState.energy = null;
   } else {
     battleEntityState.energy = null;
@@ -286,7 +289,7 @@ function buildBattleForm() {
     mode, setBattleCounterMode);
   if (mode !== 'none') {
     battleNumberRow(div, '右上数值', state[mode], value => setBattleEntityField(mode, value),
-      mode === 'energy' ? 0 : 1, 'b-counter-value');
+      0, 'b-counter-value');
   }
   const defeated = state.defeated_countdown !== null;
   const permanent = state.defeated_countdown === 'infinity';

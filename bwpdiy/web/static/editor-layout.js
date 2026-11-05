@@ -403,10 +403,10 @@ function buildCardProps() {
       numRowC(div, label, entityLayoutSample[field], nonneg, v => {
         entityLayoutSample[field] = v;
         schedulePreview();
-      }, null, 999999999999);
+      }, null, 9999999999);
     }
     for (const [field, label, initial, min] of [
-      ['energy', '能量', 0, 0], ['countdown', '倒计时', 1, 1],
+      ['energy', '能量', 0, 0], ['countdown', '倒计时', 0, 0],
     ]) {
       const other = field === 'energy' ? 'countdown' : 'energy';
       battleCheckbox(div, label, entityLayoutSample[field] !== null, checked => {
@@ -421,7 +421,7 @@ function buildCardProps() {
       numRowC(div, `${label}数值`, entityLayoutSample[field] ?? initial, true, v => {
         entityLayoutSample[field] = v;
         schedulePreview();
-      }, null, 999999999999, min);
+      }, null, 9999999999, min);
       div.children[row].children[0].disabled = entityLayoutSample[field] === null;
     }
     const defeated = entityLayoutSample.defeated_countdown !== null;
@@ -442,7 +442,7 @@ function buildCardProps() {
       numRowC(div, '气绝倒计时', permanent ? 3 : entityLayoutSample.defeated_countdown, true, v => {
         entityLayoutSample.defeated_countdown = v;
         schedulePreview();
-      }, null, 999999999999, 1);
+      }, null, 9999999999, 1);
       div.children[row].children[0].disabled = permanent;
     }
     return;
@@ -452,7 +452,7 @@ function buildCardProps() {
   selRow(div, '等级', ['0', '1', '2', '3'], String(cardField('level') ?? 0),
     v => setCardField('level', v === '0' ? null : parseInt(v, 10)));
   numRowC(div, '爆能', cardField('burst') ?? 0, false,
-    v => setCardField('burst', v), null, 999999999999);
+    v => setCardField('burst', v), null, 9999999999);
   if (EVOLVE_TYPES.has(curType)) {
     const l = document.createElement('label');
     l.textContent = '觉醒 ';
@@ -479,11 +479,13 @@ function buildCardProps() {
     l.textContent = label + ' ';
     const i = document.createElement('input');
     i.type = 'number'; i.value = cardField(field) ?? 0;
+    i.max = 9999999999;
     if (nonneg) i.min = 0;
     const commit = () => {
       let v = parseInt(i.value, 10);
       if (isNaN(v)) { i.value = cardField(field) ?? 0; return; }
       if (nonneg) v = Math.max(0, v);
+      v = Math.max(-9999999999, Math.min(9999999999, v));
       i.value = v; setCardField(field, v);
     };
     i.onchange = commit;

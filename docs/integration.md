@@ -112,7 +112,8 @@ large.save("card@2x.png")
 - 通用：`type`、`name`、`description`、`level`、`rarity`、`frame_variant`、`special_type`、`version_date`。
 - 类型：式神/战斗/法术/形态/幻境/协战；式神/形态使用 `power/health`，幻境使用 `durability`，战斗使用 `power+/shield+`，觉醒法术使用 `power+/health+`。
 - 可选：`evolve`、`level_color`、各数值的 `<field>_color`、`footer`、`layout`。
-- 临时渲染字段 `burst`：带符号整数，绝对值最多 12 位；非零时在等级布局锚点下方绘制能量图标与 `+N`/`-N`，0 或缺省不绘制。`burst` 不属于 store 卡牌 schema，WebGUI 不持久化；BWPro 需要时应在调用 `render_card` 的渲染字典中临时传入。
+- 临时渲染字段 `burst`：带符号整数，绝对值最多 10 位；非零时在等级布局锚点下方绘制能量图标与 `+N`/`-N`，0 或缺省不绘制。`burst` 不属于 store 卡牌 schema，WebGUI 不持久化；BWPro 需要时应在调用 `render_card` 的渲染字典中临时传入。
+- 所有卡牌数值与对局状态数值均最多 10 位，即绝对值不超过 `9999999999`；非负字段另有各自下限。
 - 协战：`shikigami1/shikigami2`、可选 `duo_frame`。由 WebGUI 注入的双头像内部键 `_duo` 属于高级集成数据，普通 BWPro 卡面调用无需提供。
 
 `layout` 是**该卡类型与框品的单套有效布局**，不是完整布局字典。缺省时自动读取运行环境布局并合并卡内 `layout` 稀疏覆盖。需要手动构造时：
@@ -154,7 +155,7 @@ state = {
     "combat_power": 1,
     "shield": -2,          # 正值护甲、负值破甲；combat_power 正/负对应战力/乏力
     "energy": 0,           # 非负整数，含 0；可与 countdown 同时存在
-    "countdown": None,      # 正整数；气绝时不绘制普通倒计时
+    "countdown": None,      # 非负整数，含 0（供触发动画）；气绝时不绘制普通倒计时
     "defeated_countdown": "infinity",  # 正整数或 infinity；永久气绝绘制 ∞
     "art_scale": 1.0,     # 仅小卡卡图缩放；偏移沿用大卡 artwork，并修正到框内可见窗
     "power_color": "green",

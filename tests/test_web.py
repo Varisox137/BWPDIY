@@ -255,6 +255,17 @@ def test_put_layout_rejects_invalid_entity_window(client, assets_dir, patch):
     assert (Path.home() / ".bwpdiy" / "layout.json").read_bytes() == before
 
 
+@pytest.mark.parametrize("element", ["energy", "countdown", "defeated"])
+def test_put_layout_rejects_invalid_counter_font_size(client, element):
+    entity = client.get("/api/layout").json()["对局式神"]
+    entity["elements"][element]["font_size"] = 0
+    before = (Path.home() / ".bwpdiy" / "layout.json").read_bytes()
+    response = client.put("/api/layout", json={"对局式神": entity})
+    assert response.status_code == 422
+    assert "font_size" in response.json()["detail"]
+    assert (Path.home() / ".bwpdiy" / "layout.json").read_bytes() == before
+
+
 def test_put_layout_mech_section(client, assets_dir):
     """「机制」段为扁平参数映射（无 elements/text_regions），可保存并回读。"""
     layouts = client.get("/api/layout").json()
@@ -1456,7 +1467,7 @@ def test_entity_layout_sample_stat_inputs(tmp_path):
     sample = _extract_js(script, "const entityLayoutSample = {") + ";"
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function buildCardProps()",
-        "function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null)",
+        "function numRowC(div, label, val, nonneg, set, extra = null, max = 9999999999, min = null)",
         "function selRowC(div, label, opts, val, set, map = null)",
         "function battleCheckbox(div, label, checked, set, disabled = false)",
     ))
@@ -1486,10 +1497,11 @@ assert.strictEqual(scheduled, 4);
 inputs[3].onwheel({{deltaY: -1, preventDefault() {{}}}});
 assert.strictEqual(entityLayoutSample.shield, -1);
 assert.strictEqual(scheduled, 5);
-inputs[0].value = '1000000000000'; inputs[0].onchange();
-inputs[3].value = '-1000000000000'; inputs[3].onchange();
-assert.strictEqual(entityLayoutSample.power, 999999999999);
-assert.strictEqual(entityLayoutSample.shield, -999999999999);
+assert.deepStrictEqual(inputs.map(x => x.max), [9999999999, 9999999999, 9999999999, 9999999999]);
+inputs[0].value = '10000000000'; inputs[0].onchange();
+inputs[3].value = '-10000000000'; inputs[3].onchange();
+assert.strictEqual(entityLayoutSample.power, 9999999999);
+assert.strictEqual(entityLayoutSample.shield, -9999999999);
 assert.strictEqual(scheduled, 7);
 console.log('OK');
 """
@@ -1606,7 +1618,7 @@ def test_layout_burst_signed_sample_request_without_dirty(tmp_path):
         "function setCardField(name, value)",
         "function buildCardProps()",
         "function textRow(div, label, val, set)",
-        "function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null)",
+        "function numRowC(div, label, val, nonneg, set, extra = null, max = 9999999999, min = null)",
         "function selRow(div, label, opts, val, set, map = null)",
         "async function refreshPreview()",
     ))
@@ -1671,7 +1683,7 @@ def test_layout_entity_counter_samples_and_requests_without_dirty(tmp_path):
     sample = _extract_js(script, "const entityLayoutSample = {") + ";"
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function buildCardProps()",
-        "function numRowC(div, label, val, nonneg, set, extra = null, max = null, min = null)",
+        "function numRowC(div, label, val, nonneg, set, extra = null, max = 9999999999, min = null)",
         "function selRowC(div, label, opts, val, set, map = null)",
         "function battleCheckbox(div, label, checked, set, disabled = false)",
         "async function refreshEntityLayoutPreview()",
@@ -1712,7 +1724,7 @@ function control(label) {{
   assert.strictEqual(control('右上组件'), null);
   assert.strictEqual(control('永久').disabled, true);
   control('倒计时').checked = true; control('倒计时').onchange();
-  assert.strictEqual(entityLayoutSample.countdown, 1);
+  assert.strictEqual(entityLayoutSample.countdown, 0);
   assert.strictEqual(entityLayoutSample.energy, null);
   assert.strictEqual(control('倒计时数值').disabled, false);
   assert.strictEqual(control('能量数值').disabled, true);
@@ -1859,7 +1871,8 @@ const assert = require('node:assert');
 const ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan', 'purple', 'red', 'blue', 'brown']);
 const STAT_VALUE_COLOR_VALUES = new Set(['red', 'green', 'purple']);
-const cards = {{shikigami: [{{name: '基础式神', power: 3, health: 4}}], cards: []}};
+const cards = {{shikigami: [{{name: '基础式神', power: 3, health: 4}},
+  {{name: '极值式神', power: 9999999999, health: 9999999999}}], cards: []}};
 let battleEntityState = null;
 let cDirty = false;
 let scheduled = 0;
@@ -1894,6 +1907,9 @@ assert.deepStrictEqual([awakenedCombat.power, awakenedCombat.health], [3, 4]);
 const negative = makeEntityState({{type: '法术', evolve: true, shikigami: '基础式神',
                                    'power+': -9, 'health+': -9}});
 assert.deepStrictEqual([negative.power, negative.health], [0, 0]);
+const capped = makeEntityState({{type: '法术', evolve: true, shikigami: '极值式神',
+                                 'power+': 1, 'health+': 1}});
+assert.deepStrictEqual([capped.power, capped.health], [9999999999, 9999999999]);
 assert.strictEqual(makeEntityState({{type: '式神', level: 0}}).level, 0);
 setBattleEntityField('power', 4);
 assert(state.power === 4 && cDirty === false && scheduled === 1);
@@ -2751,6 +2767,13 @@ assert.strictEqual(battleEntityState.countdown, null);
 const energy = control('右上数值', 'b-counter-value');
 energy.value = '4'; energy.onchange();
 assert.strictEqual(battleEntityState.energy, 4);
+energy.value = '10000000000'; energy.onchange();
+assert.strictEqual(battleEntityState.energy, 9999999999);
+assert.strictEqual(energy.max, 9999999999);
+mode.value = 'countdown'; mode.onchange();
+const countdown = control('右上数值', 'b-counter-value');
+countdown.value = '0'; countdown.onchange();
+assert.strictEqual(battleEntityState.countdown, 0);
 const defeated = control('气绝');
 defeated.checked = true; defeated.onchange();
 assert.strictEqual(battleEntityState.defeated_countdown, 3);

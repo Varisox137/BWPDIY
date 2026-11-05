@@ -223,6 +223,26 @@ def test_stat_signed_and_offset(assets_dir):
     assert opaque(render_element(canvas(), lib, "power", elem, {"type": "战斗"})) == 0
 
 
+@pytest.mark.parametrize("card, field", [
+    ({"type": "式神", "power": 10 ** 10}, "power"),
+    ({"type": "形态", "health": 10 ** 10}, "health"),
+    ({"type": "幻境", "durability": 10 ** 10}, "durability"),
+    ({"type": "战斗", "power+": 10 ** 10}, "power+"),
+    ({"type": "战斗", "shield+": -(10 ** 10)}, "shield+"),
+    ({"type": "法术", "evolve": True, "health+": 10 ** 10}, "health+"),
+])
+def test_stat_accepts_ten_digits_and_rejects_eleven(assets_dir, card, field):
+    lib = AssetLibrary(assets_dir)
+    elem = {"kind": "stat", "field": field, "pos": [160, 485],
+            "icon_size": 32, "num_offset": [22, 0], "font_size": 30}
+    maximum = 10 ** 10 - 1
+    valid = dict(card)
+    valid[field] = maximum if card[field] >= 0 else -maximum
+    assert opaque(render_element(canvas(), lib, field, elem, valid)) > 0
+    with pytest.raises(ValueError, match="10 位"):
+        render_element(canvas(), lib, field, elem, card)
+
+
 @pytest.mark.parametrize("value, sign", [(10, "plus"), (-10, "minus")])
 def test_burst_signed_white_component(assets_dir, sign, value):
     lib = AssetLibrary(assets_dir)

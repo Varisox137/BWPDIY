@@ -88,6 +88,14 @@
         "font_size": 15,
         "font": "desc"
       },
+      "status": {
+        "kind": "status",
+        "offset": [
+          0,
+          -55
+        ],
+        "icon_size": 40
+      },
       "burst": {
         "kind": "burst",
         "offset": [
@@ -372,6 +380,14 @@
         "font_size": 15,
         "font": "desc"
       },
+      "status": {
+        "kind": "status",
+        "offset": [
+          0,
+          -55
+        ],
+        "icon_size": 40
+      },
       "burst": {
         "kind": "burst",
         "offset": [
@@ -642,6 +658,14 @@
         ],
         "font_size": 15,
         "font": "desc"
+      },
+      "status": {
+        "kind": "status",
+        "offset": [
+          0,
+          -55
+        ],
+        "icon_size": 40
       },
       "burst": {
         "kind": "burst",
@@ -916,6 +940,14 @@
         "font_size": 15,
         "font": "desc"
       },
+      "status": {
+        "kind": "status",
+        "offset": [
+          0,
+          -55
+        ],
+        "icon_size": 40
+      },
       "burst": {
         "kind": "burst",
         "offset": [
@@ -1164,6 +1196,14 @@
         "font_size": 15,
         "font": "desc"
       },
+      "status": {
+        "kind": "status",
+        "offset": [
+          0,
+          -55
+        ],
+        "icon_size": 40
+      },
       "burst": {
         "kind": "burst",
         "offset": [
@@ -1408,6 +1448,14 @@
         ],
         "font_size": 15,
         "font": "desc"
+      },
+      "status": {
+        "kind": "status",
+        "offset": [
+          0,
+          -55
+        ],
+        "icon_size": 40
       },
       "burst": {
         "kind": "burst",

@@ -94,7 +94,7 @@ def test_unknown_type_raises():
 
 def test_expected_elements_per_type():
     layouts = layout.load_layouts(Path("不存在的目录"))
-    base = {"name", "footer", "burst"}
+    base = {"name", "footer", "burst", "status"}
     assert set(layouts["式神"]["elements"]) == {"level", "faction", "power", "health"} | base
     assert set(layouts["战斗"]["elements"]) == {"level", "rarity", "power", "shield"} | base
     assert set(layouts["法术"]["elements"]) == {"level", "rarity", "power", "health"} | base
@@ -103,19 +103,22 @@ def test_expected_elements_per_type():
     assert set(layouts["协战"]["elements"]) == {"level", "rarity", "duo_frame"} | base
 
 
-def test_burst_backfilled_without_overriding_existing_layout(tmp_path):
+@pytest.mark.parametrize(("name", "existing"), [
+    ("burst", {"kind": "burst", "offset": [9, 8]}),
+    ("status", {"kind": "status", "offset": [9, 8], "icon_size": 37}),
+])
+def test_burst_status_backfilled_without_overriding_existing_layout(tmp_path, name, existing):
     custom = {t: {"elements": {}, "text_regions": {}} for t in TYPES}
-    existing = {"kind": "burst", "offset": [9, 8]}
-    custom["法术"]["elements"]["burst"] = existing.copy()
+    custom["法术"]["elements"][name] = existing.copy()
     _config_path(tmp_path).write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
 
     layouts = layout.load_layouts(tmp_path)
     for card_type in TYPES:
-        assert "burst" in layouts[card_type]["elements"]
+        assert name in layouts[card_type]["elements"]
         for variant in ("norm", *layout.FRAME_LAYOUT_VARIANTS):
             effective = layout.get_type_layout(layouts, card_type, variant)
-            assert "burst" in effective["elements"]
-    assert layouts["法术"]["elements"]["burst"] == existing
+            assert name in effective["elements"]
+    assert layouts["法术"]["elements"][name] == existing
 
 
 def _stat(font_size):

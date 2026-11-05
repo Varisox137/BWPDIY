@@ -173,7 +173,7 @@ def _draw_static(canvas, type_layout: dict, card: dict, lib, variant: str):
         name_width = name_font.getlength(card["name"])
     ctx = {"name_width": name_width}
     # 分层渲染（自底向上）：框内静态（卡名/稀有度双标/脚注点文本）→
-    # 框上叠加（等级标/派系标/stat/burst 图标）→ 描述文本 → stat/burst 数值
+    # 框上叠加（等级标/派系标/stat/burst/status 图标）→ 描述文本 → stat/burst 数值
     _STATIC = ("text", "rarity_flank")
     for elem_name, elem in elements.items():
         if elem["kind"] in _STATIC:
@@ -310,7 +310,7 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
     type_layout = _to_canvas_coords(type_layout, anchor_x)
     elements = type_layout.get("elements") or {}
     for elem in elements.values():
-        if elem.get("kind") == "burst":
+        if elem.get("kind") in ("burst", "status"):
             elem["_anchor"] = elements["level"]["pos"]
     card = copy.deepcopy(card) if factor != 1 else dict(card)
     if not card.get("footer"):

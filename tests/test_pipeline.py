@@ -139,6 +139,80 @@ def test_burst_native_size_scales_layout_offset(assets_dir, sample_art):
         assert abs(big - small * 2) <= 2
 
 
+@pytest.mark.parametrize("status", ["bless", "eclipse", "shown"])
+def test_status_draws_at_level_anchor_without_card_level(assets_dir, sample_art, status):
+    from PIL import ImageChops
+
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+
+    card = make_card(sample_art.parent, "法术", description="")
+    card.pop("level", None)
+    card["status"] = status
+    layout = get_type_layout(load_layouts(assets_dir), "法术")
+    empty = render_card(dict(card, status=None), assets_dir, layout=layout, crop=False)
+    marked = render_card(card, assets_dir, layout=layout, crop=False)
+    assert ImageChops.difference(marked.convert("RGB"), empty.convert("RGB")).getbbox() is not None
+
+
+def test_status_follows_level_layout_without_card_level(assets_dir, sample_art):
+    import copy
+
+    from PIL import ImageChops
+
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+
+    card = make_card(sample_art.parent, "法术", status="bless", description="")
+    card.pop("level", None)
+    type_layout = get_type_layout(load_layouts(assets_dir), "法术")
+    type_layout["elements"]["level"]["pos"][1] += 20
+    marked = render_card(card, assets_dir, layout=type_layout, crop=False)
+    empty = render_card(dict(card, status=None), assets_dir, layout=type_layout, crop=False)
+    bbox = ImageChops.difference(marked.convert("RGB"), empty.convert("RGB")).getbbox()
+    assert bbox is not None
+
+    moved_layout = copy.deepcopy(type_layout)
+    moved_layout["elements"]["level"]["pos"][0] += 7
+    moved_layout["elements"]["level"]["pos"][1] += 9
+    moved = render_card(card, assets_dir, layout=moved_layout, crop=False)
+    moved_empty = render_card(dict(card, status=None), assets_dir,
+                                layout=moved_layout, crop=False)
+    moved_bbox = ImageChops.difference(
+        moved.convert("RGB"), moved_empty.convert("RGB")).getbbox()
+    assert moved_bbox is not None
+    for before, after, delta in zip(bbox, moved_bbox, (7, 9, 7, 9)):
+        assert abs(after - before - delta) <= 1
+
+
+def test_status_none_matches_missing_status(assets_dir, sample_art):
+    card = make_card(sample_art.parent, "法术")
+    without_status = {key: value for key, value in card.items() if key != "status"}
+    assert (render_card(dict(card, status=None), assets_dir).tobytes()
+            == render_card(without_status, assets_dir).tobytes())
+
+
+def test_status_rejects_unknown_value(assets_dir, sample_art):
+    card = make_card(sample_art.parent, "法术", status="bounty")
+    with pytest.raises(ValueError, match="特殊状态"):
+        render_card(card, assets_dir)
+
+
+def test_status_native_size_scales_layout_offset(assets_dir, sample_art):
+    from PIL import ImageChops
+
+    card = make_card(sample_art.parent, "法术", status="shown", description="")
+    base = render_card(card, assets_dir, crop=False)
+    base_empty = render_card(dict(card, status=None), assets_dir, crop=False)
+    large = render_card(card, assets_dir, height=base.height * 2, crop=False)
+    large_empty = render_card(dict(card, status=None), assets_dir,
+                               height=base.height * 2, crop=False)
+    base_box = ImageChops.difference(base.convert("RGB"), base_empty.convert("RGB")).getbbox()
+    large_box = ImageChops.difference(large.convert("RGB"), large_empty.convert("RGB")).getbbox()
+    assert base_box is not None and large_box is not None
+    assert large.size == large_empty.size == (base.width * 2, base.height * 2)
+    for small, big in zip(base_box, large_box):
+        assert abs(big - small * 2) <= 2
+
+
 def test_footer_rendered(assets_dir, sample_art):
     card = {"type": "战斗", "name": "sample_art", "shikigami": "测试式神",
             "level": 1, "rarity": "N", "_base_dir": str(sample_art.parent)}

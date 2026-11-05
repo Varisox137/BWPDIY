@@ -79,9 +79,9 @@ def render_one(card_type: str, elem_name: str, card: dict | None = None) -> Imag
     """透明画布上只渲染指定元素（ctx.name_width 置 0：rarity 双标取 gap 静态位）。
 
     duo_frame 默认不绘制（卡面开关）：单元素渲染默认开开关（空槽位框口径）；
-    burst 默认给非零样值，并补 pipeline 注入的等级锚点。"""
+    burst/status 默认给样值，并补 pipeline 注入的等级锚点。"""
     e = elem(card_type, elem_name)
-    if e["kind"] == "burst":
+    if e["kind"] in ("burst", "status"):
         e = {**e, "_anchor": elem(card_type, "level")["pos"]}
     if card is None:
         card = sample(card_type)
@@ -89,6 +89,8 @@ def render_one(card_type: str, elem_name: str, card: dict | None = None) -> Imag
             card["duo_frame"] = True
         if e["kind"] == "burst":
             card["burst"] = 1
+        if e["kind"] == "status":
+            card["status"] = "bless"
     return render_element(blank(), LIB, elem_name, e, card, {"name_width": 0})
 
 
@@ -106,7 +108,7 @@ def _anchor_box(card_type: str, name: str) -> tuple:
         return (*e["pos"], e["size"] / 2, e["size"] / 2)
     if kind == "stat":  # 图标为代表（数字由专项测试覆盖）
         return (*e["pos"], e["icon_size"] / 2, e["icon_size"] / 2)
-    if kind == "burst":
+    if kind in ("burst", "status"):
         level = elem(card_type, "level")
         return (level["pos"][0] + e["offset"][0], level["pos"][1] + e["offset"][1],
                 e["icon_size"] / 2, e["icon_size"] / 2)
@@ -127,9 +129,11 @@ def _neighborhood(card_type: str, name: str) -> tuple:
         return (*e["pos"], e["star_size"] / 2 + 8, e["star_size"] / 2 + 8)
     if kind == "rarity_flank":  # 左右双标整体
         return (e["pos"][0], e["pos"][1], e["gap"] + e["size"] / 2 + 8, e["size"] / 2 + 8)
-    if kind == "burst":
+    if kind in ("burst", "status"):
         level = elem(card_type, "level")
         pos = (level["pos"][0] + e["offset"][0], level["pos"][1] + e["offset"][1])
+        if kind == "status":
+            return (*pos, e["icon_size"] / 2 + 8, e["icon_size"] / 2 + 8)
         return (*pos, e["icon_size"] / 2 + abs(e["num_offset"][0]) + e["font_size"],
                 e["icon_size"] / 2 + abs(e["num_offset"][1]) + e["font_size"])
     if kind == "stat":  # 图标 + 数字偏移块

@@ -300,6 +300,16 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         style = card.get("faction_style", elem.get("style", 2))
         return _paste_element(canvas, lib.faction(color, style),
                               elem["pos"], (elem["size"], elem["size"]))
+    if kind == "status":
+        value = card.get("status")
+        if value is None:
+            return canvas
+        if value not in ("bless", "eclipse", "shown"):
+            raise ValueError("特殊状态必须是 bless、eclipse、shown 或 None")
+        anchor, offset = elem["_anchor"], elem.get("offset", [0, 0])
+        pos = (anchor[0] + offset[0], anchor[1] + offset[1])
+        return _paste_element(canvas, lib.badge(value), pos,
+                              (elem["icon_size"], elem["icon_size"]))
     if kind in ("stat", "burst"):
         if kind == "burst":
             if "burst" not in card:

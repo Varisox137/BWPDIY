@@ -1015,11 +1015,12 @@ def test_upload_artwork_uses_form_id(client, project):
 
 
 def test_battle_preview_temporary_fields_return_png_without_writes(client, project, library_dir):
-    """对局页两种预览接受临时爆能/能量/倒计时/气绝状态，且项目 YAML 字节不变。"""
+    """对局页两种预览接受临时爆能/特殊状态/能量/倒计时/气绝状态，且项目 YAML 字节不变。"""
     assert client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card()).status_code == 200
     paths = sorted((library_dir / project).glob("*/*.yaml"))
     before = {path: path.read_bytes() for path in paths}
-    temporary_card = {**_battle_card(), "level": 0, "level_color": "cyan", "burst": 2}
+    temporary_card = {**_battle_card(), "level": 0, "level_color": "cyan", "burst": 2,
+                      "status": "shown"}
     render_card = dict(temporary_card)
     del render_card["level"]  # 前端大卡等级 0 的渲染副本口径：缺省 level，而非传 0
     card_response = client.post(

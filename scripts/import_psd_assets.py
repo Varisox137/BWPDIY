@@ -1,15 +1,17 @@
-"""从 assets/psd_export/ 再生成运行时资产（英文命名，v1.0 定稿）。
+"""从 assets/psd_export/ 再生成其管理的 PSD 基础资源（英文命名）。
 
 用法（Windows Git Bash，cwd=仓库根）：
     PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/import_psd_assets.py
     PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/import_psd_assets.py --sample-colors
 
-幂等：frames/levels/rarity/factions/stats/signs/icons 七个目标目录先清空重建。
+frames/rarity/factions 先清空重建；levels/stats/icons 只覆盖本脚本管理的文件，
+保留后续加入的八色勾玉、状态组件、逐条目派系图标和其他新资源。numbers/badges
+不由本脚本管理；旧 signs、协战专用稀有度和无编号/墨染派系小标不再生成。
 legacy 归档（assets/legacy/）由本脚本生成的内容只有 rarity/N.png 与 factions/ 复制回。
 
 牌框预处理统一：裁 alpha bbox → 等比缩放至高 512 → 居中贴到 512×512 透明画布。
 稀有度整带取左半部分 alpha bbox 裁出左端单枚花标。
-levels/stats/signs/icons 原尺寸直拷。
+levels/stats/icons 原尺寸直拷。
 """
 
 import argparse
@@ -53,11 +55,6 @@ STATS = {
     "幻境-数值/幻境.png": "field_intensity.png",
 }
 
-SIGNS = {
-    "战斗-数值/加号.png": "plus.png",
-    "战斗-数值/减号.png": "minus.png",
-}
-
 SYMBOL_DIR = "☆【符号】攻击生命等（新增战力、乏力标识）"
 ICONS = {
     f"{SYMBOL_DIR}/攻击.png": "power.png",
@@ -69,7 +66,6 @@ ICONS = {
     "☆新增战力、乏力标识（如需使用请自行调整尺寸）/战力.png": "combat_power.png",
     "☆新增战力、乏力标识（如需使用请自行调整尺寸）/乏力.png": "weak.png",
 }
-FACTION_ICON_NAMES = {"红莲": "red", "苍叶": "green", "青岚": "blue", "紫岩": "purple"}
 
 # 稀有度整带 → 目标文件名（裁左端单枚花标）
 RARITY_BANDS = {
@@ -82,10 +78,6 @@ RARITY_BANDS = {
     "罕贵度/R 百炼.png": "R_red.png",
     "罕贵度/SR 百炼.png": "SR_red.png",
     "罕贵度/SSR 百炼.png": "SSR_red.png",
-    # 协战：蓝=R / 紫=SR / 金=SSR
-    "协战/稀有度/蓝色.png": "reinforce_R.png",
-    "协战/稀有度/紫色.png": "reinforce_SR.png",
-    "协战/稀有度/金色.png": "reinforce_SSR.png",
 }
 
 # 取色：框品目录 → (英文框品, 取样文件 → 用途)
@@ -141,7 +133,8 @@ def import_frames() -> list[str]:
 
 
 def import_levels() -> list[str]:
-    out = _reset_dir(ASSETS / "levels")
+    out = ASSETS / "levels"
+    out.mkdir(parents=True, exist_ok=True)
     for src_rel, name in LEVELS.items():
         shutil.copy2(PSD / src_rel, out / name)
     return [f"levels/{name}" for name in LEVELS.values()]
@@ -170,28 +163,19 @@ def import_factions() -> list[str]:
 
 
 def import_stats() -> list[str]:
-    out = _reset_dir(ASSETS / "stats")
+    out = ASSETS / "stats"
+    out.mkdir(parents=True, exist_ok=True)
     for src_rel, name in STATS.items():
         shutil.copy2(PSD / src_rel, out / name)
     return [f"stats/{name}" for name in STATS.values()]
 
 
-def import_signs() -> list[str]:
-    out = _reset_dir(ASSETS / "signs")
-    for src_rel, name in SIGNS.items():
-        shutil.copy2(PSD / src_rel, out / name)
-    return [f"signs/{name}" for name in SIGNS.values()]
-
-
 def import_icons() -> list[str]:
-    out = _reset_dir(ASSETS / "icons")
+    out = ASSETS / "icons"
+    out.mkdir(parents=True, exist_ok=True)
     logs = [f"icons/{name}" for name in ICONS.values()]
     for src_rel, name in ICONS.items():
         shutil.copy2(PSD / src_rel, out / name)
-    for cn_color, en_color in FACTION_ICON_NAMES.items():
-        shutil.copy2(PSD / SYMBOL_DIR / "派系" / f"{cn_color}.png", out / f"faction_{en_color}.png")
-        shutil.copy2(PSD / SYMBOL_DIR / "派系" / f"{cn_color}-墨染.png", out / f"faction_{en_color}_black.png")
-        logs += [f"icons/faction_{en_color}.png", f"icons/faction_{en_color}_black.png"]
     return logs
 
 
@@ -236,7 +220,6 @@ def main() -> int:
     logs += import_rarity()
     logs += import_factions()
     logs += import_stats()
-    logs += import_signs()
     logs += import_icons()
     for line in logs:
         print(line)

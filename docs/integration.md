@@ -109,10 +109,14 @@ large.save("card@2x.png")
 
 卡牌主要字段：
 
-- 通用：`type`、`name`、`description`、`level`、`rarity`、`frame_variant`、`special_type`、`version_date`。
+- 通用：`type`、`name`、`description`、`level`、`rarity`、`frame_variant`、`special_type`、`version_date`、`inline_faction_style`。
 - 类型：式神/战斗/法术/形态/幻境/协战；式神/形态使用 `power/health`，幻境使用 `durability`，战斗使用 `power+/shield+`，觉醒法术使用 `power+/health+`。
-- 可选：`evolve`、`level_color`、各数值的 `<field>_color`、`footer`、`layout`。
+- 可选：`evolve`、`level_color`、各数值的 `<field>_color`、`footer`、`layout`。勾玉支持 `yellow/cyan/purple/red/blue/brown/greyblue/orange` 八色；`level_4_*` 与 `level_3_4_*` 仅为备用命名，当前等级仍为 1–3。
+- `inline_faction_style` 为整数 1/2/3，缺省 1，控制本条卡牌描述中全部 `#hl/#cy/#ql/#zy` 内嵌派系图标；不再按墨染框自动切换派系文件。
+- 稀有度为 N/R/SR/SSR。R/SR/SSR 按框品读取专图，缺失时回退常规版；协战同样回退常规版，不使用独立 `reinforce_*` 花标，N 始终读取 `N.png`。
 - 临时渲染字段 `burst`：带符号整数，绝对值最多 10 位；非零时在等级布局锚点下方绘制能量图标与 `+N`/`-N`，0 或缺省不绘制。`burst` 不属于 store 卡牌 schema，WebGUI 不持久化；BWPro 需要时应在调用 `render_card` 的渲染字典中临时传入。
+- 临时渲染字段 `status`：`None`（缺省）/`bless`/`eclipse`/`shown`，无等级卡也绘制；六类型布局均有独立 `status` 元素，以等级锚点加 `offset` 定位并用 `icon_size` 控制尺寸。它不属于 store schema、不由 WebGUI 持久化；`shown` 仅用于大卡，不是机制 badge。
+- 数值使用 `numbers/<color>_<name>.png` 位图：白/红/绿/紫/橙分别对应 white/red/green/purple/orange，yellow 运行时映射 orange；数字与带符号多位整数按 `font_size` 指定的目标高度逐字原生缩放，再按墨迹间距拼接，正负号读取同色位图。布局中遗留的 `stroke_width` 可保留校验兼容，但不参与数字绘制。
 - 所有卡牌数值与对局状态数值均最多 10 位，即绝对值不超过 `9999999999`；非负字段另有各自下限。
 - 协战：`shikigami1/shikigami2`、可选 `duo_frame`。由 WebGUI 注入的双头像内部键 `_duo` 属于高级集成数据，普通 BWPro 卡面调用无需提供。
 
@@ -167,9 +171,9 @@ entity.save("entity.png")
 
 - 适用来源：式神、形态或任意 `evolve: true` 的卡牌；其他类型抛出 `ValueError`。
 - `level` 为 0–3；0 只绘制底框和卡图，不绘制等级标、数值角标及状态组件。
-- `power/health` 必须非负；`combat_power/shield` 可为负。四个数值颜色均可选 `red/green/purple`，缺省白色。
-- `energy/countdown/defeated_countdown` 为临时状态，不写入卡牌。energy 与 countdown 可同时非空，绘制顺序为能量在下、倒计时在上；气绝保留 energy 并隐藏 countdown，仅灰化底框和卡图，气绝组件最后绘制。永久气绝只接受精确字符串 `"infinity"`。
-- `layout` 使用布局字典的「对局式神」独立段；缺省读取包内默认段。小卡基础框为 96×144，外扩元素会扩大最终紧致边界；`energy`、`countdown` 与 `defeated` 是独立的 counter 元素，分别配置图标和数字，复用数字渲染、边界准备与原生缩放；旧 `right_top` 配置加载时自动复制到能量与倒计时。
+- `power/health` 必须非负；`combat_power/shield` 可为负。四个数值颜色均可选 `red/green/purple`，缺省白色，均复用大卡位图数字；战力/乏力仍读取 `icons/combat_power.png` 与 `icons/weak.png` 小图。
+- `energy/countdown/defeated_countdown` 为临时状态，不写入卡牌。energy 与 countdown 可同时非空，绘制顺序为能量在下、倒计时在上；气绝保留 energy 并隐藏 countdown，仅灰化底框和卡图，气绝组件最后绘制。永久气绝只接受精确字符串 `"infinity"`，读取 `numbers/white_inf.png`。
+- `layout` 使用布局字典的「对局式神」独立段；缺省读取包内默认段。小卡基础框为 96×144，外扩元素会扩大最终紧致边界；`energy`、`countdown` 与 `defeated` 是独立的 counter 元素，分别配置图标和数字，复用位图数字渲染、边界准备与原生缩放；旧 `right_top` 配置加载时自动复制到能量与倒计时。
 - `entity_eligible(card)` 可预先判断来源是否支持；`validate_entity_state(state)` 可单独取得规范化状态。
 
 ## 5. 式神头像 `render_portrait`
@@ -231,7 +235,8 @@ from bwpdiy.render.mech import render_mechanism
 mech = {
     "name": "自定义机制",
     "frame": "invocation",       # invocation / skill / seal
-    "text": "[[唯一]]。\n己方回合开始时，获得1#ll。",
+    "text": "[[唯一]]。\n己方回合开始时，获得1#ll与#hl。",
+    "inline_faction_style": 2,   # 可选 1/2/3，缺省 1；控制本条全部派系小标
 }
 image = render_mechanism(mech, assets, chars_per_line=12)
 image.save("mechanism.png")
@@ -243,7 +248,8 @@ scaled = render_mechanism(mech, assets, chars_per_line=12, font_scale=2)
 
 - `chars_per_line` 为正整数，按每行字数决定文本宽和框宽；`None` 使用「机制」布局中的文本宽。
 - `font_scale` 同步缩放名称/正文字号、文本区、框宽、横向偏移和框行高，保持每行字数，不缩放加护/蚀印角标。
-- `badge` 仅 `seal` 框可用，取 `bless` 或 `eclipse`。
+- `inline_faction_style` 与卡牌字段同口径，逐条目选择 `icons/faction_<color>_<1/2/3>.png`，不随框体自动切换。
+- `badge` 仅 `seal` 框可用，取 `bless` 或 `eclipse`，读取 `badges/` 独立角标；`shown` 仅是大卡临时 status，不能作为机制 badge。
 - `layout` 使用「机制」段；`info={}` 回填裁剪后文本块 `{text_x, text_top, text_width, text_height}`。
 
 ## 7. 尺寸、文本与异常约定
@@ -252,7 +258,7 @@ scaled = render_mechanism(mech, assets, chars_per_line=12, font_scale=2)
 
 - 单参数按默认紧致输出比例推算另一维；双参数允许取整造成的 1px 比例误差，不一致抛出 `ValueError`。
 - 必须是正整数，单边 ≤ 8192，总像素 ≤ 64,000,000。
-- 按目标比例重新计算布局、字体、描边、图标、卡图和间距，最后只裁齐或补透明边，不重采样默认成品。
+- 按目标比例重新计算布局、字体、图标、卡图和间距，最后只裁齐或补透明边，不重采样默认成品；位图数字以缩放后的 `font_size` 为目标高度，遗留 `stroke_width` 不产生描边。
 
 描述文本支持 `[[关键字]]` 高亮和 `#xx` 内嵌图标；未匹配的双括号按普通文本显示，未知图标代码会报错。卡图与中间缩放缓存有像素上限，防止异常输入造成过量内存分配。
 

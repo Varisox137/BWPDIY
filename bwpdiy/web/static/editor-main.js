@@ -86,7 +86,7 @@ function checkUpdate() {
 }
 checkUpdate();
 setInterval(checkUpdate, 60000);
-if (location.hash === '#battle') showTab('battle');
+if (location.hash === '#battle' && extOptions.marker) showTab('battle');
 if (location.hash === '#layout' && extOptions.layout) showTab('layout');  // /layout 重定向落点（布局 tab 隐藏时不跳转）
 
 function hasUnsavedChanges() { return dirty || singleDirty || cDirty || mDirty; }

@@ -671,6 +671,7 @@ let cardBuilds = 0, mechBuilds = 0;
 const elements = {{
   'ext-layout': {{checked: false}}, 'ext-marker': {{checked: false}},
   'tab-layout': {{classList: {{contains: () => false}}}},
+  'tab-battle': {{classList: {{contains: () => false}}}},
 }};
 const document = {{
   getElementById: id => elements[id],
@@ -681,6 +682,7 @@ function showTab() {{}}
 function exitCardLayout() {{}}
 function buildForm() {{ cardBuilds++; }}
 function buildMechForm() {{ mechBuilds++; }}
+function cPreviewPortrait() {{}}
 {apply}
 applyExtOptions();
 assert.strictEqual(cardBuilds, 1);
@@ -1822,6 +1824,7 @@ def test_layout_burst_signed_sample_request_without_dirty(tmp_path):
         "function textRow(div, label, val, set)",
         "function numRowC(div, label, val, nonneg, set, extra = null, max = 9999999999, min = null)",
         "function selRow(div, label, opts, val, set, map = null)",
+        "function selRowC(div, label, opts, val, set, map = null)",
         "async function refreshPreview()",
     ))
     driver = f"""
@@ -2123,7 +2126,7 @@ console.log('OK');
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_portrait_subpreview_visibility_without_entity(tmp_path):
-    """卡牌库子预览只保留主要式神头像，其他卡不显示容器。"""
+    """头像预览需扩展功能与头像框同时开启；衍生物和其他卡始终隐藏。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function isMainShikigami(card)",
@@ -2134,17 +2137,30 @@ def test_portrait_subpreview_visibility_without_entity(tmp_path):
 const assert = require('node:assert');
 const cSubpreviews = {{style: {{display: 'none'}}}};
 const cPortraitImg = {{style: {{display: 'none'}}, removeAttribute() {{}}}};
+const extOptions = {{marker: false}};
 let formData = {{type: '式神'}};
-let curProject = '项目', curCard = 'stem';
+let curProject = '项目', curCard = 'stem', requests = 0;
 let cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
 const URL = {{createObjectURL: () => 'blob:new', revokeObjectURL() {{}}}};
 function enc(value) {{ return value; }}
-async function fetch() {{ return {{ok: true, blob: async () => ({{kind: 'png'}})}}; }}
+async function fetch() {{ requests++; return {{ok: true, blob: async () => ({{kind: 'png'}})}}; }}
 {functions}
 (async () => {{
   await cPreviewPortrait(false);
+  assert.strictEqual(cPortraitImg.style.display, 'none');
+  assert.strictEqual(cSubpreviews.style.display, 'none');
+  assert.strictEqual(requests, 0);
+  extOptions.marker = true;
+  await cPreviewPortrait(false);
   assert.strictEqual(cPortraitImg.style.display, 'block');
   assert.strictEqual(cSubpreviews.style.display, 'flex');
+  assert.strictEqual(requests, 1);
+  formData.portrait = {{frame: false}};
+  await cPreviewPortrait(true);
+  assert.strictEqual(cPortraitImg.style.display, 'none');
+  assert.strictEqual(cSubpreviews.style.display, 'none');
+  assert.strictEqual(requests, 1);
+  delete formData.portrait.frame;
   formData = {{type: '式神', shikigami: '基础'}};
   await cPreviewPortrait(true);
   assert.strictEqual(cPortraitImg.style.display, 'none');
@@ -2227,6 +2243,7 @@ def test_ineligible_subpreview_invalidates_pending_blob(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 let cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
+const extOptions = {{marker: true}};
 let formData = {{type: '式神'}}, curProject = '项目', curCard = 'stem';
 const cPortraitImg = {{src: '', style: {{}}, removeAttribute() {{ this.src = ''; }}}};
 const created = [];
@@ -2790,6 +2807,7 @@ function cancelAnimationFrame() {{}}
 let cPreviewTimer = null, cPortraitTimer = null;
 let cPreviewUrl = 'main-old', cPortraitUrl = 'portrait-old';
 let curCard = 'stem', curProject = '项目', curMech = null, cardData = {{}}, formData = {{type: '式神'}};
+const extOptions = {{marker: true}};
 let cDirty = false;
 const cPreviewImg = {{src: 'main-old', removeAttribute() {{}}}};
 const cPortraitImg = {{src: 'portrait-old', style: {{}}, removeAttribute() {{}}}};
@@ -3296,7 +3314,7 @@ const document = {{
 }};
 const location = {{hash: '#battle'}};
 const history = {{replaceState: (a, b, hash) => {{ location.hash = hash; }}}};
-const extOptions = {{layout: false}};
+const extOptions = {{layout: false, marker: true}};
 const URL = {{revokeObjectURL() {{}}}};
 let cards = {{shikigami: [], cards: []}};
 let curProject = '项目', curCard = '形态-stem', curMech = null;
@@ -3462,6 +3480,9 @@ function fetch() {{
 def test_battle_page_structure_and_card_library_migration():
     html = EDITOR_HTML.read_text(encoding="utf-8")
     assert 'data-tab="battle"' in html and 'id="tab-battle"' in html
+    assert '<input type="checkbox" id="ext-marker"> 扩展功能' in html
+    main = (EDITOR_HTML.parent / "editor-main.js").read_text(encoding="utf-8")
+    assert "location.hash === '#battle' && extOptions.marker" in main
     assert 'id="c-entity"' not in html
     scripts = [chunk.split('"', 1)[0] for chunk in html.split('<script src="')[1:]]
     assert scripts == ["editor-core.js", "editor-cards.js", "editor-battle.js",
@@ -3496,6 +3517,155 @@ assert.strictEqual(formData.level_color, 'cyan');
 select.value = '2'; select.onchange();
 assert.strictEqual(formData.level, 2);
 assert.strictEqual(edits, 2);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_extension_controls_battle_tab_and_returns_to_cards(tmp_path):
+    apply = _extract_js(_script(), "function applyExtOptions()")
+    driver = f"""
+const assert = require('node:assert');
+const extOptions = {{layout: true, marker: false}};
+let cardLayoutMode = false, formData = null, mechForm = null;
+const shown = [];
+const styles = {{}};
+const elements = {{
+  'ext-layout': {{checked: false}}, 'ext-marker': {{checked: false}},
+  'tab-layout': {{classList: {{contains: () => false}}}},
+  'tab-battle': {{classList: {{contains: () => true}}}},
+}};
+const document = {{
+  getElementById: id => elements[id],
+  querySelector: selector => {{
+    const el = {{style: {{}}}};
+    styles[selector] = el.style;
+    return el;
+  }},
+}};
+function saveExtOptions() {{}}
+function showTab(name) {{ shown.push(name); }}
+function exitCardLayout() {{}}
+function buildForm() {{}}
+function buildMechForm() {{}}
+function cPreviewPortrait() {{}}
+{apply}
+applyExtOptions();
+assert.strictEqual(styles['.navtab[data-tab="battle"]'].display, 'none');
+assert.deepStrictEqual(shown, ['cards']);
+extOptions.marker = true;
+applyExtOptions();
+assert.strictEqual(styles['.navtab[data-tab="battle"]'].display, '');
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_portrait_inputs_follow_marker_and_frame(tmp_path):
+    build = _extract_js(_script(), "function buildForm()")
+    driver = f"""
+const assert = require('node:assert');
+let activeAsk = null, cDirty = false;
+let formData = {{type: '式神', name: '测试', level: 1, artwork: {{images: [{{}}]}}}};
+const extOptions = {{marker: false, layout: false}};
+const artRows = [], checks = [];
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', value: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const div = element('div');
+const document = {{getElementById: () => div, createElement: element}};
+function syncCardFrameButtons() {{}}
+function infoRow() {{}}
+function textRow() {{}}
+function versionRows() {{}}
+function levelRow() {{}}
+function factionRow() {{}}
+function shikigamiRow() {{}}
+function numRowC() {{}}
+function artRow(div, label, val, set, pval, pset) {{ if (pset) artRows.push({{label, pset}}); }}
+function isMainShikigami() {{ return true; }}
+function rarityOptions() {{ return ['R']; }}
+function selRowC() {{}}
+function checkRowC(div, label, checked, set) {{ checks.push({{label, set}}); }}
+function showFormErrors() {{}}
+function validateCardJS() {{ return []; }}
+function afterEdit(rebuild) {{ if (rebuild) buildForm(); }}
+function undoAll() {{}}
+function undoLast() {{}}
+function saveCard() {{}}
+function openExport() {{}}
+function exportPortrait() {{}}
+const EVOLVE_TYPES = new Set(['战斗', '法术', '形态', '幻境']);
+const NONNEG_TYPES = new Set(['式神', '形态', '幻境']);
+const FACTIONS = ['红莲'];
+const STATS_BY_TYPE = {{式神: ['power', 'health']}};
+const STAT_MATRIX = {{式神: {{power: '力量', health: '生命'}}}};
+{build}
+buildForm();
+assert.strictEqual(artRows.length, 0);
+extOptions.marker = true;
+buildForm();
+assert.strictEqual(artRows.length, 4);
+formData.portrait = {{frame: false}};
+artRows.length = 0;
+buildForm();
+assert.strictEqual(artRows.length, 0);
+const frame = checks.find(row => row.label === '头像框');
+assert(frame);
+delete formData.portrait.frame;
+frame.set(false);
+assert.strictEqual(formData.portrait.frame, false);
+assert.strictEqual(artRows.length, 0);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_layout_status_sample_select_only_changes_preview(tmp_path):
+    build = _extract_js(_script(), "function buildCardProps()")
+    driver = f"""
+const assert = require('node:assert');
+let entityLayoutMode = false, mechLayoutMode = false, cardLayoutMode = null;
+let curType = '战斗', scheduled = 0, dirty = false;
+const samples = {{战斗: {{name: '样卡', level: 1}}}};
+const cardOverrides = {{}};
+const controls = [];
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', value: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const div = element('div');
+const document = {{getElementById: () => div, createElement: element}};
+function cardField(name) {{
+  const ov = cardOverrides[curType] || {{}};
+  return name in ov ? ov[name] : (samples[curType] || {{}})[name];
+}}
+function setCardField(name, value) {{
+  (cardOverrides[curType] = cardOverrides[curType] || {{}})[name] = value;
+  scheduled++;
+}}
+function schedulePreview() {{ scheduled++; }}
+function textRow() {{}}
+function selRow() {{}}
+function numRowC() {{}}
+function selRowC(div, label, opts, val, set) {{ controls.push({{label, opts, val, set}}); }}
+function statInputs() {{ return []; }}
+const EVOLVE_TYPES = new Set(['战斗', '法术', '形态', '幻境']);
+const NONNEG_TYPES = new Set(['式神', '形态', '幻境']);
+let activeAsk = null;
+{build}
+buildCardProps();
+const status = controls.find(row => row.label === '特殊状态');
+assert(status);
+assert.deepStrictEqual(status.opts, ['', 'bless', 'eclipse', 'shown']);
+assert.strictEqual(status.val, '');
+status.set('shown');
+assert.strictEqual(cardOverrides['战斗'].status, 'shown');
+status.set('');
+assert.strictEqual(cardOverrides['战斗'].status, null);
+assert.strictEqual(dirty, false);
 console.log('OK');
 """
     _run_node(tmp_path, driver)

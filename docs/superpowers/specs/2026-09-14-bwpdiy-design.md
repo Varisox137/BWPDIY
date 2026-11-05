@@ -92,7 +92,7 @@ artwork:
 
 异画不涉及卡图形状/布局的改变，仅立绘不同。按 BWPro 的 id 原则：异画卡与原画卡 id 不同，但无需新增 yaml——同一份 yaml 的 `artwork.images` 列表按序对应。每张图的 offset/scale 独立微调。
 
-**现行框品与扩展字段**：norm/blue/black/red 四框品已开放，协战恒 norm；卡牌/机制 `inline_faction_style` 由「标记扩展」控制控件显隐，缺省 1，关闭扩展不回退已保存值。大卡的 burst/status 仅为临时渲染字典字段，不进 store schema。
+**现行框品与扩展字段**：norm/blue/black/red 四框品已开放，协战恒 norm；卡牌/机制 `inline_faction_style` 由「扩展功能」控制控件显隐，缺省 1，关闭扩展不回退已保存值。大卡的 burst/status 仅为临时渲染字典字段，不进 store schema。
 
 ### schema 校验
 
@@ -123,7 +123,7 @@ bwpdiy.render.render_card(card: dict, assets_dir: Path) -> PIL.Image
 
 ## 5. 编辑器 WebGUI
 
-vanilla JS 单页（无构建），`/` 为编辑器主体页，三个主 tab：「卡牌库」「对局预览」与「全局布局设置」（原独立布局页已退役，`/layout` 307 重定向 `/#layout`）。20261030 起 HTML 只保留结构，CSS 与共享/卡牌/对局/机制/布局/入口六段 JS 分文件按序加载，不引入框架或模块系统。
+vanilla JS 单页（无构建），`/` 为编辑器主体页，三个主 tab：「卡牌库」「对局预览」与「全局布局设置」（原独立布局页已退役，`/layout` 307 重定向 `/#layout`；v1.8.1 起对局预览整页默认隐藏，由「扩展功能」开启并控制 hash 直达，头像参数/预览还须同时满足扩展功能与头像框开启）。20261030 起 HTML 只保留结构，CSS 与共享/卡牌/对局/机制/布局/入口六段 JS 分文件按序加载，不引入框架或模块系统。
 
 **卡牌库 tab**（M2+M3 骨架，已落地）三栏：
 

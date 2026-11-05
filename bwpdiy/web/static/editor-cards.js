@@ -680,7 +680,9 @@ const cPortraitImg = document.getElementById('c-portrait');
 let cPortraitTimer = null, cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
 async function cPreviewPortrait(withForm) {
   const seq = ++cPortraitSeq;
-  if (!curProject || !curCard || !isMainShikigami(formData)) {
+  const enabled = isMainShikigami(formData) && extOptions.marker &&
+    (!formData.portrait || formData.portrait.frame !== false);
+  if (!curProject || !curCard || !enabled) {
     cPortraitAppliedSeq = seq;
     cPortraitImg.style.display = 'none';
     syncSubpreviews();
@@ -981,15 +983,15 @@ function buildForm() {
   textRow(div, '卡名', formData.name ?? '', v => setField('name', v));
   versionRows(div, formData, v => setField('version_date', v));
   if (t === '式神') {
-    if (extOptions.marker) factionRow(div);  // 标记扩展：派系 + 派系样式并排
+    if (extOptions.marker) factionRow(div);  // 扩展功能：派系 + 派系样式并排
     else selRowC(div, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
-    if (extOptions.marker) levelRow(div);  // 标记扩展：式神等级
+    if (extOptions.marker) levelRow(div);  // 扩展功能：式神等级
     if (formData.shikigami) {
       infoRow(div, '所属式神', formData.shikigami);  // 衍生物式神
       textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
     }
   } else {
-    if (extOptions.marker) levelRow(div);  // 标记扩展：等级（含 0=无）
+    if (extOptions.marker) levelRow(div);  // 扩展功能：等级（含 0=无）
     else selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
     selRowC(div, '稀有度', rarityOptions(), formData.rarity ?? '无',
       v => { if (v === '无') delete formData.rarity; else formData.rarity = v; afterEdit(); });
@@ -1086,12 +1088,13 @@ function buildForm() {
   curArtRow.textContent = `当前卡图：${curArt || `（缺省 ${formData.name ?? curCard}.png）`}`;
   div.appendChild(curArtRow);
   // 卡图定位：dx/dy/scale/旋转数字输入（旋转绕图片中心、画布自动扩展；亦可在预览画布上拖拽/滚轮/右键滚轮操作，双向同步），改动走保存按钮；
-  // 主要式神每项右侧并排「头像」设置（portrait 段，协战双式神框引用本卡图作头像时使用）
+  // 头像设置仅在「扩展功能」与「头像框」同时开启时显示，避免与卡图参数混排
   {
     const artFirst = (formData.artwork && Array.isArray(formData.artwork.images) &&
       formData.artwork.images[0]) || {};
     const setArt = (k, v) => { ensureArtFirst()[k] = v; afterEdit(); };
-    const withPortrait = isMainShikigami(formData);
+    const withPortrait = isMainShikigami(formData) && extOptions.marker &&
+      (!formData.portrait || formData.portrait.frame !== false);
     const port = (withPortrait && formData.portrait && typeof formData.portrait === 'object') ? formData.portrait : {};
     const setPort = (k, v) => { formData.portrait = {...(formData.portrait || {}), [k]: v}; afterEdit(); };
     const pv = k => withPortrait ? (port[k] ?? (k === 'scale' ? 1 : 0)) : null;
@@ -1108,7 +1111,7 @@ function buildForm() {
       const p = {...(formData.portrait || {})};
       if (v) delete p.frame; else p.frame = false;  // 缺省 true 不写进 yaml
       if (Object.keys(p).length) formData.portrait = p; else delete formData.portrait;
-      afterEdit();
+      afterEdit(true);  // 头像框同时控制头像参数与预览显隐，需重建表单
     });
   }
   if (extOptions.layout) {
@@ -1287,7 +1290,7 @@ function checkRowC(div, label, val, set) {
   i.onchange = () => set(i.checked);
   l.appendChild(i); div.appendChild(l);
 }
-// 派系 + 派系样式并排行（标记扩展，式神专用）：样式缺省 2 不写进 yaml
+// 派系 + 派系样式并排行（扩展功能，式神专用）：样式缺省 2 不写进 yaml
 function factionRow(div) {
   const l = document.createElement('label');
   l.textContent = '派系 ';
@@ -1316,7 +1319,7 @@ function factionRow(div) {
   l.appendChild(document.createTextNode(' 派系样式 '));
   l.appendChild(ss); div.appendChild(l);
 }
-// 等级（标记扩展）：含 0（0=无等级，删 level 键，全类型适用）
+// 等级（扩展功能）：含 0（0=无等级，删 level 键，全类型适用）
 function levelRow(div) {
   const l = document.createElement('label');
   l.textContent = '等级 ';

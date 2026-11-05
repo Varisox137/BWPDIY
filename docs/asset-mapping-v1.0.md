@@ -82,7 +82,7 @@ assets/
 | `罕贵度/{R,SR,SSR}.png`（整带裁左端单枚花标） | `rarity/{R,SR,SSR}.png` |
 | `罕贵度/{R,SR,SSR} 琉璃光境.png` | `rarity/{R,SR,SSR}_blue.png` |
 | `罕贵度/{R,SR,SSR} 百炼.png` | `rarity/{R,SR,SSR}_red.png` |
-| legacy N.png | `rarity/N.png`，仅「标记扩展」启用时可选 |
+| legacy N.png | `rarity/N.png`，仅「扩展功能」启用时可选 |
 
 - 间距逻辑维持“短卡名固定 gap、长卡名按 margin 自动外移”。
 - black、reinforce 等变体没有专图时统一回退常规版；协战 PSD 花标仅留归档，不再生成运行时 `reinforce_*` 文件。
@@ -139,14 +139,14 @@ assets/
 
 ## J. webgui「扩展选项」栏
 
-- 顶栏勾选框组，localStorage 持久化：手动调整布局与标记扩展。
-- 标记扩展开放 N/无稀有度、等级 0/无等级、勾玉八色、式神大派系样式和卡牌/机制 `inline_faction_style` 控件；取消勾选只隐藏控件，不回退已保存字段。
+- 顶栏勾选框组，localStorage 持久化：手动调整布局与扩展功能。
+- 扩展功能开放 N/无稀有度、等级 0/无等级、勾玉八色、式神大派系样式和卡牌/机制 `inline_faction_style` 控件；取消勾选只隐藏控件，不回退已保存字段。
 
 ## 决策点收尾（现行口径）
 
 1. 协战框 → PSD 版，仅 norm；协战稀有度回退常规版。
 2. 等级标 → `level_<n>_<color>`，1–3 勾玉、八色；4/3_4 仅备用。
-3. N 稀有度 → 保留，仅标记扩展可选。
+3. N 稀有度 → 保留，仅扩展功能可选。
 4. 破甲 → `combat_fragile_{1,2}.png` 默认 2 可换。
 5. 数字与符号 → 五色位图；font_size 为目标高度，无程序渐变/描边。
 6. 协战头像框 → 已接入 `duo/`。

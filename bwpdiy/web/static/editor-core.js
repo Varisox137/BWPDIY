@@ -146,8 +146,8 @@ function updateLayoutNavtab() {
 }
 
 // ================= 顶栏扩展选项（localStorage 持久化） =================
-// 标记扩展（marker）：N 稀有度 + 式神等级 + 派系/内嵌派系样式；取消勾选只隐藏控件，
-// 已写进卡牌/机制的数据（level_color、inline_faction_style 等）不回退、渲染照常生效
+// 扩展功能（marker）：对局预览 + N 稀有度 + 式神等级 + 派系/内嵌派系样式；
+// 取消勾选只隐藏页面和控件，已写进卡牌/机制的数据不回退、渲染照常生效
 const EXT_KEY = 'bwpdiy_ext_options';
 const extOptions = {layout: false, marker: false};
 try { Object.assign(extOptions, JSON.parse(localStorage.getItem(EXT_KEY) || '{}')); } catch (e) {}
@@ -162,8 +162,14 @@ function applyExtOptions() {
     if (cardLayoutMode) exitCardLayout();  // 单卡布局模式随扩展关闭退出（布局调整丢弃）
     if (document.getElementById('tab-layout').classList.contains('active')) showTab('cards');
   }
+  // 对局预览整页由「扩展功能」控制；关闭时安全离开并清空临时预览状态
+  document.querySelector('.navtab[data-tab="battle"]').style.display = extOptions.marker ? '' : 'none';
+  if (!extOptions.marker && document.getElementById('tab-battle').classList.contains('active')) {
+    showTab('cards');
+  }
   if (formData) buildForm();  // 稀有度/等级/内嵌派系样式等下拉随扩展选项变化
   if (mechForm) buildMechForm();
+  cPreviewPortrait(true);  // 头像预览同步扩展功能与头像框显隐
 }
 document.getElementById('ext-layout').onchange = ev => {
   extOptions.layout = ev.target.checked; saveExtOptions(); applyExtOptions();
@@ -171,8 +177,8 @@ document.getElementById('ext-layout').onchange = ev => {
 document.getElementById('ext-marker').onchange = ev => {
   extOptions.marker = ev.target.checked; saveExtOptions(); applyExtOptions();
 };
-// 稀有度下拉选项：默认 R/SR/SSR；勾选标记扩展或当前卡已是 N 时含 N；
-// 「无」（缺省 rarity 键 = 衍生牌口径，不绘制双标）仅在标记扩展下可选，
+// 稀有度下拉选项：默认 R/SR/SSR；勾选扩展功能或当前卡已是 N 时含 N；
+// 「无」（缺省 rarity 键 = 衍生牌口径，不绘制双标）仅在扩展功能下可选，
 // 当前卡无 rarity 时也保留该选项以免 select 显示空白
 function rarityOptions() {
   const base = (extOptions.marker || (formData && formData.rarity === 'N'))

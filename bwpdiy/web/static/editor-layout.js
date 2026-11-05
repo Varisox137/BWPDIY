@@ -453,6 +453,9 @@ function buildCardProps() {
     v => setCardField('level', v === '0' ? null : parseInt(v, 10)));
   numRowC(div, '爆能', cardField('burst') ?? 0, false,
     v => setCardField('burst', v), null, 9999999999);
+  selRowC(div, '特殊状态', ['', 'bless', 'eclipse', 'shown'], cardField('status') || '',
+    v => setCardField('status', v || null),
+    v => ({'': '无', bless: '加护', eclipse: '蚀印', shown: '已展示'})[v]);
   if (EVOLVE_TYPES.has(curType)) {
     const l = document.createElement('label');
     l.textContent = '觉醒 ';

@@ -1650,8 +1650,8 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_layout_burst_and_entity_counter_props_drag_and_order(tmp_path):
-    """爆能按等级锚点调参/拖拽；实体 counter 无符号参数并按固定顺序列出。"""
+def test_layout_burst_status_and_entity_counter_props_drag_and_order(tmp_path):
+    """爆能/特殊状态按等级锚点调参/拖拽；实体 counter 无符号参数并按固定顺序列出。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function buildLists()",
@@ -1676,6 +1676,7 @@ const layouts = {{
     burst: {{kind: 'burst', offset: [30, 40], icon_size: 12, num_offset: [12, 0],
       font_size: 14, stroke_width: 2, sign_offset: [0, 0], group_offset: [0, 0],
       sign_size_plus: 7, sign_size_minus: 6}},
+    status: {{kind: 'status', offset: [-20, 40], icon_size: 20}},
   }}, text_regions: {{}}}},
   '对局式神': {{version: 2, elements: {{
     defeated: {{kind: 'counter', pos: [48, 66], icon_size: 44, num_offset: [0, 0],
@@ -1704,7 +1705,7 @@ const document = {{getElementById: id => id === 'l-elems' ? elems : props,
 {disp_map}
 {functions}
 buildLists();
-assert.deepStrictEqual(elems.children.map(x => x.textContent), ['等级标', '爆能', '力量']);
+assert.deepStrictEqual(elems.children.map(x => x.textContent), ['等级标', '爆能', '特殊状态', '力量']);
 sel = {{kind: 'element', name: 'burst'}};
 buildProps();
 const controls = {{}};
@@ -1726,6 +1727,19 @@ assert.deepStrictEqual(layouts['战斗'].elements.burst.offset, [60, 70]);
 assert.deepStrictEqual(layouts['战斗'].elements.level.pos, [10, 10]);
 controls['偏移 x'].value = '9'; controls['偏移 x'].onchange();
 assert.deepStrictEqual(layouts['战斗'].elements.burst.offset, [9, 70]);
+sel = {{kind: 'element', name: 'status'}};
+buildProps();
+const statusControls = {{}};
+collect(props, statusControls);
+assert.deepStrictEqual(Object.keys(statusControls), ['偏移 x', '偏移 y', '图标尺寸']);
+const statusTarget = pick(-10, 50);
+assert(statusTarget && statusTarget.sel.name === 'status');
+statusTarget.set(50, 70);
+assert.deepStrictEqual(layouts['战斗'].elements.status.offset, [40, 60]);
+assert.strictEqual(layouts['战斗'].elements.status.pos, undefined);
+assert.deepStrictEqual(layouts['战斗'].elements.level.pos, [10, 10]);
+statusControls['图标尺寸'].value = '26'; statusControls['图标尺寸'].onchange();
+assert.strictEqual(layouts['战斗'].elements.status.icon_size, 26);
 sel = {{kind: 'element', name: 'power'}};
 buildProps();
 const statControls = {{}};
@@ -3008,6 +3022,7 @@ function scheduleBattlePreview() {{ scheduled++; }}
 enterBattlePreview();
 assert.strictEqual(battleStyle, 'card');
 assert.strictEqual(battleCardState.burst, 0);
+assert.strictEqual(battleCardState.status, null);
 assert.strictEqual(battleCardState.power_color, 'green');
 assert.deepStrictEqual(battleEntityState.power_color, 'green');
 assert.strictEqual(battleEntityState.energy, null);
@@ -3015,12 +3030,14 @@ assert.strictEqual(battleEntityState.countdown, null);
 assert.strictEqual(battleEntityState.defeated_countdown, null);
 assert.notStrictEqual(battleCardState, formData);
 setBattleCardField('burst', 3);
+setBattleCardField('status', 'shown');
 setBattleEntityField('power', 9);
 assert.strictEqual(formData.burst, undefined);
+assert.strictEqual(formData.status, undefined);
 assert.strictEqual(formData.power, 3);
 assert.strictEqual(cDirty, true);
 assert.strictEqual(mDirty, true);
-assert.strictEqual(scheduled, 3);
+assert.strictEqual(scheduled, 4);
 leaveBattlePreview();
 assert.strictEqual(battleActive, false);
 assert.strictEqual(elements['b-preview'].src, '');
@@ -3034,6 +3051,60 @@ assert.strictEqual(cDirty, true && mDirty, true);
 curMech = '机制'; formData = null;
 enterBattlePreview();
 assert(elements['b-status'].textContent.includes('请先'));
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_battle_card_status_control_and_preview_request(tmp_path):
+    """大卡特殊状态只修改临时状态，预览请求携带所选状态。"""
+    script = _script()
+    functions = "\n".join(_extract_js(script, decl) for decl in (
+        "function setBattleCardField(key, value)",
+        "function battleSelectRow(div, label, options, value, set)",
+        "function battleNumberRow(div, label, value, set, min = null, id = null, disabled = false)",
+        "function buildBattleForm()",
+        "function battleRequest(style, project, stem, card, state)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+const ENTITY_LEVELS = [0, 1, 2, 3], LEVEL_COLORS = [['yellow', '黄']];
+const STATS_BY_TYPE = {{'战斗': []}}, STAT_MATRIX = {{'战斗': {{}}}};
+let battleStyle = 'card', battleEntityState = null, scheduled = 0;
+let battleCardState = {{type: '战斗', name: '测试', level: 1, level_color: 'yellow',
+  burst: 0, status: null}};
+function scheduleBattlePreview() {{ scheduled++; }}
+function setBattleEntityField() {{ throw new Error('大卡控件不得写小卡'); }}
+function element(tag) {{
+  return {{tag, children: [], style: {{}}, textContent: '', value: '', selected: false,
+    set innerHTML(value) {{ if (value === '') this.children = []; }},
+    appendChild(child) {{ this.children.push(child); return child; }} }};
+}}
+const form = element('div');
+const document = {{createElement: element, getElementById: () => form}};
+const enc = encodeURIComponent;
+{functions}
+buildBattleForm();
+let statusControl = null;
+function visit(node) {{
+  if (node.tag === 'label' && node.textContent.trim() === '特殊状态')
+    statusControl = node.children[0];
+  for (const child of node.children || []) visit(child);
+}}
+visit(form);
+assert(statusControl, '大卡缺少特殊状态控件');
+assert.deepStrictEqual(statusControl.children.map(o => [o.value, o.textContent]),
+  [['', '无'], ['bless', '加护'], ['eclipse', '蚀印'], ['shown', '已展示']]);
+assert.strictEqual(statusControl.children[0].selected, true);
+statusControl.value = 'shown'; statusControl.onchange();
+assert.strictEqual(battleCardState.status, 'shown');
+assert.strictEqual(scheduled, 1);
+let request = null;
+function fetch(url, options) {{ request = {{url, options}}; return {{ok: true}}; }}
+battleRequest('card', '项目', '战斗-stem', battleCardState, null);
+assert.strictEqual(request.url, '/api/projects/%E9%A1%B9%E7%9B%AE/cards/%E6%88%98%E6%96%97-stem/preview');
+assert.strictEqual(JSON.parse(request.options.body).card.status, 'shown');
 console.log('OK');
 """
     _run_node(tmp_path, driver)

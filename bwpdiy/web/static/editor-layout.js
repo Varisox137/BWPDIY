@@ -8,7 +8,7 @@ const DISP = {
   // 布局元素名 / 文本区名 / 字体键
   level: '等级标', faction: '派系标', rarity: '稀有度', power: '力量', health: '生命',
   shield: '护甲', durability: '耐久', name: '卡名', footer: '脚注', desc: '描述',
-  duo_frame: '双式神框', art_window: '卡图内窗', burst: '爆能',
+  duo_frame: '双式神框', art_window: '卡图内窗', burst: '爆能', status: '特殊状态',
   energy: '能量', countdown: '倒计时', defeated: '气绝倒计时',
   // 元素 kind
   stat: '数值', rarity_flank: '稀有度双标', level_badge: '等级标', text: '文本',
@@ -522,7 +522,7 @@ function buildLists() {
   const tl = typeLayout();
   const ed = document.getElementById('l-elems'); ed.innerHTML = '';
   const items = [];
-  for (const n of ['level', 'burst', 'duo_frame', 'name', 'rarity']) {
+  for (const n of ['level', 'burst', 'status', 'duo_frame', 'name', 'rarity']) {
     if (tl.elements[n]) items.push({kind: 'element', name: n});
   }
   const regions = layoutRegions();
@@ -644,8 +644,8 @@ function draw() {
   ctx.translate(-previewOffset[0], -previewOffset[1]);
   const tl = typeLayout();
   for (const [name, e] of Object.entries(tl.elements)) {
-    // 爆能锚点 = 等级位置 + offset；其余点元素直接使用 pos。
-    const pos = e.kind === 'burst'
+    // 爆能/特殊状态锚点 = 等级位置 + offset；其余点元素直接使用 pos。
+    const pos = ['burst', 'status'].includes(e.kind)
       ? [tl.elements.level.pos[0] + e.offset[0], tl.elements.level.pos[1] + e.offset[1]] : e.pos;
     // 元素位置点：绿色小圆点（比文本区中心方块略小），选中变黄
     handle(pos, sel && sel.name === name ? '#ff4' : '#4f4', 4);
@@ -715,7 +715,7 @@ function pick(mx, my) {
   const tl = typeLayout();
   const near = (x, y) => Math.hypot(mx - x, my - y) < 8;
   for (const [name, e] of Object.entries(tl.elements)) {
-    const pos = e.kind === 'burst'
+    const pos = ['burst', 'status'].includes(e.kind)
       ? [tl.elements.level.pos[0] + e.offset[0], tl.elements.level.pos[1] + e.offset[1]] : e.pos;
     if (['stat', 'burst', 'counter'].includes(e.kind)) {
       const np = [pos[0] + e.num_offset[0], pos[1] + e.num_offset[1]];
@@ -745,7 +745,7 @@ function pick(mx, my) {
         set: (x, y) => { e.slot2_dy = y - e.pos[1]; } };
     }
     if (near(...pos)) return { sel: {kind: 'element', name}, set: (x, y) => {
-      if (e.kind === 'burst')
+      if (['burst', 'status'].includes(e.kind))
         e.offset = [x - tl.elements.level.pos[0], y - tl.elements.level.pos[1]];
       else e.pos = [x, y];
     } };
@@ -778,7 +778,7 @@ function buildProps() {
     div.appendChild(title(e.kind === 'stat'
       ? `${disp(sel.name)}（数值：${disp(e.field)}）`
       : `${disp(sel.name)}（${disp(e.kind)}）`));
-    if (e.kind === 'burst') {
+    if (['burst', 'status'].includes(e.kind)) {
       numRow(div, '偏移 x', e.offset[0], v => { e.offset[0] = v; draw(); });
       numRow(div, '偏移 y', e.offset[1], v => { e.offset[1] = v; draw(); });
     } else {
@@ -823,6 +823,9 @@ function buildProps() {
         numRow(div, '破甲符号偏移 x', e.fragile_sign_offset[0], v => { e.fragile_sign_offset[0] = v; draw(); });
         numRow(div, '破甲符号偏移 y', e.fragile_sign_offset[1], v => { e.fragile_sign_offset[1] = v; draw(); });
       }
+    }
+    if (e.kind === 'status') {
+      numRow(div, '图标尺寸', e.icon_size, v => e.icon_size = v);
     }
     if (e.kind === 'burst' || e.kind === 'counter') {
       numRow(div, '图标尺寸', e.icon_size, v => e.icon_size = v);

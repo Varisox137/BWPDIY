@@ -76,6 +76,8 @@ function enterBattlePreview() {
   battleCardState.level_color = LEVEL_COLOR_VALUES.has(formData.level_color)
     ? formData.level_color : 'yellow';
   battleCardState.burst = Number.isInteger(formData.burst) ? formData.burst : 0;
+  battleCardState.status = ['bless', 'eclipse', 'shown'].includes(formData.status)
+    ? formData.status : null;
   battleEntityState = battleStyles(formData).includes('entity') ? makeEntityState(formData) : null;
   battleStyle = battleStyles(formData)[0];
   document.getElementById('b-btn-export').disabled = false;
@@ -267,6 +269,9 @@ function buildBattleForm() {
     value => setField('level_color', value));
   if (battleStyle === 'card') {
     battleNumberRow(div, '爆能', state.burst, value => setBattleCardField('burst', value));
+    battleSelectRow(div, '特殊状态', [['', '无'], ['bless', '加护'],
+      ['eclipse', '蚀印'], ['shown', '已展示']], state.status || '',
+      value => setBattleCardField('status', value || null));
     for (const field of STATS_BY_TYPE[state.type] || []) {
       const key = `${field}_color`;
       battleSelectRow(div, `${STAT_MATRIX[state.type][field]}颜色`, battleColorOptions(),

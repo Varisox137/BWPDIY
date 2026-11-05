@@ -293,12 +293,23 @@ def test_draw_region_inline_icon(assets_dir):
     assert lines[0][0] == "测试图标"  # 行纯文本不含图标记号
 
 
-def test_icon_black_variant_for_faction(assets_dir):
-    """墨染框（icon_variant='black'）派系图标用 _black 变体；无变体的图标回退原图。"""
+@pytest.mark.parametrize("code, stem", [
+    ("hl", "faction_red_1"),
+    ("cy", "faction_green_1"),
+    ("ql", "faction_blue_1"),
+    ("zy", "faction_purple_1"),
+])
+def test_faction_icons_default_to_style_one(assets_dir, monkeypatch, code, stem):
+    """过渡口径：派系默认与墨染框都使用 _1，不读取已删除的无编号/_black 资源。"""
     from bwpdiy.render.text import _icon_image
     lib = AssetLibrary(assets_dir)
-    assert _icon_image("hl", lib, "black").tobytes() != _icon_image("hl", lib, None).tobytes()
-    assert _icon_image("ll", lib, "black").tobytes() == _icon_image("ll", lib, None).tobytes()
+    names = []
+    original = lib.icon
+    monkeypatch.setattr(lib, "icon", lambda name: names.append(name) or original(name))
+    normal = _icon_image(code, lib, None)
+    black = _icon_image(code, lib, "black")
+    assert names == [stem, stem]
+    assert normal.tobytes() == black.tobytes()
 
 
 def test_icon_image_tight_square(assets_dir):

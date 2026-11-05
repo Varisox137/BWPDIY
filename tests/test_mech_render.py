@@ -279,15 +279,14 @@ def test_build_frame_custom_pitch(lib):
 
 
 def test_badge_rendered_on_seal(assets_dir):
-    """加护角标贴 seal 框左上角：角标深色圆盘像素覆盖浅底框左上角。"""
+    """加护角标贴 seal 框左上角：新金色角标以不透明像素覆盖浅底框。"""
     base = render_mechanism(_mech(frame="seal", text="加护测试。"), assets_dir)
     badged = render_mechanism(
         _mech(frame="seal", badge="bless", text="加护测试。"), assets_dir)
     assert list(base.getdata()) != list(badged.getdata())
-    # 底框左上角（22,14）原为浅底，贴角标后变为深色圆盘（实测角标该点为暗紫）
-    px = badged.load()
-    r, g, b, a = px[22, 14]
-    assert a > 200 and r < 120 and b < 140
+    # 新 bless 素材在（22,14）为不透明金色；真实资源缺失时仍由加载直接报错。
+    r, g, b, a = badged.getpixel((22, 14))
+    assert a == 255 and r > 200 and g > 150 and b < 200 and r > g > b
 
 
 def test_badge_rejected_on_non_seal(assets_dir):

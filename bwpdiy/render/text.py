@@ -13,7 +13,7 @@
 图标处于行首/行尾时该侧无空格（空格只存在于同一行内的文字-图标相邻处，
 图标与图标相邻不加）。
 '#' 后跟两个英文字母才视为图标代码：未知代码 ValueError；其余 '#' 为字面字符。
-派系图标在墨染框下用 _black 变体（icon_variant="black"）。
+派系图标暂统一使用 _1（含墨染框，icon_variant 不改变派系样式）。
 """
 
 import re
@@ -134,10 +134,10 @@ def _plain(items: list[tuple[str, str, bool]]) -> str:
 def _icon_image(code: str, lib: AssetLibrary, icon_variant: str | None) -> Image.Image:
     """图标原图按 alpha≥128 碰撞轮廓紧致裁剪（抗锯齿淡边缘不算墨迹，仿牌框阈值
     预处理）后，alpha_composite 透明扩展为容纳内容的最紧方形 box（保真源 alpha、
-    内容居中，内嵌前预处理：图标占位恒为正方形）；派系图标在墨染框下用 _black 变体。"""
+    内容居中，内嵌前预处理：图标占位恒为正方形）；派系图标暂统一使用 _1。"""
     stem = ICON_CODES[code]
-    if icon_variant == "black" and (lib.root / "icons" / f"{stem}_black.png").is_file():
-        stem += "_black"
+    if stem.startswith("faction_"):
+        stem += "_1"
     img = lib.icon(stem)
     bbox = img.getchannel("A").point(lambda v: 255 if v >= 128 else 0).getbbox()
     if bbox:

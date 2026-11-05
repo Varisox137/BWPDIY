@@ -489,7 +489,9 @@ def test_entity_signed_modifiers_pick_icons(assets_dir, sample_art, monkeypatch)
     assert "weak" in names and "shield" not in names
 
 
-@pytest.mark.parametrize("color", ["yellow", "cyan", "purple", "red", "blue", "brown"])
+@pytest.mark.parametrize("color", [
+    "yellow", "cyan", "purple", "red", "blue", "brown", "greyblue", "orange",
+])
 def test_entity_level_colors(assets_dir, sample_art, monkeypatch, color):
     lib = get_library(assets_dir)
     calls = []

@@ -497,6 +497,8 @@ def test_rename_card_case_only(lib):
     {**SHIKIGAMI, "faction_style": 1},                  # 标记扩展：派系样式 1-3
     {**SHIKIGAMI, "level_color": "cyan"},               # 勾玉颜色（凡可带 level 者皆可）
     {**FIGHT, "level_color": "brown"},
+    {**SHIKIGAMI, "level_color": "greyblue"},
+    {**SHIKIGAMI, "level_color": "orange"},
     {**ASSIST, "level_color": "purple"},
     {**ASSIST, "duo_frame": True},                      # 协战双式神框开关（可选布尔）
     {**SHIKIGAMI, "portrait": {}},                      # 头像变换段：全键可缺省

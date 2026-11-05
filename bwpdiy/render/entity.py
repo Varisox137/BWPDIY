@@ -28,7 +28,7 @@ ENTITY_MAX_ART_WINDOW_SIDE = 8000
 ENTITY_MAX_WORK_SIDE = 4096
 ENTITY_MAX_WORK_PIXELS = 16_000_000
 ENTITY_ART_Y_BIAS = -0.04  # 下角标使视觉重心偏下，卡图默认上移窗口高度的 4%
-LEVEL_COLORS = {"yellow", "cyan", "purple", "red", "blue", "brown"}
+LEVEL_COLORS = {"yellow", "cyan", "purple", "red", "blue", "brown", "greyblue", "orange"}
 
 _DEFAULT_LAYOUT = json.loads(Path(__file__).with_name("default_layout.json").read_text(
     encoding="utf-8"))["对局式神"]

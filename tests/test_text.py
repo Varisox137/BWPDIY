@@ -257,6 +257,11 @@ def test_vertical_center_with_obstacles(assets_dir):
 
 # ---------- 内嵌图标（#xx） ----------
 
+def test_bounty_icon_code():
+    from bwpdiy.render.text import ICON_CODES
+    assert ICON_CODES["sj"] == "bounty"
+
+
 def test_parse_items_icon_codes():
     from bwpdiy.render.text import parse_items
     # 纯文本：全 char 项

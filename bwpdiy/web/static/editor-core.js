@@ -26,9 +26,10 @@ const EVOLVE_TYPES = new Set(["战斗", "法术", "形态", "幻境"]);
 const FRAME_VARIANTS = [["norm", "常规"], ["blue", "琉璃"], ["black", "墨染"], ["red", "百炼"]];
 const FRAME_VARIANT_VALUES = new Set(FRAME_VARIANTS.map(([v]) => v));
 const FRAME_VARIANT_TYPES = new Set(["式神", "战斗", "法术", "形态", "幻境"]);
-// 勾玉六色：内部值 → 中文显示名（缺省 yellow 不写进 yaml；素材 assets/levels/level_<n>_<color>.png）
+// 勾玉八色：内部值 → 中文显示名（缺省 yellow 不写进 yaml；素材 assets/levels/level_<n>_<color>.png）
 const LEVEL_COLORS = [["yellow", "黄"], ["cyan", "青"], ["purple", "紫"],
-                      ["red", "红"], ["blue", "蓝"], ["brown", "棕"]];
+                      ["red", "红"], ["blue", "蓝"], ["brown", "棕"],
+                      ["greyblue", "灰蓝"], ["orange", "橙"]];
 const LEVEL_COLOR_VALUES = new Set(LEVEL_COLORS.map(([v]) => v));
 const FACTION_STYLES = [1, 2, 3];  // 派系样式（缺省 2 不写进 yaml）
 // 数值变色：stat 伴随字段 <field>_color（缺省白不写进 yaml）；红=debuff/受伤、绿=buff、紫=中毒

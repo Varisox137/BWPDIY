@@ -59,6 +59,7 @@ ICON_CODES = {
     "nj": "intensity",      # 耐久（幻境）
     "zl": "combat_power",   # 战力
     "fl": "weak",           # 乏力
+    "sj": "bounty",         # 赏金
     "hl": "faction_red",    # 红莲
     "cy": "faction_green",  # 苍叶
     "ql": "faction_blue",   # 青岚

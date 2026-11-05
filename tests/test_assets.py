@@ -31,13 +31,13 @@ def test_rarity_variant_fallback(assets_dir):
     assert lib.rarity("SSR", "blue") is not lib.rarity("SSR")
 
 
-def test_rarity_reinforce(assets_dir):
-    """协战稀有度花标用 reinforce 专版（蓝/紫/金）。"""
+def test_new_number_badge_and_reinforce_fallback(assets_dir):
     lib = AssetLibrary(assets_dir)
-    mark = lib.rarity("SR", "reinforce")
-    assert mark.mode == "RGBA"
-    assert mark is lib.rarity("SR", "reinforce")
-    assert mark is not lib.rarity("SR")
+    assert lib.number("white", "0").size == (36, 64)
+    assert lib.number("orange", "plus").mode == "RGBA"
+    assert lib.badge("shown").size == (64, 64)
+    assert lib.rarity("SR", "reinforce") is lib.rarity("SR")
+    assert lib.icon("bounty").mode == "RGBA"
 
 
 def test_load_stat_badge_and_sign(assets_dir):
@@ -45,16 +45,17 @@ def test_load_stat_badge_and_sign(assets_dir):
     assert lib.stat_badge("power").mode == "RGBA"
     assert lib.stat_badge("combat_fragile_2").mode == "RGBA"
     assert lib.stat_badge("field_intensity").mode == "RGBA"
-    assert lib.sign("plus").mode == "RGBA"
-    assert lib.sign("minus").mode == "RGBA"
+    assert lib.sign("plus") is lib.number("white", "plus")
+    assert lib.sign("minus") is lib.number("white", "minus")
 
 
 def test_stats_dir_no_duplicate_assets(assets_dir):
     """stats/ 文件集合钉死：力量/生命全类型共用，不允许 form_/spell_/combat_ 前缀重复资源回归。"""
     files = sorted(p.name for p in (assets_dir / "stats").glob("*.png"))
     assert files == ["combat_fragile_1.png", "combat_fragile_2.png",
-                     "combat_shield.png", "countdown.png", "defeated_countdown.png",
-                     "energy.png", "field_intensity.png", "health.png", "power.png"]
+                     "combat_power.png", "combat_shield.png", "countdown.png",
+                     "defeated_countdown.png", "energy.png", "field_intensity.png",
+                     "health.png", "power.png", "weak.png"]
 
 
 def test_load_faction_and_icon(assets_dir):

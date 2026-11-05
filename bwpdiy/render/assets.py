@@ -46,12 +46,9 @@ class AssetLibrary:
         return self._img(f"levels/level_{n}_{color}.png")
 
     def rarity(self, rarity: str, variant: str = "norm") -> Image.Image:
-        """稀有度花标：variant="reinforce" 用协战版；其余 {R}_{variant} 缺失回退 {R}；
-        N 只有 N.png。"""
+        """稀有度花标：{R}_{variant} 缺失回退 {R}；N 只有 N.png。"""
         if rarity == "N":
             return self._img("rarity/N.png")
-        if variant == "reinforce":
-            return self._img(f"rarity/reinforce_{rarity}.png")
         rel = f"rarity/{rarity}_{variant}.png"
         if not (self.root / rel).is_file():
             rel = f"rarity/{rarity}.png"
@@ -60,8 +57,14 @@ class AssetLibrary:
     def stat_badge(self, stem: str) -> Image.Image:
         return self._img(f"stats/{stem}.png")
 
+    def number(self, color: str, name: str) -> Image.Image:
+        return self._img(f"numbers/{color}_{name}.png")
+
+    def badge(self, name: str) -> Image.Image:
+        return self._img(f"badges/badge_{name}.png")
+
     def sign(self, name: str) -> Image.Image:
-        return self._img(f"signs/{name}.png")
+        return self.number("white", name)
 
     def faction(self, color: str, style: int = 1) -> Image.Image:
         return self._img(f"factions/{color}_{style}.png")

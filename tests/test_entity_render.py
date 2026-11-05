@@ -71,6 +71,11 @@ def test_validate_entity_state_defaults_and_discards_unknown_keys():
     assert state == original
 
 
+def test_entity_accepts_greyblue_and_orange_level_colors():
+    for color in ("greyblue", "orange"):
+        assert validate_entity_state({"level_color": color})["level_color"] == color
+
+
 @pytest.mark.parametrize("field, value", [
     ("power", True), ("health", False),
     ("combat_power", True), ("shield", False),
@@ -79,7 +84,7 @@ def test_validate_entity_state_defaults_and_discards_unknown_keys():
     ("power", 1.5), ("health", "2"),
     ("combat_power", 1.5), ("shield", "2"),
     ("level", 4), ("level", 1.0),
-    ("level_color", "orange"), ("level_color", None),
+    ("level_color", "gold"), ("level_color", None),
     ("power_color", "orange"), ("health_color", 1),
     ("combat_power_color", False), ("shield_color", "white"),
     ("power_color", "yellow"),
@@ -500,7 +505,7 @@ def test_entity_level_colors(assets_dir, sample_art, monkeypatch, color):
 
 @pytest.mark.parametrize("card_level, card_color, expected", [
     (2, "cyan", (2, "cyan")),
-    (9, "orange", (1, "yellow")),
+    (9, "gold", (1, "yellow")),
     (None, None, (1, "yellow")),
 ])
 def test_entity_level_defaults_come_from_valid_card_values(

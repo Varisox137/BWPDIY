@@ -320,7 +320,7 @@ def render_mechanism(mech: dict, assets_dir, layout: dict | None = None,
     # 加护/蚀印角标贴框左上角（尺寸/坐标取 seal 区域配置）；存在时关键字名
     # 右移避让（角标右缘 + BADGE_NAME_GAP）
     if badge:
-        icon = lib.mech(f"badge_{badge}")
+        icon = lib.badge(badge)
         if icon.width != region["badge_size"]:
             size = region["badge_size"]
             icon = icon.resize((size, size), Image.LANCZOS)

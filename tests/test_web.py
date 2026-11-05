@@ -319,6 +319,43 @@ def test_entity_layout_preview(client):
                        json={**body, "layout": "bad"}).status_code == 422
 
 
+def test_entity_preview_native_size_parameters(client):
+    from io import BytesIO
+    from PIL import Image
+
+    body = {
+        "card": {"type": "式神", "name": "尺寸样例"},
+        "state": {"level": 2, "power": 12, "health": 34},
+    }
+    baseline = client.post("/api/entity-preview", json=body)
+    assert baseline.status_code == 200
+    base_size = Image.open(BytesIO(baseline.content)).size
+    expected = (base_size[0] * 2, base_size[1] * 2)
+    for size in ({"width": expected[0]},
+                 {"width": expected[0], "height": expected[1]}):
+        response = client.post("/api/entity-preview", json={**body, **size})
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
+        assert Image.open(BytesIO(response.content)).size == expected
+
+
+@pytest.mark.parametrize("size", [
+    {"width": 0},
+    {"height": -1},
+    {"width": "200"},
+    {"width": 200, "height": 100},
+])
+def test_entity_preview_rejects_invalid_native_size(client, size):
+    body = {
+        "card": {"type": "式神", "name": "尺寸样例"},
+        "state": {"level": 2, "power": 12, "health": 34},
+        **size,
+    }
+    response = client.post("/api/entity-preview", json=body)
+    assert response.status_code == 422
+    assert "渲染失败" in response.json()["detail"]
+
+
 def test_entity_layout_preview_forces_packaged_sample_art(client, tmp_path):
     from PIL import Image
     outside = tmp_path / "outside.png"

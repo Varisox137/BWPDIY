@@ -357,7 +357,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             elif not isinstance(entity_layout, dict):
                 raise ValueError("layout 必须是对象")
             info: dict = {}
-            img = render_entity(card, state, assets_dir, layout=entity_layout, info=info)
+            img = render_entity(card, state, assets_dir, layout=entity_layout, info=info,
+                                width=request.get("width"), height=request.get("height"))
         except Exception as e:
             raise HTTPException(422, f"渲染失败: {e}") from e
         ox, oy = info["crop_origin"]

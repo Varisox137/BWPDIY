@@ -177,5 +177,5 @@ pytest 三层：schema 校验单测、渲染 smoke（各类型各出一张图不
 2. **BWPro 侧美术资产目录安排待定**：`artwork.images[].path` 在 BWPro 调用侧的相对基准目录以后确定。
 3. ~~**式神卡资源核实**~~（已核实）：式神卡外观形状同形态牌，渲染按 `TYPE_FRAME_CODE` 复用 `form` 资源（见 `bwpdiy/render/pipeline.py`），差异化元素为派系标/力量/生命。v1.0 起牌框/蒙版体系已由 PSD 官方素材替换（masks 废弃），legacy 旧资源含 unprocessed 原图封存 `assets/legacy/`。
 4. ~~框品资源映射~~（v1.0 已开放）：常规=norm / 琉璃=blue / 墨染=black / 百炼=red。
-5. **觉醒星美术资源可能需重制**（用户提醒）：`assets/levels/star.png`（126×127，legacy 程序化生成）在正式使用前需用户确认/替换。
+5. **觉醒星美术资源可能需重制**（用户提醒）：`assets/levels/evolve_star.png`（99×99，legacy 程序化生成）在正式使用前需用户确认/替换。
 6. **赏金左上角大角标尚未实现**：描述内嵌 `#sj` 已使用 `icons/bounty.png` 小图标；本批不新增赏金大角标。能量大图标已于 v1.8.0 接入爆能与对局状态组件。

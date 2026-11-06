@@ -92,7 +92,7 @@ artwork:
 
 异画不涉及卡图形状/布局的改变，仅立绘不同。按 BWPro 的 id 原则：异画卡与原画卡 id 不同，但无需新增 yaml——同一份 yaml 的 `artwork.images` 列表按序对应。每张图的 offset/scale 独立微调。
 
-**现行框品与扩展字段**：norm/blue/black/red 四框品已开放，协战恒 norm；卡牌/机制 `inline_faction_style` 由「扩展功能」控制控件显隐，缺省 1，关闭扩展不回退已保存值。大卡的 burst/status 仅为临时渲染字典字段，不进 store schema。
+**现行框品与扩展字段**：norm/blue/black/red 四框品已开放，全类型均可使用；卡牌/机制 `inline_faction_style` 由「扩展功能」控制控件显隐，缺省 1，关闭扩展不回退已保存值。大卡的 burst/status 仅为临时渲染字典字段，不进 store schema。
 
 ### schema 校验
 
@@ -107,7 +107,7 @@ artwork:
 3. 叠图标层：
    - 等级标三层叠加（无等级卡牌跳过）：底座 base → 觉醒星（仅觉醒牌）→ 勾玉层（1–3 勾玉，卡面 `level_color` 可选 yellow/cyan/purple/red/blue/brown/greyblue/orange 八色）；`level_4_*` 与 `level_3_4_*` 仅作备用命名，不接等级枚举、表单或渲染引用
    - 稀有度标、派系标、数值标（力量/生命/护甲加成/耐久）；协战及墨染等缺失的稀有度变体回退常规版，不再保留协战专用花标
-   - 大卡临时 `status`（None/bless/eclipse/shown）读取 `badges/badge_<状态>.png`，无等级卡也绘制，六类型布局均以等级锚点加 `offset` 定位、以 `icon_size` 控制尺寸；不持久化，`shown` 不进入机制
+   - 大卡临时 `status`（None/bless/eclipse/bond/curse/radiance/nightmare/eternal/endless/unused/multi_status/shown）读取 `badges/<状态中文名>.png`（由 AssetLibrary.BADGE_FILES 映射），无等级卡也绘制，六类型布局均以等级锚点加 `offset` 定位、以 `icon_size` 控制尺寸；不持久化，均不进入机制 badge
    - 协战双式神框（v1.4.1）：卡面可选布尔 `duo_frame`（缺省不绘制）；双菱形头像槽位（黑底板+头像菱形裁剪+高光+派系小标）+双框线盖顶，素材 `duo/`；头像由 web 预览按 `shikigami1`/`shikigami2` 注入所属式神卡图（内部键 `_duo`，不进 schema/yaml）
 4. 文本：卡名（田氏颜体大字库 2.0）+ 描述（方正北魏楷书）自动排版——从大到小试字号、自动换行、逐行居中；文字颜色按框品；`[[关键词]]` 异色高亮（v1.2，双括号标记；v1.3.0 起未匹配括号按字面文本显示）与 `#xx` 内嵌图标（ICON_CODES 拼音首字母映射、相邻文字八分之一宽空格、宽度计入换行/居中、大小=字号×desc 区 `icon_scale` 系数）均已落地。卡牌与机制均可选 `inline_faction_style`（1/2/3，缺省 1），逐条目控制全部派系小标，不再按墨染框自动切换文件
 5. 数值与爆能使用 `numbers/` 五色位图数字及同色正负号，`font_size` 表示单字缩放目标高度，多位数按逐行墨迹最小间距拼接；yellow 映射 orange 文件。旧字体数字、程序渐变与描边不再参与绘制，布局遗留 `stroke_width` 仅为兼容校验字段
@@ -131,7 +131,7 @@ vanilla JS 单页（无构建），`/` 为编辑器主体页，三个主 tab：�
 - **中栏**：预览——编辑期走项目卡预览 + 表单整体覆盖（含未保存修改与卡图 offset/scale，基准目录 = 项目 `images/`）debounce 实时刷新；选中/保存后走项目卡预览（读盘，缺图回退占位）
 - **右栏**：表单，按卡牌类型动态显隐字段（含觉醒勾选框，仅战斗/法术/形态/幻境），即时校验（口径对齐 store schema），保存 422 错误表单侧展示；卡名上方有可留空 id 输入框（v1.3.0）；所属式神为下拉（「（手动填写）」+ 同项目式神名列表，协战为式神1/2 两个）；卡图上传（选图 → 按 `<id 或卡名><ext>` 落盘项目 `images/`，同卡名不同 id 可存多版本；改 id 不重命名已有卡图、不清理旧图；写回 `artwork.images[0].path`）与卡图定位 offset_x/offset_y/scale/rotate 数字输入（v1.2.1 起支持旋转；不做拖拽/滚轮定位）
 
-**对局预览 tab**（v1.8.0）：读取卡牌库当前选择及未保存编辑，式神仅提供小卡，形态/觉醒可切换大卡与小卡，其他卡仅提供大卡；等级、勾玉和数值颜色、爆能、特殊状态、能量/倒计时及气绝均为临时状态，不写盘、不置脏，返回卡牌库保留原条目与未保存内容。大卡爆能 `burst` 与特殊状态 `status`（None/bless/eclipse/shown，无等级也绘制）只是渲染字典临时字段，不进 store schema；shown 仅大卡可用，机制 seal 仍只有 bless/eclipse。所有卡牌与对局状态数值最多 10 位；非气绝 `countdown` 允许 0，供倒计时触发动画使用。
+**对局预览 tab**（v1.8.0）：读取卡牌库当前选择及未保存编辑，式神仅提供小卡，形态/觉醒可切换大卡与小卡，其他卡仅提供大卡；等级、勾玉和数值颜色、爆能、特殊状态、能量/倒计时及气绝均为临时状态，不写盘、不置脏，返回卡牌库保留原条目与未保存内容。大卡爆能 `burst` 与特殊状态 `status`（None/bless/eclipse/bond/curse/radiance/nightmare/eternal/endless/unused/multi_status/shown，无等级也绘制）只是渲染字典临时字段，不进 store schema；这些 status 仅大卡可用，机制 seal 仍只有 bless/eclipse。所有卡牌与对局状态数值最多 10 位；非气绝 `countdown` 允许 0，供倒计时触发动画使用。
 
 **布局设置 tab**：六类型与框品切换，元素/文本区画布拖拽定位，卡牌内容（样卡数值/式神名/子类型/描述/觉醒/爆能/特殊状态）可编辑实时预览；全部元素与文本区按卡牌类型 × 框品独立，不做跨类型同步。六类型 status 元素均以等级锚点加 offset 定位、以 icon_size 控制尺寸；数字与符号由位图资源原生缩放，遗留 stroke_width 不参与绘制。「对局式神」页另可调整右上组件与气绝倒计时，并提供能量/普通倒计时、气绝及永久样例。
 
@@ -177,5 +177,5 @@ pytest 三层：schema 校验单测、渲染 smoke（各类型各出一张图不
 2. **BWPro 侧美术资产目录安排待定**：`artwork.images[].path` 在 BWPro 调用侧的相对基准目录以后确定。
 3. ~~**式神卡资源核实**~~（已核实）：式神卡外观形状同形态牌，渲染按 `TYPE_FRAME_CODE` 复用 `form` 资源（见 `bwpdiy/render/pipeline.py`），差异化元素为派系标/力量/生命。v1.0 起牌框/蒙版体系已由 PSD 官方素材替换（masks 废弃），legacy 旧资源含 unprocessed 原图封存 `assets/legacy/`。
 4. ~~框品资源映射~~（v1.0 已开放）：常规=norm / 琉璃=blue / 墨染=black / 百炼=red。
-5. **觉醒星美术资源可能需重制**（用户提醒）：`assets/levels/evolve_star.png`（99×99，legacy 程序化生成）在正式使用前需用户确认/替换。
+5. **觉醒星美术资源可能需重制**（用户提醒）：`assets/levels/evolve.png`（99×99，legacy 程序化生成）在正式使用前需用户确认/替换。
 6. **赏金左上角大角标尚未实现**：描述内嵌 `#sj` 已使用 `icons/bounty.png` 小图标；本批不新增赏金大角标。能量大图标已于 v1.8.0 接入爆能与对局状态组件。

@@ -1230,7 +1230,10 @@ function numRowC(div, label, val, nonneg, set, extra = null, max = 9999999999, m
     if (isNaN(v)) { i.value = cur; return; }
     if (min !== null) v = Math.max(min, v);
     else if (nonneg) v = Math.max(0, v);
-    if (max !== null) v = Math.max(-max, Math.min(max, v));
+    if (max !== null) {
+      if (min === null && !nonneg) v = Math.max(-max, v);
+      v = Math.min(max, v);
+    }
     i.value = v; cur = v; set(v);
   };
   i.onchange = commit;
@@ -1357,7 +1360,7 @@ function validateCardJS(d) {
     else base.push('shikigami');
     base.forEach(f => allowed.add(f));
     if (EVOLVE_TYPES.has(t)) allowed.add('evolve');
-    if (FRAME_VARIANT_TYPES.has(t)) allowed.add('frame_variant');  // 协战不可
+    if (FRAME_VARIANT_TYPES.has(t)) allowed.add('frame_variant');
   }
   for (const k of Object.keys(d)) {
     if (!allowed.has(k)) errors.push(`字段 ${k}：类型「${t}」白名单之外的字段`);

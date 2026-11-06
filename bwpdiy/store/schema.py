@@ -4,8 +4,7 @@ stat 数值字段口径与 render/badges.py `_STAT_MATRIX` 对齐（store 不 im
 式神/形态 power+health、幻境 durability 为非负整数（plain）；
 战斗 power+/shield+、觉醒法术 power+/health+ 为整数（signed）；表外组合一律非法。
 
-框品 frame_variant（norm/blue/black/red）式神/战斗/法术/形态/幻境可携带（可选，缺省 norm；
-式神牌框同形态）；协战恒 norm，携带属白名单之外字段。
+框品 frame_variant（norm/blue/black/red）全类型可携带（可选，缺省 norm；式神牌框同形态）。
 
 协战另可携带可选布尔 duo_frame（双式神框渲染开关，缺省不绘制、不写进 yaml）。
 
@@ -50,7 +49,7 @@ _ASSIST_FIELDS = ("shikigami1", "shikigami2")
 # 觉醒（evolve）仅战斗/法术/形态/幻境可携带；式神/协战不可
 _EVOLVE_TYPES = ("战斗", "法术", "形态", "幻境")
 # 协战专属可选布尔：双式神框（缺省不绘制、不写进 yaml）
-_REINFORCE_FIELDS = ("duo_frame",)
+_REINFORCE_FIELDS = ("duo_frame", "frame_variant")
 
 _STATS_BY_TYPE = {
     "式神": ("power", "health"),

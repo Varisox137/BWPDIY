@@ -76,7 +76,8 @@ function enterBattlePreview() {
   battleCardState.level_color = LEVEL_COLOR_VALUES.has(formData.level_color)
     ? formData.level_color : 'yellow';
   battleCardState.burst = Number.isInteger(formData.burst) ? formData.burst : 0;
-  battleCardState.status = ['bless', 'eclipse', 'shown'].includes(formData.status)
+  battleCardState.status = ['bless', 'eclipse', 'bond', 'curse', 'radiance', 'nightmare',
+    'eternal', 'endless', 'unused', 'multi_status', 'shown'].includes(formData.status)
     ? formData.status : null;
   battleEntityState = battleStyles(formData).includes('entity') ? makeEntityState(formData) : null;
   battleStyle = battleStyles(formData)[0];
@@ -144,14 +145,15 @@ function battleSelectRow(div, label, options, value, set) {
   return select;
 }
 
-function battleNumberRow(div, label, value, set, min = null, id = null, disabled = false) {
+function battleNumberRow(div, label, value, set, min = null, id = null, disabled = false,
+                         max = 9999999999) {
   const row = document.createElement('label');
   row.textContent = label + ' ';
   const input = document.createElement('input');
   input.type = 'number';
   input.value = value;
   input.disabled = disabled;
-  input.max = 9999999999;
+  input.max = max;
   if (min !== null) input.min = min;
   if (id) input.id = id;
   let current = value;
@@ -161,7 +163,7 @@ function battleNumberRow(div, label, value, set, min = null, id = null, disabled
       input.value = current;
       return;
     }
-    current = Math.max(-9999999999, Math.min(9999999999, parsed));
+    current = Math.max(min === null ? -9999999999 : min, Math.min(max, parsed));
     input.value = current;
     set(current);
   };
@@ -268,9 +270,13 @@ function buildBattleForm() {
   battleSelectRow(div, '勾玉颜色', LEVEL_COLORS, state.level_color,
     value => setField('level_color', value));
   if (battleStyle === 'card') {
-    battleNumberRow(div, '爆能', state.burst, value => setBattleCardField('burst', value));
-    battleSelectRow(div, '特殊状态', [['', '无'], ['bless', '加护'],
-      ['eclipse', '蚀印'], ['shown', '已展示']], state.status || '',
+    if (EVOLVE_TYPES.has(state.type)) battleNumberRow(
+      div, '爆能', state.burst, value => setBattleCardField('burst', value),
+      -9999999999, null, false, 0);
+    battleSelectRow(div, '特殊状态', [['', '无'], ['bless', '加护'], ['eclipse', '蚀印'],
+      ['bond', '缘结'], ['curse', '诅咒'], ['radiance', '天晖'], ['nightmare', '梦魇'],
+      ['eternal', '无始无终'], ['endless', '无穷无尽'], ['unused', '未使用'],
+      ['multi_status', '多状态'], ['shown', '已展示']], state.status || '',
       value => setBattleCardField('status', value || null));
     for (const field of STATS_BY_TYPE[state.type] || []) {
       const key = `${field}_color`;

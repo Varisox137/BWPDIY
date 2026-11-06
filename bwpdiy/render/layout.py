@@ -11,7 +11,7 @@ from pathlib import Path
 from bwpdiy.resources import layout_config_path
 
 _DEFAULT = Path(__file__).with_name("default_layout.json")
-FRAME_LAYOUT_TYPES = ("式神", "战斗", "法术", "形态", "幻境")
+FRAME_LAYOUT_TYPES = ("式神", "战斗", "法术", "形态", "幻境", "协战")
 FRAME_LAYOUT_VARIANTS = ("blue", "black", "red")
 
 
@@ -55,13 +55,15 @@ def _base_layout(type_layout: dict) -> dict:
 
 
 def _fill_element_defaults(layouts: dict, default: dict) -> None:
-    for card_type in (*FRAME_LAYOUT_TYPES, "协战"):
+    for card_type in FRAME_LAYOUT_TYPES:
         type_layout = layouts.get(card_type)
         default_layout = default.get(card_type)
         if not isinstance(type_layout, dict) or not isinstance(default_layout, dict):
             continue
         elements = type_layout.get("elements")
         for name in ("burst", "status"):
+            if name == "burst" and card_type in ("式神", "协战"):
+                continue
             default_element = default_layout.get("elements", {}).get(name)
             if isinstance(elements, dict) and name not in elements and default_element:
                 elements[name] = copy.deepcopy(default_element)
@@ -112,7 +114,7 @@ def get_type_layout(layouts: dict, card_type: str,
         raise ValueError(f"布局缺失: {card_type}")
     type_layout = layouts[card_type]
     base = _base_layout(type_layout)
-    if frame_variant == "norm" or card_type == "协战":
+    if frame_variant == "norm":
         return base
     variants = type_layout.get("frame_variants")
     if not isinstance(variants, dict):

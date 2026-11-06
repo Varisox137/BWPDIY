@@ -16,25 +16,26 @@
 | 框品 | `norm` 常规 / `blue` 琉璃 / `black` 墨染 / `red` 百炼 | — |
 | 派系 | `red` 红莲 / `green` 苍叶 / `blue` 青岚 / `purple` 紫岩 | — |
 | 数值 | `power` 力量 / `health` 生命 / `shield` 护甲 / `fragile` 破甲 / `intensity` 幻境耐久 / `energy` 能量 / `combat_power` 战力 / `weak` 乏力 / `bounty` 赏金 | `ll→power` / `sm→health` / `hj→shield` / `pj→fragile` / `nl→energy` / `nj→intensity` / `zl→combat_power` / `fl→weak` / `sj→bounty` |
-| 等级标三层 | `base` 底座 / `evolve_star` 觉醒图案 / `level_<1,2,3>_yellow` 勾玉层 | — |
+| 等级标三层 | `base` 底座 / `evolve` 觉醒图案 / `level_<1,2,3>_yellow` 勾玉层 | — |
 
 现行目标目录结构（2026-11 美术资源更新后）：
 
 ```
 assets/
-  frames/    {form,combat,spell,field}_{norm,blue,red,black}.png + reinforce_norm.png（高 512 居中）
-  levels/    base.png / evolve_star.png
+  frames/    {form,combat,spell,field,reinforce}_{norm,blue,red,black}.png（高 512 居中）
+  levels/    base.png / evolve.png
              / level_{1,2,3}_{yellow,cyan,purple,red,blue,brown,greyblue,orange}.png（八色）
              （level_4_* / level_3_4_* 仅作备用命名，不接等级枚举、表单或渲染引用）
   rarity/    {R,SR,SSR}.png + {R,SR,SSR}_{blue,red}.png + N.png（仅扩展选项可选）
-             （black、reinforce 等缺失变体统一回退常规版，不再保留 reinforce_* 专图）
+             （black 等缺失变体统一回退常规版，不保留 reinforce_* 专图）
   factions/  {red,green,blue,purple}_{1,2,3}.png（legacy 三变体，式神卡大派系标）
-  stats/     power.png / health.png / combat_shield.png / combat_fragile_{1,2}.png
-             / field_intensity.png / energy.png / countdown.png / defeated_countdown.png
+  stats/     power.png / health.png / shield.png / combat_fragile_{1,2}.png
+             / intensity.png / energy.png / countdown.png / defeated_countdown.png
              / combat_power.png / weak.png（小卡战力/乏力仍使用 icons 小图）
   numbers/   {white,red,green,purple,orange}_{0..9,plus,minus}.png + white_inf.png
              （运行时 yellow 映射 orange；plus/minus 中三枚由脚本合成补齐）
-  badges/    badge_{bless,eclipse,shown}.png（shown 仅大卡临时 status）
+  badges/    {加护,蚀印,缘结,诅咒,天晖,梦魇,无始无终,无穷无尽,未使用,多状态,已展示}.png
+             （保留中文文件名，AssetLibrary 将内部英文状态代码映射到这些文件）
   icons/     {power,health,shield,fragile,energy,intensity,combat_power,weak,bounty}.png
              + faction_{red,green,blue,purple}_{1,2,3}.png（逐条目内嵌派系样式）
   mech/      frame_invocation_{3,4,5}.png / frame_skill_{3,4,5}.png / frame_seal.png
@@ -55,7 +56,7 @@ assets/
 | （无） | `卡框-法术/{琉璃光境,百炼,墨染}.png` | `frames/spell_{blue,red,black}.png` |
 | `frame_hj_norm_low.png` | `卡框-幻境/基础.png` | `frames/field_norm.png` |
 | （无） | `卡框-幻境/{琉璃光境,百炼,墨染}.png` | `frames/field_{blue,red,black}.png` |
-| `frame_xz_norm_low.png`（legacy 协战框） | `协战/协战牌框.png`（批复：采用 PSD 版） | `frames/reinforce_norm.png`（仅此一框品） |
+| `frame_xz_norm_low.png`（legacy 协战框） | PSD 常规框 + 后续补充的三种框品 | `frames/reinforce_{norm,blue,red,black}.png` |
 
 说明：
 
@@ -69,7 +70,7 @@ assets/
 
 | 来源 | 现行目标路径 |
 |---|---|
-| `勾玉/勾玉-底框.png`、`勾玉/底框-觉醒.png` | `levels/base.png`、`levels/evolve_star.png` |
+| `勾玉/勾玉-底框.png`、`勾玉/底框-觉醒.png` | `levels/base.png`、`levels/evolve.png` |
 | `勾玉/一勾玉/二勾玉/三勾玉.png` | `levels/level_{1,2,3}_yellow.png`（PSD 导入脚本管理） |
 | 本批八色位图资源 | `levels/level_{1,2,3}_{yellow,cyan,purple,red,blue,brown,greyblue,orange}.png` |
 
@@ -101,8 +102,8 @@ assets/
 | 来源 | 现行目标路径 |
 |---|---|
 | `基础_形态-攻击`、`基础_形态-生命` | `stats/power.png`、`stats/health.png`（全类型共用） |
-| `战斗-护甲`、`战斗-破甲`、`战斗-破甲1` | `stats/combat_shield.png`、`stats/combat_fragile_{1,2}.png`（默认 2） |
-| `幻境-数值/幻境` | `stats/field_intensity.png` |
+| `战斗-护甲`、`战斗-破甲`、`战斗-破甲1` | `stats/shield.png`、`stats/combat_fragile_{1,2}.png`（默认 2） |
+| `幻境-数值/幻境` | `stats/intensity.png` |
 | 本批状态与大角标资源 | `stats/{energy,countdown,defeated_countdown,combat_power,weak}.png` |
 | `☆符号` 与新增战力乏力小图 | `icons/{power,health,shield,fragile,energy,intensity,combat_power,weak}.png` |
 | 本批赏金小图 | `icons/bounty.png`，已接入描述 `#sj`；赏金大角标仍未实现 |
@@ -115,7 +116,7 @@ assets/
 - `font_size` 表示单字源图缩放目标高度；多位数裁紧后按逐行墨迹最小间距拼接，带符号数字读取同色符号。运行时 yellow 映射 orange。
 - `scripts/build_number_signs.py` 仅用于重建三枚合成符号：orange_minus、purple_plus、purple_minus；旧 signs 目录不再生成。
 - 不再使用字体数字、程序渐变或描边绘制数值；布局遗留 `stroke_width` 仅作兼容校验字段。
-- 加护/蚀印/已展示角标统一在 `badges/badge_{bless,eclipse,shown}.png`。机制 seal 的 badge 仅 bless/eclipse；shown 只供大卡临时 status，无等级卡也绘制。
+- 角标保留中文文件名：`badges/{加护,蚀印,缘结,诅咒,天晖,梦魇,无始无终,无穷无尽,未使用,多状态,已展示}.png`，由 `AssetLibrary.BADGE_FILES` 映射内部英文状态代码。这些状态均可供大卡临时 status 使用，无等级卡也绘制；机制 seal 的 badge 仍仅 bless/eclipse。
 
 ## G. 字体与文字颜色
 
@@ -131,7 +132,7 @@ assets/
 
 | PSD 素材 | 现行处置 |
 |---|---|
-| `协战牌框.png` | `frames/reinforce_norm.png`（仅 norm） |
+| `协战牌框.png` + 后续补充的三种框品 | `frames/reinforce_{norm,blue,black,red}.png` |
 | `稀有度/{蓝,紫,金}色.png` | 仅留 PSD 归档；运行时协战回退常规 R/SR/SSR 花标 |
 | `勾玉/` 5 张 | 与主 PSD 逐像素一致，去重 |
 | `式神头像框/` | 已接入 `duo/`，槽位 2 高光由 `highlight_1.png` 旋转派生 |
@@ -144,7 +145,7 @@ assets/
 
 ## 决策点收尾（现行口径）
 
-1. 协战框 → PSD 版，仅 norm；协战稀有度回退常规版。
+1. 协战框 → 四框品均已接入；稀有度无专图的框品回退常规版。
 2. 等级标 → `level_<n>_<color>`，1–3 勾玉、八色；4/3_4 仅备用。
 3. N 稀有度 → 保留，仅扩展功能可选。
 4. 破甲 → `combat_fragile_{1,2}.png` 默认 2 可换。

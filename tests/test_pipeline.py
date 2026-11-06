@@ -139,7 +139,10 @@ def test_burst_native_size_scales_layout_offset(assets_dir, sample_art):
         assert abs(big - small * 2) <= 2
 
 
-@pytest.mark.parametrize("status", ["bless", "eclipse", "shown"])
+@pytest.mark.parametrize("status", [
+    "bless", "eclipse", "bond", "curse", "radiance", "nightmare",
+    "eternal", "endless", "unused", "multi_status", "shown",
+])
 def test_status_draws_at_level_anchor_without_card_level(assets_dir, sample_art, status):
     from PIL import ImageChops
 
@@ -199,11 +202,15 @@ def test_status_rejects_unknown_value(assets_dir, sample_art):
 def test_status_native_size_scales_layout_offset(assets_dir, sample_art):
     from PIL import ImageChops
 
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+
     card = make_card(sample_art.parent, "法术", status="shown", description="")
-    base = render_card(card, assets_dir, crop=False)
-    base_empty = render_card(dict(card, status=None), assets_dir, crop=False)
-    large = render_card(card, assets_dir, height=base.height * 2, crop=False)
-    large_empty = render_card(dict(card, status=None), assets_dir,
+    layout = get_type_layout(load_layouts(assets_dir), "法术")
+    layout["elements"]["status"]["offset"] = [50, 0]  # 完整落在基础画布内，专注测试原生缩放
+    base = render_card(card, assets_dir, layout=layout, crop=False)
+    base_empty = render_card(dict(card, status=None), assets_dir, layout=layout, crop=False)
+    large = render_card(card, assets_dir, layout=layout, height=base.height * 2, crop=False)
+    large_empty = render_card(dict(card, status=None), assets_dir, layout=layout,
                                height=base.height * 2, crop=False)
     base_box = ImageChops.difference(base.convert("RGB"), base_empty.convert("RGB")).getbbox()
     large_box = ImageChops.difference(large.convert("RGB"), large_empty.convert("RGB")).getbbox()
@@ -211,6 +218,28 @@ def test_status_native_size_scales_layout_offset(assets_dir, sample_art):
     assert large.size == large_empty.size == (base.width * 2, base.height * 2)
     for small, big in zip(base_box, large_box):
         assert abs(big - small * 2) <= 2
+
+
+@pytest.mark.parametrize("offset,axis", [
+    ([-400, 0], 0), ([400, 0], 0), ([0, -400], 1), ([0, 600], 1),
+])
+def test_status_outside_base_canvas_expands_work_bounds(assets_dir, sample_art, offset, axis):
+    """状态标越出 512 基础画布时扩展对应方向，紧致导出仍保留完整图标。"""
+    from bwpdiy.render.layout import get_type_layout, load_layouts
+
+    card = make_card(sample_art.parent, "法术", status="shown", description="")
+    layout = get_type_layout(load_layouts(assets_dir), "法术")
+    layout["elements"]["status"]["offset"] = offset
+    marked = render_card(card, assets_dir, layout=layout, crop=False)
+    empty = render_card(dict(card, status=None), assets_dir, layout=layout, crop=False)
+    assert marked.size[axis] > empty.size[axis]
+    out = render_card(card, assets_dir, layout=layout)
+    assert _content_bbox(out) == (0, 0, out.width, out.height)
+    native = render_card(card, assets_dir, layout=layout, width=400)
+    assert native.width == 400
+    bbox = _content_bbox(native)
+    assert bbox[0] <= 1 and bbox[1] <= 1
+    assert bbox[2] >= native.width - 1 and bbox[3] >= native.height - 1
 
 
 def test_footer_rendered(assets_dir, sample_art):
@@ -355,7 +384,7 @@ def test_art_clip_contour_properties(assets_dir):
 @pytest.mark.parametrize("card_type", ["式神", "战斗", "法术", "形态", "幻境", "协战"])
 @pytest.mark.parametrize("variant", ["norm", "black"])
 def test_render_frame_variants_smoke(assets_dir, sample_art, card_type, variant):
-    """四框品冒烟：每类型 × norm/black（协战恒 norm，variant 字段被忽略）。"""
+    """四框品冒烟：每类型 × norm/black，协战同样支持。"""
     card = make_card(sample_art.parent, card_type, **{
         "level": 2, "rarity": "SR", "faction": "红莲", "power": 3, "health": 4,
         "power+": 1, "health+": 1, "shield+": -1, "durability": 5, "evolve": True,
@@ -365,9 +394,10 @@ def test_render_frame_variants_smoke(assets_dir, sample_art, card_type, variant)
     assert img.mode == "RGBA" and img.size[0] > 0
 
 
-def test_frame_variant_changes_pixels(assets_dir, sample_art):
-    """frame_variant 生效：同卡 black 与 norm 渲染像素不同。"""
-    card = make_card(sample_art.parent, "法术", **{"level": 1, "rarity": "R",
+@pytest.mark.parametrize("card_type", ["法术", "协战"])
+def test_frame_variant_changes_pixels(assets_dir, sample_art, card_type):
+    """frame_variant 生效：同卡 black 与 norm 渲染像素不同，协战也不例外。"""
+    card = make_card(sample_art.parent, card_type, **{"level": 1, "rarity": "R",
                                                   "description": "框品对比。"})
     norm = render_card(card, assets_dir)
     black = render_card(dict(card, frame_variant="black"), assets_dir)
@@ -523,7 +553,7 @@ def _render_card_reference(card, assets_dir, crop, layout=None):
 
     card_type = card["type"]
     code = TYPE_FRAME_CODE[card_type]
-    variant = "norm" if card_type == "协战" else card.get("frame_variant", "norm")
+    variant = card.get("frame_variant", "norm")
     lib = get_library(assets_dir)
     finfo = {}
     frame = _normalize_frame(lib.frame(code, variant), finfo)

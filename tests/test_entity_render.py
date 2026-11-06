@@ -461,7 +461,7 @@ def test_entity_combat_power_picks_icon(assets_dir, sample_art, monkeypatch,
 
 
 @pytest.mark.parametrize("value, expected", [
-    (3, "combat_shield"),
+    (3, "shield"),
     (-3, "combat_fragile_2"),
     (0, None),
 ])
@@ -474,7 +474,7 @@ def test_entity_shield_picks_badge(assets_dir, sample_art, monkeypatch,
                         lambda name: names.append(name) or original(name))
     render_entity(make_card(sample_art, type="形态"), {"shield": value}, assets_dir)
     shields = [name for name in names
-               if name in ("combat_shield", "combat_fragile_2")]
+               if name in ("shield", "combat_fragile_2")]
     assert shields == ([expected] if expected else [])
 
 

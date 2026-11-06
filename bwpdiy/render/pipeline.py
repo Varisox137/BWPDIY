@@ -7,10 +7,11 @@
 框内静态部分（卡名/稀有度双标/脚注点文本）→ 框上叠加（等级标/派系标/stat 角标图标）→
 描述文本（避让掩膜取 stat 图标+数值全量墨迹的碰撞轮廓）→
 stat 数值层（符号+数字，压在描述文本之上）→
-最终导出按整卡 tightest alpha bbox 裁剪后**原尺寸直接返回**（高 512 顶格、
-宽按内容，无 512 画布留白）；crop=False 返回 512 全画布（管线内部分层断言用）。
+最终导出按整卡 tightest alpha bbox 裁剪后**原尺寸直接返回**（通常高 512 顶格、
+宽按内容，无 512 画布留白）；状态标越界时先扩展工作画布再裁剪。
+crop=False 返回完整工作画布（管线内部分层断言用）。
 布局元素由 $HOME/.bwpdiy/layout.json 驱动，探出框缘的元素不受影响。
-框品：card["frame_variant"]（缺省 norm），协战恒 norm。
+框品：card["frame_variant"]（缺省 norm），全类型支持四框品。
 """
 
 import copy
@@ -28,7 +29,9 @@ __all__ = ["ARTWORK_MAX_PIXELS", "TYPE_FRAME_CODE", "render_card"]
 from bwpdiy.render.assets import get_library
 from bwpdiy.render.badges import TYPE_FRAME_CODE, render_element, stat_rendered
 from bwpdiy.render.layout import get_type_layout, load_layouts
-from bwpdiy.render.size import fit_target_canvas, resolve_target_size, scale_layout
+from bwpdiy.render.size import (
+    MAX_RENDER_PIXELS, MAX_RENDER_SIDE,
+    fit_target_canvas, resolve_target_size, scale_layout)
 from bwpdiy.render.text import FRAME_KEYWORD_FILL, FRAME_TEXT_FILL, draw_region
 
 CARD_SIZE = (512, 512)
@@ -64,13 +67,8 @@ def _normalize_frame(frame: Image.Image, info: dict | None = None,
     return canvas
 
 
-def _to_canvas_coords(type_layout: dict, anchor_x: int) -> dict:
-    """布局坐标（卡面空间，x 原点 = 归一化牌框左缘）→ 512 合成画布坐标。
-
-    仅平移绝对 x：elements.*.pos / elements.*.fragile_pos 与
-    text_regions.*.center；偏移/尺寸类字段（num_offset/center_offset/width 等）
-    不动。返回深拷贝，不改调用方数据。
-    """
+def _to_canvas_coords(type_layout: dict, anchor_x: int, anchor_y: int = 0) -> dict:
+    """把卡面空间的绝对坐标平移到工作画布；偏移与尺寸字段保持不变。"""
     tl = copy.deepcopy(type_layout)
     for elem in (tl.get("elements") or {}).values():
         if isinstance(elem, dict):
@@ -78,12 +76,43 @@ def _to_canvas_coords(type_layout: dict, anchor_x: int) -> dict:
                 p = elem.get(key)
                 if isinstance(p, list) and len(p) == 2 and isinstance(p[0], (int, float)):
                     p[0] += anchor_x
+                    p[1] += anchor_y
     for region in (tl.get("text_regions") or {}).values():
         if isinstance(region, dict):
             c = region.get("center")
             if isinstance(c, list) and len(c) == 2 and isinstance(c[0], (int, float)):
                 c[0] += anchor_x
+                c[1] += anchor_y
     return tl
+
+
+def _status_work_padding(card: dict, elements: dict, frame_anchor: tuple[int, int],
+                         canvas_size: tuple[int, int]) -> tuple[int, int, int, int]:
+    """状态标超出基础画布时，返回左/上/右/下所需扩展量。"""
+    padding = [0, 0, 0, 0]
+    if card.get("status") is None:
+        return tuple(padding)
+    level = elements.get("level")
+    if not level:
+        return tuple(padding)
+    for elem in elements.values():
+        if elem.get("kind") != "status" or not elem.get("enabled", True):
+            continue
+        size = max(1, round(elem["icon_size"]))
+        offset = elem.get("offset", [0, 0])
+        cx = level["pos"][0] + offset[0] + frame_anchor[0]
+        cy = level["pos"][1] + offset[1] + frame_anchor[1]
+        left, top = round(cx) - size // 2, round(cy) - size // 2
+        padding[0] = max(padding[0], -left)
+        padding[1] = max(padding[1], -top)
+        padding[2] = max(padding[2], left + size - canvas_size[0])
+        padding[3] = max(padding[3], top + size - canvas_size[1])
+    work_size = (canvas_size[0] + padding[0] + padding[2],
+                 canvas_size[1] + padding[1] + padding[3])
+    if (max(work_size) > MAX_RENDER_SIDE
+            or work_size[0] * work_size[1] > MAX_RENDER_PIXELS):
+        raise ValueError("状态标布局导致工作画布超出尺寸上限")
+    return tuple(padding)
 
 
 def _art_clip_contour(frame: Image.Image, erode: int = FRAME_CONTOUR_ERODE) -> Image.Image:
@@ -290,13 +319,11 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         raise ValueError(f"未知卡牌类型: {card_type}")
     code = TYPE_FRAME_CODE[card_type]
     variant = card.get("frame_variant", "norm")
-    if card_type == "协战":
-        variant = "norm"
     lib = get_library(assets_dir)
 
     finfo: dict = {}
     frame = _normalize_frame(lib.frame(code, variant), finfo, canvas_size)
-    anchor_x = finfo["anchor"][0]
+    frame_anchor = finfo["anchor"]
     type_layout = layout if layout is not None else get_type_layout(
         load_layouts(Path(assets_dir)), card_type, variant)
     if factor != 1:
@@ -307,7 +334,12 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
             if elem.get("kind") in ("stat", "burst"):
                 elem["_digit_gap"] = 3 * factor
                 elem["_sign_gap"] = 2 * factor
-    type_layout = _to_canvas_coords(type_layout, anchor_x)
+    elements = type_layout.get("elements") or {}
+    padding = _status_work_padding(card, elements, frame_anchor, canvas_size)
+    left, top, right, bottom = padding
+    work_size = (canvas_size[0] + left + right, canvas_size[1] + top + bottom)
+    origin_x, origin_y = frame_anchor[0] + left, frame_anchor[1] + top
+    type_layout = _to_canvas_coords(type_layout, origin_x, origin_y)
     elements = type_layout.get("elements") or {}
     for elem in elements.values():
         if elem.get("kind") in ("burst", "status"):
@@ -341,7 +373,11 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         art.putalpha(ImageChops.multiply(art.getchannel("A"),
                                          _art_clip_contour(frame, erode)))
         canvas = Image.alpha_composite(art, frame)
-    layers = _get_static_layers(assets_dir, type_layout, card, lib, variant, canvas_size)
+    if any(padding):
+        expanded = Image.new("RGBA", work_size, (0, 0, 0, 0))
+        expanded.paste(canvas, (left, top))
+        canvas = expanded
+    layers = _get_static_layers(assets_dir, type_layout, card, lib, variant, work_size)
     if layers is None:
         canvas = _draw_static(canvas, type_layout, card, lib, variant)
     else:
@@ -350,8 +386,8 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         return canvas
     bbox = canvas.getchannel("A").point(lambda v: 255 if v > 10 else 0).getbbox()
     if info is not None:
-        info["anchor_x"] = anchor_x
-        info["crop_origin"] = ((bbox[0] - anchor_x, bbox[1]) if bbox
-                               else (-anchor_x, 0))
+        info["anchor_x"] = origin_x
+        info["crop_origin"] = ((bbox[0] - origin_x, bbox[1] - origin_y) if bbox
+                               else (-origin_x, -origin_y))
     out = canvas.crop(bbox) if bbox else canvas
     return fit_target_canvas(out, target_size) if target_size is not None else out

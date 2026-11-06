@@ -39,7 +39,7 @@ FRAME_TYPES = {
 
 LEVELS = {
     "勾玉/勾玉-底框.png": "base.png",
-    "勾玉/底框-觉醒.png": "evolve_star.png",
+    "勾玉/底框-觉醒.png": "evolve.png",
     "勾玉/一勾玉.png": "level_1_yellow.png",
     "勾玉/二勾玉.png": "level_2_yellow.png",
     "勾玉/三勾玉.png": "level_3_yellow.png",
@@ -49,10 +49,10 @@ STATS = {
     # 力量/生命全类型共用同一资源（PSD 中各类型重复，取基础_形态版）
     "基础_形态-数值/基础_形态-攻击.png": "power.png",
     "基础_形态-数值/基础_形态-生命.png": "health.png",
-    "战斗-数值/战斗-护甲.png": "combat_shield.png",
+    "战斗-数值/战斗-护甲.png": "shield.png",
     "战斗-数值/战斗-破甲.png": "combat_fragile_1.png",
     "战斗-数值/战斗-破甲1.png": "combat_fragile_2.png",
-    "幻境-数值/幻境.png": "field_intensity.png",
+    "幻境-数值/幻境.png": "intensity.png",
 }
 
 SYMBOL_DIR = "☆【符号】攻击生命等（新增战力、乏力标识）"

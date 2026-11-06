@@ -34,7 +34,7 @@ let curType = "式神";
 let layoutFrameVariant = "norm";  // 当前全局布局框品；单卡模式仅切换预览框品
 function globalTypeLayout(t, variant = layoutFrameVariant) {
   const base = layouts && layouts[t];
-  if (!base || variant === 'norm' || t === '协战') return base || null;
+  if (!base || variant === 'norm') return base || null;
   return (base.frame_variants && base.frame_variants[variant]) || base;
 }
 function layoutForRender(layout) {
@@ -451,11 +451,14 @@ function buildCardProps() {
   textRow(div, '卡名', cardField('name') || '', v => setCardField('name', v));
   selRow(div, '等级', ['0', '1', '2', '3'], String(cardField('level') ?? 0),
     v => setCardField('level', v === '0' ? null : parseInt(v, 10)));
-  numRowC(div, '爆能', cardField('burst') ?? 0, false,
-    v => setCardField('burst', v), null, 9999999999);
-  selRowC(div, '特殊状态', ['', 'bless', 'eclipse', 'shown'], cardField('status') || '',
+  if (EVOLVE_TYPES.has(curType)) numRowC(div, '爆能', cardField('burst') ?? 0, false,
+    v => setCardField('burst', v), null, 0, -9999999999);
+  selRowC(div, '特殊状态', ['', 'bless', 'eclipse', 'bond', 'curse', 'radiance', 'nightmare',
+    'eternal', 'endless', 'unused', 'multi_status', 'shown'], cardField('status') || '',
     v => setCardField('status', v || null),
-    v => ({'': '无', bless: '加护', eclipse: '蚀印', shown: '已展示'})[v]);
+    v => ({'': '无', bless: '加护', eclipse: '蚀印', bond: '缘结', curse: '诅咒',
+      radiance: '天晖', nightmare: '梦魇', eternal: '无始无终', endless: '无穷无尽',
+      unused: '未使用', multi_status: '多状态', shown: '已展示'})[v]);
   if (EVOLVE_TYPES.has(curType)) {
     const l = document.createElement('label');
     l.textContent = '觉醒 ';
@@ -526,6 +529,7 @@ function buildLists() {
   const ed = document.getElementById('l-elems'); ed.innerHTML = '';
   const items = [];
   for (const n of ['level', 'burst', 'status', 'duo_frame', 'name', 'rarity']) {
+    if (!entityLayoutMode && n === 'burst' && !EVOLVE_TYPES.has(curType)) continue;
     if (tl.elements[n]) items.push({kind: 'element', name: n});
   }
   const regions = layoutRegions();
@@ -542,6 +546,7 @@ function buildLists() {
   if (tl.elements.footer) items.push({kind: 'element', name: 'footer'});
   const listed = new Set(items.map(i => i.name));
   for (const n of Object.keys(tl.elements)) {  // 兜底：未列到的元素附加在后
+    if (!entityLayoutMode && n === 'burst' && !EVOLVE_TYPES.has(curType)) continue;
     if (!listed.has(n)) items.push({kind: 'element', name: n});
   }
   for (const it of items) {
@@ -647,6 +652,7 @@ function draw() {
   ctx.translate(-previewOffset[0], -previewOffset[1]);
   const tl = typeLayout();
   for (const [name, e] of Object.entries(tl.elements)) {
+    if (e.kind === 'burst' && !EVOLVE_TYPES.has(curType)) continue;
     // 爆能/特殊状态锚点 = 等级位置 + offset；其余点元素直接使用 pos。
     const pos = ['burst', 'status'].includes(e.kind)
       ? [tl.elements.level.pos[0] + e.offset[0], tl.elements.level.pos[1] + e.offset[1]] : e.pos;
@@ -718,6 +724,7 @@ function pick(mx, my) {
   const tl = typeLayout();
   const near = (x, y) => Math.hypot(mx - x, my - y) < 8;
   for (const [name, e] of Object.entries(tl.elements)) {
+    if (e.kind === 'burst' && !EVOLVE_TYPES.has(curType)) continue;
     const pos = ['burst', 'status'].includes(e.kind)
       ? [tl.elements.level.pos[0] + e.offset[0], tl.elements.level.pos[1] + e.offset[1]] : e.pos;
     if (['stat', 'burst', 'counter'].includes(e.kind)) {

@@ -114,8 +114,8 @@ large.save("card@2x.png")
 - 可选：`evolve`、`level_color`、各数值的 `<field>_color`、`footer`、`layout`。勾玉支持 `yellow/cyan/purple/red/blue/brown/greyblue/orange` 八色；`level_4_*` 与 `level_3_4_*` 仅为备用命名，当前等级仍为 1–3。
 - `inline_faction_style` 为整数 1/2/3，缺省 1，控制本条卡牌描述中全部 `#hl/#cy/#ql/#zy` 内嵌派系图标；不再按墨染框自动切换派系文件。
 - 稀有度为 N/R/SR/SSR。R/SR/SSR 按框品读取专图，缺失时回退常规版；协战同样回退常规版，不使用独立 `reinforce_*` 花标，N 始终读取 `N.png`。
-- 临时渲染字段 `burst`：带符号整数，绝对值最多 10 位；非零时在等级布局锚点下方绘制能量图标与 `+N`/`-N`，0 或缺省不绘制。`burst` 不属于 store 卡牌 schema，WebGUI 不持久化；BWPro 需要时应在调用 `render_card` 的渲染字典中临时传入。
-- 临时渲染字段 `status`：`None`（缺省）/`bless`/`eclipse`/`shown`，无等级卡也绘制；六类型布局均有独立 `status` 元素，以等级锚点加 `offset` 定位并用 `icon_size` 控制尺寸。它不属于 store schema、不由 WebGUI 持久化；`shown` 仅用于大卡，不是机制 badge。
+- 临时渲染字段 `burst`：带符号整数，绝对值最多 10 位；非零时在等级布局锚点下方绘制能量图标与 `+N`/`-N`，0 或缺省不绘制。仅战斗/法术/形态/幻境支持，式神/协战直接忽略该字段；WebGUI 输入框仅允许非正整数，但渲染库仍接受带符号整数。`burst` 不属于 store 卡牌 schema，WebGUI 不持久化；BWPro 需要时应在调用 `render_card` 的渲染字典中临时传入。
+- 临时渲染字段 `status`：`None`（缺省）/`bless`（加护）/`eclipse`（蚀印）/`bond`（缘结）/`curse`（诅咒）/`radiance`（天晖）/`nightmare`（梦魇）/`eternal`（无始无终）/`endless`（无穷无尽）/`unused`（未使用）/`multi_status`（多状态）/`shown`（已展示），无等级卡也绘制；六类型布局均有独立 `status` 元素，以等级锚点加 `offset` 定位并用 `icon_size` 控制尺寸。资源保留中文文件名，由 `AssetLibrary.BADGE_FILES` 映射。状态标越出 512 基础画布时会扩展工作边界，最终紧致导出保留完整图标，原生宽高调用同样适用。它不属于 store schema、不由 WebGUI 持久化；这些状态仅用于大卡，不是机制 badge。
 - 数值使用 `numbers/<color>_<name>.png` 位图：白/红/绿/紫/橙分别对应 white/red/green/purple/orange，yellow 运行时映射 orange；数字与带符号多位整数按 `font_size` 指定的目标高度逐字原生缩放，再按墨迹间距拼接，正负号读取同色位图。布局中遗留的 `stroke_width` 可保留校验兼容，但不参与数字绘制。
 - 所有卡牌数值与对局状态数值均最多 10 位，即绝对值不超过 `9999999999`；非负字段另有各自下限。
 - 协战：`shikigami1/shikigami2`、可选 `duo_frame`。由 WebGUI 注入的双头像内部键 `_duo` 属于高级集成数据，普通 BWPro 卡面调用无需提供。

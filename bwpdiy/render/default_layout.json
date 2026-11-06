@@ -91,34 +91,10 @@
       "status": {
         "kind": "status",
         "offset": [
-          0,
-          -55
+          48,
+          -48
         ],
-        "icon_size": 40
-      },
-      "burst": {
-        "kind": "burst",
-        "offset": [
-          0,
-          55
-        ],
-        "icon_size": 56,
-        "num_offset": [
-          0,
-          0
-        ],
-        "font_size": 40,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "group_offset": [
-          0,
-          0
-        ],
-        "stroke_width": 2,
-        "sign_size_plus": 24,
-        "sign_size_minus": 16
+        "icon_size": 48
       }
     },
     "text_regions": {
@@ -380,21 +356,13 @@
         "font_size": 15,
         "font": "desc"
       },
-      "status": {
-        "kind": "status",
-        "offset": [
-          0,
-          -55
-        ],
-        "icon_size": 40
-      },
       "burst": {
         "kind": "burst",
         "offset": [
           0,
-          55
+          64
         ],
-        "icon_size": 56,
+        "icon_size": 68,
         "num_offset": [
           0,
           0
@@ -411,6 +379,14 @@
         "stroke_width": 2,
         "sign_size_plus": 24,
         "sign_size_minus": 16
+      },
+      "status": {
+        "kind": "status",
+        "offset": [
+          56,
+          -40
+        ],
+        "icon_size": 48
       }
     },
     "text_regions": {
@@ -471,6 +447,12 @@
             "pos": [
               136,
               499
+            ]
+          },
+          "status": {
+            "offset": [
+              56,
+              -38
             ]
           }
         },
@@ -659,21 +641,13 @@
         "font_size": 15,
         "font": "desc"
       },
-      "status": {
-        "kind": "status",
-        "offset": [
-          0,
-          -55
-        ],
-        "icon_size": 40
-      },
       "burst": {
         "kind": "burst",
         "offset": [
           0,
-          55
+          64
         ],
-        "icon_size": 56,
+        "icon_size": 68,
         "num_offset": [
           0,
           0
@@ -690,6 +664,14 @@
         "stroke_width": 2,
         "sign_size_plus": 24,
         "sign_size_minus": 16
+      },
+      "status": {
+        "kind": "status",
+        "offset": [
+          50,
+          -66
+        ],
+        "icon_size": 48
       }
     },
     "text_regions": {
@@ -745,6 +727,12 @@
               141,
               498
             ]
+          },
+          "status": {
+            "offset": [
+              50,
+              -64
+            ]
           }
         },
         "text_regions": {
@@ -786,6 +774,12 @@
             "pos": [
               137,
               498
+            ]
+          },
+          "status": {
+            "offset": [
+              50,
+              -64
             ]
           }
         },
@@ -835,6 +829,12 @@
             "pos": [
               146,
               495
+            ]
+          },
+          "status": {
+            "offset": [
+              50,
+              -62
             ]
           }
         },
@@ -940,21 +940,13 @@
         "font_size": 15,
         "font": "desc"
       },
-      "status": {
-        "kind": "status",
-        "offset": [
-          0,
-          -55
-        ],
-        "icon_size": 40
-      },
       "burst": {
         "kind": "burst",
         "offset": [
           0,
-          55
+          64
         ],
-        "icon_size": 56,
+        "icon_size": 68,
         "num_offset": [
           0,
           0
@@ -971,6 +963,14 @@
         "stroke_width": 2,
         "sign_size_plus": 24,
         "sign_size_minus": 16
+      },
+      "status": {
+        "kind": "status",
+        "offset": [
+          48,
+          -48
+        ],
+        "icon_size": 48
       }
     },
     "text_regions": {
@@ -1196,21 +1196,13 @@
         "font_size": 15,
         "font": "desc"
       },
-      "status": {
-        "kind": "status",
-        "offset": [
-          0,
-          -55
-        ],
-        "icon_size": 40
-      },
       "burst": {
         "kind": "burst",
         "offset": [
           0,
-          55
+          64
         ],
-        "icon_size": 56,
+        "icon_size": 68,
         "num_offset": [
           0,
           0
@@ -1227,6 +1219,14 @@
         "stroke_width": 2,
         "sign_size_plus": 24,
         "sign_size_minus": 16
+      },
+      "status": {
+        "kind": "status",
+        "offset": [
+          48,
+          -48
+        ],
+        "icon_size": 48
       }
     },
     "text_regions": {
@@ -1452,34 +1452,10 @@
       "status": {
         "kind": "status",
         "offset": [
-          0,
-          -55
+          56,
+          -44
         ],
-        "icon_size": 40
-      },
-      "burst": {
-        "kind": "burst",
-        "offset": [
-          0,
-          55
-        ],
-        "icon_size": 56,
-        "num_offset": [
-          0,
-          0
-        ],
-        "font_size": 40,
-        "sign_offset": [
-          0,
-          0
-        ],
-        "group_offset": [
-          0,
-          0
-        ],
-        "stroke_width": 2,
-        "sign_size_plus": 24,
-        "sign_size_minus": 16
+        "icon_size": 48
       }
     },
     "text_regions": {
@@ -1501,6 +1477,92 @@
         "wrap": true,
         "font": "desc",
         "icon_scale": 0.9
+      }
+    },
+    "frame_variants": {
+      "blue": {
+        "elements": {
+          "status": {
+            "offset": [
+              56,
+              -43
+            ]
+          }
+        }
+      },
+      "black": {
+        "elements": {
+          "level": {
+            "pos": [
+              19,
+              70
+            ]
+          },
+          "rarity": {
+            "pos": [
+              149,
+              346
+            ]
+          },
+          "name": {
+            "pos": [
+              149,
+              344
+            ]
+          },
+          "footer": {
+            "pos": [
+              149,
+              499
+            ]
+          },
+          "status": {
+            "offset": [
+              56,
+              -43
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              149,
+              424
+            ],
+            "width": 248
+          }
+        }
+      },
+      "red": {
+        "elements": {
+          "rarity": {
+            "pos": [
+              141,
+              340
+            ]
+          },
+          "name": {
+            "pos": [
+              141,
+              338
+            ]
+          },
+          "footer": {
+            "pos": [
+              141,
+              495
+            ]
+          }
+        },
+        "text_regions": {
+          "desc": {
+            "center": [
+              141,
+              418
+            ],
+            "width": 246
+          }
+        }
       }
     }
   },

@@ -229,6 +229,27 @@ def test_bitmap_sign_assets_and_rendering(assets_dir, color, name, size):
     assert actual.tobytes() == expected.tobytes()
 
 
+@pytest.mark.parametrize("color,name,size", [
+    ("orange", "minus", (21, 64)),
+    ("purple", "plus", (27, 64)),
+    ("purple", "minus", (21, 64)),
+])
+def test_synthesized_signs_use_calibrated_digit_gradient(assets_dir, color, name, size):
+    from bwpdiy.render.badges import _tint
+
+    lib = AssetLibrary(assets_dir)
+    source = lib.number("white", name)
+    if source.size != size:
+        padded = Image.new("RGBA", size)
+        padded.alpha_composite(source, ((size[0] - source.width) // 2,
+                                        (size[1] - source.height) // 2))
+        source = padded
+    endpoint_color = "yellow" if color == "orange" else color
+    expected = _tint(source, *STAT_COLORS[endpoint_color])
+    actual = lib.number(color, name)
+    assert actual.tobytes() == expected.tobytes()
+
+
 def test_bitmap_sign_yellow_uses_orange_asset(assets_dir):
     from bwpdiy.render.badges import _render_sign
 
@@ -310,6 +331,9 @@ def test_burst_signed_white_component(assets_dir, sign, value):
                                  {"type": "法术", "burst": 0})) == 0
     assert img.tobytes() == render_element(
         canvas(), lib, "burst", elem, dict(card, burst_color="red")).tobytes()
+    for card_type in ("式神", "协战"):
+        assert opaque(render_element(canvas(), lib, "burst", elem,
+                                     {"type": card_type, "burst": value})) == 0
 
 
 def test_stat_group_offset_stacks_on_num_offset(assets_dir):

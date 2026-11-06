@@ -40,7 +40,7 @@ class AssetLibrary:
         return self._img("levels/base.png")
 
     def level_star(self) -> Image.Image:
-        return self._img("levels/evolve_star.png")
+        return self._img("levels/evolve.png")
 
     def level_num(self, n: int, color: str = "yellow") -> Image.Image:
         return self._img(f"levels/level_{n}_{color}.png")
@@ -60,8 +60,15 @@ class AssetLibrary:
     def number(self, color: str, name: str) -> Image.Image:
         return self._img(f"numbers/{color}_{name}.png")
 
+    BADGE_FILES = {
+        "bless": "加护", "eclipse": "蚀印", "bond": "缘结", "curse": "诅咒",
+        "radiance": "天晖", "nightmare": "梦魇", "eternal": "无始无终",
+        "endless": "无穷无尽", "unused": "未使用", "multi_status": "多状态",
+        "shown": "已展示",
+    }
+
     def badge(self, name: str) -> Image.Image:
-        return self._img(f"badges/badge_{name}.png")
+        return self._img(f"badges/{self.BADGE_FILES.get(name, name)}.png")
 
     def sign(self, name: str) -> Image.Image:
         return self.number("white", name)

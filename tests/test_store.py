@@ -493,6 +493,7 @@ def test_rename_card_case_only(lib):
     {**FORM, "frame_variant": "black"},                 # 墨染
     {**FIELD, "frame_variant": "red"},                  # 百炼
     {**SHIKIGAMI, "frame_variant": "black"},            # 式神可携带（牌框同形态）
+    {**ASSIST, "frame_variant": "blue"},                # 协战可携带
     {**SHIKIGAMI, "level": 2},                          # 标记扩展：式神可选等级
     {**SHIKIGAMI, "faction_style": 1},                  # 标记扩展：派系样式 1-3
     {**SHIKIGAMI, "level_color": "cyan"},               # 勾玉颜色（凡可带 level 者皆可）
@@ -545,7 +546,7 @@ def test_validate_ok(card):
     ({**SHIKIGAMI, "evolve": True}, "evolve"),          # 式神不可觉醒
     ({**FIGHT, "frame_variant": "gold"}, "frame_variant"),   # 非法框品
     ({**FIGHT, "frame_variant": 1}, "frame_variant"),
-    ({**ASSIST, "frame_variant": "blue"}, "frame_variant"),     # 协战无框品（白名单之外）
+    ({**ASSIST, "frame_variant": "gold"}, "frame_variant"),     # 协战同样校验框品枚举
     ({**ASSIST, "duo_frame": "是"}, "duo_frame"),       # 必须布尔
     ({**FIGHT, "duo_frame": True}, "duo_frame"),        # 双式神框为协战专属（白名单之外）
     ({**FIGHT, "portrait": {}}, "portrait"),            # 头像变换段为式神专属（白名单之外）

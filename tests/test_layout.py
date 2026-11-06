@@ -95,12 +95,14 @@ def test_unknown_type_raises():
 def test_expected_elements_per_type():
     layouts = layout.load_layouts(Path("不存在的目录"))
     base = {"name", "footer", "burst", "status"}
-    assert set(layouts["式神"]["elements"]) == {"level", "faction", "power", "health"} | base
+    assert set(layouts["式神"]["elements"]) == {
+        "level", "faction", "power", "health", "name", "footer", "status"}
     assert set(layouts["战斗"]["elements"]) == {"level", "rarity", "power", "shield"} | base
     assert set(layouts["法术"]["elements"]) == {"level", "rarity", "power", "health"} | base
     assert set(layouts["形态"]["elements"]) == {"level", "rarity", "power", "health"} | base
     assert set(layouts["幻境"]["elements"]) == {"level", "rarity", "durability"} | base
-    assert set(layouts["协战"]["elements"]) == {"level", "rarity", "duo_frame"} | base
+    assert set(layouts["协战"]["elements"]) == {
+        "level", "rarity", "duo_frame", "name", "footer", "status"}
 
 
 @pytest.mark.parametrize(("name", "existing"), [
@@ -114,10 +116,11 @@ def test_burst_status_backfilled_without_overriding_existing_layout(tmp_path, na
 
     layouts = layout.load_layouts(tmp_path)
     for card_type in TYPES:
-        assert name in layouts[card_type]["elements"]
+        expected = name != "burst" or card_type not in ("式神", "协战")
+        assert (name in layouts[card_type]["elements"]) == expected
         for variant in ("norm", *layout.FRAME_LAYOUT_VARIANTS):
             effective = layout.get_type_layout(layouts, card_type, variant)
-            assert name in effective["elements"]
+            assert (name in effective["elements"]) == expected
     assert layouts["法术"]["elements"][name] == existing
 
 

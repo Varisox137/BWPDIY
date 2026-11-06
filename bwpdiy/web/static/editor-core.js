@@ -22,10 +22,10 @@ const STAT_MATRIX = {
 const NONNEG_TYPES = new Set(["式神", "形态", "幻境"]);
 // 觉醒（evolve）仅战斗/法术/形态/幻境；式神/协战不提供勾选框（与 store schema 同口径）
 const EVOLVE_TYPES = new Set(["战斗", "法术", "形态", "幻境"]);
-// 框品：内部值 → 中文显示名；可携带类型 = 式神/战斗/法术/形态/幻境（式神牌框同形态；协战恒 norm 不可）
+// 框品：内部值 → 中文显示名；全类型可携带（式神牌框同形态）
 const FRAME_VARIANTS = [["norm", "常规"], ["blue", "琉璃"], ["black", "墨染"], ["red", "百炼"]];
 const FRAME_VARIANT_VALUES = new Set(FRAME_VARIANTS.map(([v]) => v));
-const FRAME_VARIANT_TYPES = new Set(["式神", "战斗", "法术", "形态", "幻境"]);
+const FRAME_VARIANT_TYPES = new Set(["式神", "战斗", "法术", "形态", "幻境", "协战"]);
 // 勾玉八色：内部值 → 中文显示名（缺省 yellow 不写进 yaml；素材 assets/levels/level_<n>_<color>.png）
 const LEVEL_COLORS = [["yellow", "黄"], ["cyan", "青"], ["purple", "紫"],
                       ["red", "红"], ["blue", "蓝"], ["brown", "棕"],

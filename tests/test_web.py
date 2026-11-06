@@ -196,7 +196,7 @@ def test_put_layout_frame_variant_sparse_roundtrip(client, assets_dir):
 @pytest.mark.parametrize("card_type,variants", [
     ("战斗", []),
     ("战斗", {"gold": {}}),
-    ("协战", {"black": {}}),
+    ("协战", {"gold": {}}),
     ("战斗", {"black": {"elements": []}}),
 ])
 def test_put_layout_rejects_invalid_frame_variants(client, assets_dir, card_type, variants):
@@ -1190,7 +1190,7 @@ const base = () => ({{elements: {{power: {{kind: 'stat', field: 'power', pos: [1
   icon_size: 16, num_offset: [0, 1], font_size: 12}}}},
   text_regions: {{desc: {{center: [1, 2], width: 20, height: 10}}}}}});
 const layouts = Object.fromEntries(TYPES.map(t => [t, base()]));
-for (const t of TYPES.filter(t => t !== '协战'))
+for (const t of TYPES)
   layouts[t].frame_variants = {{black: base(), blue: base(), red: base()}};
 let layoutFrameVariant = 'black', curType = '战斗';
 let entityLayoutMode = false, cardLayoutMode = null, singleLayout = null;
@@ -1200,26 +1200,28 @@ function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 assert.strictEqual(typeLayout(), layouts['战斗'].frame_variants.black);
 typeLayout().elements.power.icon_size = 64;
 typeLayout().text_regions.desc.width = 99;
-for (const t of TYPES) {{
-  assert.strictEqual(layouts[t].elements.power.icon_size, 16, `${{t}} norm`);
-  if (t !== '协战') {{
-    const expected = t === '战斗' ? 64 : 16;
-    assert.strictEqual(layouts[t].frame_variants.black.elements.power.icon_size, expected, `${{t}} black`);
-    assert.strictEqual(layouts[t].frame_variants.blue.elements.power.icon_size, 16, `${{t}} blue`);
-    assert.strictEqual(layouts[t].frame_variants.black.text_regions.desc.width,
-                       t === '战斗' ? 99 : 20, `${{t}} desc`);
-  }}
-}}
 assert.strictEqual(singleGlobalLayout().elements.power.icon_size, 64);
 assert.strictEqual(singleGlobalLayout().frame_variants, undefined);
 assert.strictEqual(layoutForRender(layouts['战斗']).frame_variants, undefined);
+curType = '协战';
+assert.strictEqual(typeLayout(), layouts['协战'].frame_variants.black);
+typeLayout().elements.power.icon_size = 48;
+for (const t of TYPES) {{
+  assert.strictEqual(layouts[t].elements.power.icon_size, 16, `${{t}} norm`);
+  const expected = t === '战斗' ? 64 : (t === '协战' ? 48 : 16);
+  assert.strictEqual(layouts[t].frame_variants.black.elements.power.icon_size, expected, `${{t}} black`);
+  assert.strictEqual(layouts[t].frame_variants.blue.elements.power.icon_size, 16, `${{t}} blue`);
+  assert.strictEqual(layouts[t].frame_variants.black.text_regions.desc.width,
+                     t === '战斗' ? 99 : 20, `${{t}} desc`);
+}}
 const payload = layoutSavePayload();
 assert.strictEqual(payload['战斗'].frame_variants.black.elements.power.icon_size, 64);
 assert.strictEqual(payload['战斗'].frame_variants.black.text_regions.desc.width, 99);
 assert.strictEqual(payload['战斗'].frame_variants.blue, undefined);
 assert.strictEqual(payload['战斗'].frame_variants.red, undefined);
 assert.strictEqual(payload['法术'].frame_variants, undefined);
-assert.strictEqual(payload['协战'].frame_variants, undefined);
+assert.strictEqual(payload['协战'].frame_variants.black.elements.power.icon_size, 48);
+assert.strictEqual(payload['协战'].frame_variants.blue, undefined);
 assert.strictEqual(layouts['战斗'].frame_variants.black.elements.power.icon_size, 64);
 console.log('OK');
 """
@@ -1235,7 +1237,7 @@ def test_card_frame_variant_buttons(tmp_path):
     sync = _extract_js(_script(), "function syncCardFrameButtons()")
     driver = f"""
 const assert = require('node:assert');
-const FRAME_VARIANT_TYPES = new Set(["式神", "战斗", "法术", "形态", "幻境"]);
+const FRAME_VARIANT_TYPES = new Set(["式神", "战斗", "法术", "形态", "幻境", "协战"]);
 const buttons = ['norm', 'blue', 'black', 'red'].map(fv =>
   ({{dataset: {{fv}}, disabled: false, classList: {{active: false}}}}));
 for (const b of buttons) b.classList.toggle = (name, on) => {{ b.classList.active = on; }};
@@ -1247,7 +1249,7 @@ assert(buttons.every(b => !b.disabled));
 assert.deepStrictEqual(buttons.map(b => b.classList.active), [false, false, true, false]);
 formData = {{type: '协战'}};
 syncCardFrameButtons();
-assert.deepStrictEqual(buttons.map(b => b.disabled), [false, true, true, true]);
+assert.deepStrictEqual(buttons.map(b => b.disabled), [false, false, false, false]);
 assert.deepStrictEqual(buttons.map(b => b.classList.active), [true, false, false, false]);
 formData = null;
 syncCardFrameButtons();
@@ -1743,8 +1745,16 @@ const document = {{getElementById: id => id === 'l-elems' ? elems : props,
   createElement: element}};
 {disp_map}
 {functions}
+const EVOLVE_TYPES = new Set(['战斗', '法术', '形态', '幻境']);
 buildLists();
 assert.deepStrictEqual(elems.children.map(x => x.textContent), ['等级标', '爆能', '特殊状态', '力量']);
+for (const t of ['式神', '协战']) {{
+  layouts[t] = {{elements: {{level: {{kind: 'level_badge', pos: [10, 10]}},
+    burst: {{kind: 'burst', offset: [30, 40]}}}}, text_regions: {{}}}};
+  curType = t; buildLists();
+  assert.deepStrictEqual(elems.children.map(x => x.textContent), ['等级标']);
+}}
+curType = '战斗'; buildLists();
 sel = {{kind: 'element', name: 'burst'}};
 buildProps();
 const controls = {{}};
@@ -1835,7 +1845,8 @@ let formData = null;
 const samples = {{'战斗': {{name: '样卡', level: 1, shikigami: '所属', description: ''}}}};
 const layout = {{elements: {{burst: {{kind: 'burst', offset: [0, 55]}}}}, text_regions: {{}}}};
 const layouts = {{'战斗': layout}};
-const EVOLVE_TYPES = new Set(), NONNEG_TYPES = new Set(), FRAME_VARIANT_TYPES = new Set();
+const EVOLVE_TYPES = new Set(['战斗', '法术', '形态', '幻境']);
+const NONNEG_TYPES = new Set(), FRAME_VARIANT_TYPES = new Set();
 let layoutFrameVariant = 'norm', previewSeq = 0;
 function typeLayout() {{ return layout; }}
 function globalTypeLayout() {{ return layout; }}
@@ -1866,10 +1877,13 @@ let activeAsk = null;
   }}
   visit(div);
   assert(controls['爆能']);
+  assert.strictEqual(controls['爆能'].max, 0);
+  controls['爆能'].value = '2'; controls['爆能'].onchange();
+  assert.strictEqual(cardOverrides['战斗'].burst, 0);
   controls['爆能'].value = '-10'; controls['爆能'].onchange();
   assert.strictEqual(cardOverrides['战斗'].burst, -10);
   assert.strictEqual(dirty, false);
-  assert.strictEqual(scheduled, 1);
+  assert.strictEqual(scheduled, 2);
   await refreshPreview();
   assert.strictEqual(requests.length, 1);
   const body = JSON.parse(requests[0].options.body);
@@ -2930,7 +2944,7 @@ def test_battle_entity_controls_cover_counters_without_dirtying(tmp_path):
     declarations = (
         "function setBattleEntityField(key, value)",
         "function battleSelectRow(div, label, options, value, set)",
-        "function battleNumberRow(div, label, value, set, min = null, id = null, disabled = false)",
+        "function battleNumberRow(div, label, value, set, min = null, id = null, disabled = false,\n                         max = 9999999999)",
         "function battleScaleRow(div)",
         "function battleColorOptions()",
         "function battleColorField(style, field, value)",
@@ -2945,6 +2959,7 @@ def test_battle_entity_controls_cover_counters_without_dirtying(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 const ENTITY_LEVELS = [0, 1, 2, 3], LEVEL_COLORS = [['yellow', '黄']];
+const EVOLVE_TYPES = new Set(['战斗', '法术', '形态', '幻境']);
 const STATS_BY_TYPE = {{'形态': ['power', 'health']}};
 const STAT_MATRIX = {{'形态': {{power: '力量', health: '生命'}}}};
 const STAT_VALUE_COLORS = [['white', '白'], ['red', '红']];
@@ -3118,13 +3133,14 @@ def test_battle_card_status_control_and_preview_request(tmp_path):
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function setBattleCardField(key, value)",
         "function battleSelectRow(div, label, options, value, set)",
-        "function battleNumberRow(div, label, value, set, min = null, id = null, disabled = false)",
+        "function battleNumberRow(div, label, value, set, min = null, id = null, disabled = false,\n                         max = 9999999999)",
         "function buildBattleForm()",
         "function battleRequest(style, project, stem, card, state)",
     ))
     driver = f"""
 const assert = require('node:assert');
 const ENTITY_LEVELS = [0, 1, 2, 3], LEVEL_COLORS = [['yellow', '黄']];
+const EVOLVE_TYPES = new Set(['战斗', '法术', '形态', '幻境']);
 const STATS_BY_TYPE = {{'战斗': []}}, STAT_MATRIX = {{'战斗': {{}}}};
 let battleStyle = 'card', battleEntityState = null, scheduled = 0;
 let battleCardState = {{type: '战斗', name: '测试', level: 1, level_color: 'yellow',
@@ -3141,20 +3157,30 @@ const document = {{createElement: element, getElementById: () => form}};
 const enc = encodeURIComponent;
 {functions}
 buildBattleForm();
-let statusControl = null;
+let statusControl = null, burstControl = null;
 function visit(node) {{
-  if (node.tag === 'label' && node.textContent.trim() === '特殊状态')
-    statusControl = node.children[0];
+  const label = node.tag === 'label' ? node.textContent.trim() : '';
+  if (label === '特殊状态') statusControl = node.children[0];
+  if (label === '爆能') burstControl = node.children[0];
   for (const child of node.children || []) visit(child);
 }}
 visit(form);
 assert(statusControl, '大卡缺少特殊状态控件');
+assert(burstControl, '大卡缺少爆能控件');
+assert.strictEqual(burstControl.max, 0);
+burstControl.value = '3'; burstControl.onchange();
+assert.strictEqual(battleCardState.burst, 0);
+burstControl.value = '-3'; burstControl.onchange();
+assert.strictEqual(battleCardState.burst, -3);
 assert.deepStrictEqual(statusControl.children.map(o => [o.value, o.textContent]),
-  [['', '无'], ['bless', '加护'], ['eclipse', '蚀印'], ['shown', '已展示']]);
+  [['', '无'], ['bless', '加护'], ['eclipse', '蚀印'], ['bond', '缘结'],
+   ['curse', '诅咒'], ['radiance', '天晖'], ['nightmare', '梦魇'],
+   ['eternal', '无始无终'], ['endless', '无穷无尽'], ['unused', '未使用'],
+   ['multi_status', '多状态'], ['shown', '已展示']]);
 assert.strictEqual(statusControl.children[0].selected, true);
 statusControl.value = 'shown'; statusControl.onchange();
 assert.strictEqual(battleCardState.status, 'shown');
-assert.strictEqual(scheduled, 1);
+assert.strictEqual(scheduled, 3);
 let request = null;
 function fetch(url, options) {{ request = {{url, options}}; return {{ok: true}}; }}
 battleRequest('card', '项目', '战斗-stem', battleCardState, null);
@@ -3659,7 +3685,8 @@ let activeAsk = null;
 buildCardProps();
 const status = controls.find(row => row.label === '特殊状态');
 assert(status);
-assert.deepStrictEqual(status.opts, ['', 'bless', 'eclipse', 'shown']);
+assert.deepStrictEqual(status.opts, ['', 'bless', 'eclipse', 'bond', 'curse', 'radiance',
+  'nightmare', 'eternal', 'endless', 'unused', 'multi_status', 'shown']);
 assert.strictEqual(status.val, '');
 status.set('shown');
 assert.strictEqual(cardOverrides['战斗'].status, 'shown');

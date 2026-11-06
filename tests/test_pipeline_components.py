@@ -150,6 +150,8 @@ def _neighborhood(card_type: str, name: str) -> tuple:
 def test_all_elements_draw_at_anchor(card_type):
     """布局元素表逐元素：透明画布渲染后，锚点区域有墨迹、且墨迹全落在组件邻域内。"""
     for name, e in get_type_layout(LAYOUTS, card_type)["elements"].items():
+        if e["kind"] == "burst" and card_type in ("式神", "协战"):
+            continue  # 旧用户布局可能残留已停用的爆能元素，渲染层明确忽略
         img = render_one(card_type, name)
         assert ink(img, *_anchor_box(card_type, name)) > 0, \
             f"{card_type}/{name}({e['kind']}) 锚点区域无墨迹"

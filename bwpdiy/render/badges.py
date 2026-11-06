@@ -31,15 +31,12 @@ FRAGILE_VARIANT = 2
 _FIELD_BADGE = {
     "power+": "power", "power": "power",
     "health+": "health", "health": "health",
-    "shield+": "combat_shield",
-    "durability": "field_intensity",
+    "shield+": "shield",
+    "durability": "intensity",
 }
 
 
 def _frame_variant(card: dict) -> str:
-    """框品：协战恒 norm（无其他框品资源），其余读 card["frame_variant"]。"""
-    if card.get("type") == "协战":
-        return "norm"
     return card.get("frame_variant", "norm")
 
 
@@ -285,7 +282,7 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         name_width = (ctx or {}).get("name_width", 0)
         # gap=默认半间距（短名静态固定 pos±gap）；仅卡名超宽时按与卡名缘固定 margin 外移
         offset = round(max(elem["gap"], name_width / 2 + elem.get("margin", 12)))
-        variant = "reinforce" if card.get("type") == "协战" else _frame_variant(card)
+        variant = _frame_variant(card)
         mark = lib.rarity(rarity, variant)
         out = _paste_element(canvas, mark, (cx - offset, y),
                              (elem["size"], elem["size"]))
@@ -304,15 +301,17 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
         value = card.get("status")
         if value is None:
             return canvas
-        if value not in ("bless", "eclipse", "shown"):
-            raise ValueError("特殊状态必须是 bless、eclipse、shown 或 None")
+        statuses = ("bless", "eclipse", "bond", "curse", "radiance", "nightmare",
+                    "eternal", "endless", "unused", "multi_status", "shown")
+        if value not in statuses:
+            raise ValueError(f"特殊状态必须是 {'、'.join(statuses)} 或 None")
         anchor, offset = elem["_anchor"], elem.get("offset", [0, 0])
         pos = (anchor[0] + offset[0], anchor[1] + offset[1])
         return _paste_element(canvas, lib.badge(value), pos,
                               (elem["icon_size"], elem["icon_size"]))
     if kind in ("stat", "burst"):
         if kind == "burst":
-            if "burst" not in card:
+            if card.get("type") in ("式神", "协战") or "burst" not in card:
                 return canvas
             value = card["burst"]
             if isinstance(value, bool) or not isinstance(value, int):

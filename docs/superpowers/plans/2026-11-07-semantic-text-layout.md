@@ -1,6 +1,6 @@
 # v1.8.3 语义排版 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 为卡牌描述增加 `smart` / `wrap` / `off` 三态排版，并在智能模式实现纯关键字首行与条件类候选断行。
 
@@ -29,7 +29,7 @@
 - Produces: `draw_region(..., text_layout="wrap")`、`fit_in_region(..., text_layout="wrap")`；`smart` 生成语义候选，`wrap` 单候选旧行为，`off` 固定最大字号并只按显式换行。
 - Internal: 自动断点使用独立 item kind，不与用户显式 `\n` 混淆；候选评分返回 `(行数, 行宽不均衡度, -语义断行数, 候选序号)`，越小越优。
 
-- [ ] **Step 1: 写首行识别与排除项失败测试**
+- [x] **Step 1: 写首行识别与排除项失败测试**
 
 ```python
 @pytest.mark.parametrize("prefix", ["贯通，连击。", "[[瞬发]]，不消耗鬼火。"])
@@ -51,12 +51,12 @@ def test_smart_layout_does_not_separate_followup_abilities(assets_dir, prefix):
     assert lines[0][0] != prefix[:-1]
 ```
 
-- [ ] **Step 2: 运行首行测试并确认因不支持参数而失败**
+- [x] **Step 2: 运行首行测试并确认因不支持参数而失败**
 
 Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_text.py -k "smart_layout" -q`
 Expected: FAIL（`text_layout` 参数尚不存在）。
 
-- [ ] **Step 3: 实现三态入口、首行解析和候选断行**
+- [x] **Step 3: 实现三态入口、首行解析和候选断行**
 
 在 `text.py` 增加集中白名单与 `TEXT_LAYOUT_MODES = ("smart", "wrap", "off")`。智能模式先把开头纯能力短句的末尾 `。` 删除并插入强制断行，再为最多 4 个段内 `条件：` / `增强：` / `响应：` / `觉醒：` 生成换行组合。解析基于现有 `parse_items`，保留高亮和图标 item。
 
@@ -64,7 +64,7 @@ Expected: FAIL（`text_layout` 参数尚不存在）。
 
 `off` 使用独立显式行排版：最大字号、仅 `\n` 分段、逐行水平居中与整体竖直居中，不调用自动换行、字号递减或障碍掩膜。
 
-- [ ] **Step 4: 补候选比较、35% 阈值及三态测试**
+- [x] **Step 4: 补候选比较、35% 阈值及三态测试**
 
 ```python
 def test_text_layout_wrap_disables_only_semantic_layout(assets_dir):
@@ -90,12 +90,12 @@ def test_conditional_break_requires_previous_line_35_percent(assets_dir):
     assert font.getlength("甲") > 0
 ```
 
-- [ ] **Step 5: 跑文本与高亮定向回归**
+- [x] **Step 5: 跑文本与高亮定向回归**
 
 Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_text.py tests/test_keyword_highlight.py -q`
 Expected: PASS；既有标点、图标、显式换行测试不变。
 
-- [ ] **Step 6: 提交文本核心**
+- [x] **Step 6: 提交文本核心**
 
 ```bash
 git add bwpdiy/render/text.py tests/test_text.py
@@ -115,7 +115,7 @@ git push
 - Consumes: Task 1 的 `text_layout` 参数。
 - Produces: 卡牌可选 `text_layout: smart|wrap|off`；缺省 `smart`；机制白名单仍拒绝它。
 
-- [ ] **Step 1: 写管线缺省、模式覆盖和 schema 失败测试**
+- [x] **Step 1: 写管线缺省、模式覆盖和 schema 失败测试**
 
 ```python
 def test_card_text_layout_schema_round_trip():
@@ -127,12 +127,12 @@ def test_card_text_layout_schema_round_trip():
 
 管线测试 monkeypatch `pipeline.draw_region`，分别渲染缺省、`wrap`、`off` 卡，断言收到的模式为 `smart` / `wrap` / `off`，并断言传入的描述字符串未被修改。
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_store.py tests/test_keyword_highlight.py -k "text_layout" -q`
 Expected: FAIL（字段与管线传参尚未接入）。
 
-- [ ] **Step 3: 实现最小集成**
+- [x] **Step 3: 实现最小集成**
 
 `schema.py` 增加同名枚举常量、`_COMMON_FIELDS` 字段与逐项校验；`pipeline.py` 仅在现有大卡 `draw_region` 调用追加：
 
@@ -142,12 +142,12 @@ text_layout=card.get("text_layout", "smart")
 
 不修改机制调用、实体小卡或卡牌描述内容。
 
-- [ ] **Step 4: 跑集成与渲染定向回归**
+- [x] **Step 4: 跑集成与渲染定向回归**
 
 Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_store.py tests/test_keyword_highlight.py tests/test_pipeline.py tests/test_pipeline_components.py -q`
 Expected: PASS。
 
-- [ ] **Step 5: 提交集成**
+- [x] **Step 5: 提交集成**
 
 ```bash
 git add bwpdiy/render/pipeline.py bwpdiy/store/schema.py tests/test_store.py tests/test_keyword_highlight.py
@@ -170,31 +170,31 @@ git push
 **Interfaces:**
 - Produces: 卡牌右栏「自动排版」单选框，值与显示顺序为 `smart=智能`、`wrap=仅换行`、`off=关闭`，位于描述输入框上方且仅 `extOptions.marker` 时显示。
 
-- [ ] **Step 1: 写前端白名单和控件失败测试**
+- [x] **Step 1: 写前端白名单和控件失败测试**
 
 沿用现有 Node 拼接真实脚本测试，断言 `validateCardJS` 接受三种模式、拒绝非法值；DOM 测试在扩展功能开/关时重建表单，断言选择器显隐、当前值及切换后的 `formData.text_layout`。缺省 `smart` 时删除字段以保持 YAML 稀疏。
 
-- [ ] **Step 2: 运行前端测试并确认失败**
+- [x] **Step 2: 运行前端测试并确认失败**
 
 Run: 执行项目现有对应 Node 测试命令，或 `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_web.py -k "text_layout" -q`
 Expected: FAIL（控件与白名单尚未实现）。
 
-- [ ] **Step 3: 实现控件和校验**
+- [x] **Step 3: 实现控件和校验**
 
 在 `buildForm` 的内嵌派系样式之后、描述 textarea 之前插入 `selRowC`；选项值用 `smart/wrap/off`，显示用 `智能/仅换行/关闭`。切换时 `smart` 删除字段，其余写字段并调用 `afterEdit()`。把 `text_layout` 加入 `validateCardJS` 白名单和枚举校验。
 
-- [ ] **Step 4: 更新版本、更新说明与持久文档**
+- [x] **Step 4: 更新版本、更新说明与持久文档**
 
 版本改为 `1.8.3`；changelog 新增简短条目，不添加全局布局变更警告。使用说明解释三态和智能规则；`AGENTS.md`、术语表与主设计文档记录字段、缺省、排除项和 35% 阈值。同步实施计划勾选状态，不改动出厂布局 JSON。
 
-- [ ] **Step 5: 验证交付物**
+- [x] **Step 5: 验证交付物**
 
 Run: `for f in bwpdiy/web/static/editor-*.js; do node --check "$f"; done`
 Run: 受影响的文本、schema、管线、Web 与前端定向测试。
 Run: `git diff --check`
 Expected: 全部通过；按用户要求不机械重复全量 pytest 或 GUI 冒烟。
 
-- [ ] **Step 6: 提交并推送 1.8.3**
+- [x] **Step 6: 提交并推送 1.8.3**
 
 ```bash
 git add bwpdiy tests docs AGENTS.md

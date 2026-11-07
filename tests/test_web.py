@@ -661,6 +661,95 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_text_layout_js_validation(tmp_path):
+    """前端若漏掉白名单会无法保存；漏掉枚举校验会把非法模式发往服务端。"""
+    script = _script()
+    end = script.index(";", script.index("const STAT_VALUE_COLOR_VALUES =")) + 1
+    consts = script[script.index("const TYPES ="):end]
+    validate = _extract_js(script, "function validateCardJS(d)")
+    driver = f"""
+const assert = require('node:assert');
+{consts}
+function validDateStr() {{ return true; }}
+{validate}
+const card = {{type: '战斗', name: '斩', level: 1, rarity: 'R', shikigami: '山风',
+              'power+': 1, 'shield+': 1, description: '贯通。'}};
+for (const mode of ['smart', 'wrap', 'off']) {{
+  assert.deepStrictEqual(validateCardJS({{...card, text_layout: mode}}), []);
+}}
+for (const mode of ['auto', false, 1, null]) {{
+  assert(validateCardJS({{...card, text_layout: mode}}).some(e => e.includes('text_layout')));
+}}
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_text_layout_control_follows_marker_and_preserves_value(tmp_path):
+    """扩展控件若重建表单时丢值或错误删值，会改变用户未保存的排版选择。"""
+    build_card = _extract_js(_script(), "function buildForm()")
+    driver = f"""
+const assert = require('node:assert');
+let activeAsk = null, cDirty = false;
+let formData = {{type: '法术', name: '测试', level: 1, rarity: 'R', shikigami: '山风',
+                description: '贯通。', text_layout: 'off'}};
+const extOptions = {{marker: false, layout: false}};
+const controls = [], events = [];
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', value: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const div = element('div');
+const document = {{getElementById: () => div, createElement: tag => {{
+  if (tag === 'textarea') events.push('description');
+  return element(tag);
+}}}};
+function syncCardFrameButtons() {{}}
+function infoRow() {{}}
+function textRow() {{}}
+function versionRows() {{}}
+function levelRow() {{}}
+function shikigamiRow() {{}}
+function checkRowC() {{}}
+function numRowC() {{}}
+function artRow() {{}}
+function isMainShikigami() {{ return false; }}
+function rarityOptions() {{ return ['R']; }}
+function selRowC(div, label, opts, val, set) {{
+  controls.push({{label, opts, val, set}}); events.push(label);
+}}
+function showFormErrors() {{}}
+function validateCardJS() {{ return []; }}
+function afterEdit() {{}}
+function undoAll() {{}}
+function undoLast() {{}}
+function saveCard() {{}}
+function openExport() {{}}
+const EVOLVE_TYPES = new Set(['战斗', '法术', '形态', '幻境']);
+const NONNEG_TYPES = new Set(['式神', '形态', '幻境']);
+const STATS_BY_TYPE = {{法术: ['power+', 'health+']}};
+const STAT_MATRIX = {{法术: {{'power+': '力量+', 'health+': '生命+'}}}};
+{build_card}
+function layoutControl() {{ return controls.find(row => row.label === '自动排版'); }}
+buildForm();
+assert.strictEqual(layoutControl(), undefined);
+assert.strictEqual(formData.text_layout, 'off');
+extOptions.marker = true;
+controls.length = 0; events.length = 0;
+buildForm();
+assert.deepStrictEqual(layoutControl().opts, ['smart', 'wrap', 'off']);
+assert.strictEqual(layoutControl().val, 'off');
+assert(events.indexOf('自动排版') < events.indexOf('description'));
+layoutControl().set('smart');
+assert.strictEqual(formData.text_layout, undefined);
+layoutControl().set('wrap');
+assert.strictEqual(formData.text_layout, 'wrap');
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_inline_faction_marker_toggle_rebuilds_card_and_mechanism(tmp_path):
     apply = _extract_js(_script(), "function applyExtOptions()")
     driver = f"""

@@ -1159,6 +1159,12 @@ function buildForm() {
       else formData.inline_faction_style = style;
       afterEdit();
     });
+  if (extOptions.marker) selRowC(div, '自动排版', ['smart', 'wrap', 'off'],
+    formData.text_layout ?? 'smart', v => {
+      if (v === 'smart') delete formData.text_layout;
+      else formData.text_layout = v;
+      afterEdit();
+    }, v => ({smart: '智能', wrap: '仅换行', off: '关闭'})[v]);
   const l = document.createElement('label');
   l.textContent = '描述 ';
   const ta = document.createElement('textarea');
@@ -1502,8 +1508,11 @@ function validateCardJS(d) {
   if (!TYPES.includes(t)) return [`字段 type：非法卡牌类型「${t}」，须为 ${TYPES.join('/')} 之一`];
   if (typeof d.name !== 'string' || !d.name.trim()) errors.push('字段 name：必填且必须是非空字符串');
   if ('id' in d && typeof d.id !== 'string') errors.push('字段 id：必须是字符串');
-  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color', 'layout', 'version_date', 'inline_faction_style']);
+  const allowed = new Set(['type', 'name', 'id', 'description', 'artwork', 'level_color', 'layout', 'version_date', 'inline_faction_style', 'text_layout']);
   if ('version_date' in d && !validDateStr(d.version_date)) errors.push('字段 version_date：必须是合法 YYYYMMDD 日期（8 位数字，可留空）');
+  if ('text_layout' in d && !['smart', 'wrap', 'off'].includes(d.text_layout)) {
+    errors.push(`字段 text_layout：非法排版模式「${d.text_layout}」，须为 smart/wrap/off 之一`);
+  }
   (STATS_BY_TYPE[t] || []).forEach(f => allowed.add(`${f}_color`));  // 数值变色伴随字段
   if (t === '式神') ['faction', 'frame_variant', 'level', 'faction_style', 'portrait', 'shikigami', 'special_type', ...STATS_BY_TYPE['式神']].forEach(f => allowed.add(f));
   else {

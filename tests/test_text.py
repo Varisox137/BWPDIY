@@ -491,3 +491,86 @@ def test_icon_scale_field(assets_dir):
     # 宽度介于「半系数」与「全系数」之间：0.5 排得下，缺省 1.0 超宽失败
     assert _layout_at_size(items, font36, dict(region, icon_scale=0.5), False, lib=lib) is not None
     assert _layout_at_size(items, font36, region, False, lib=lib) is None
+
+
+# ---------- v1.8.3 三态排版与语义断行 ----------
+
+@pytest.mark.parametrize("prefix, visible", [
+    ("贯通，连击。", "贯通，连击"),
+    ("[[瞬发]]，不消耗鬼火。", "瞬发，不消耗鬼火"),
+])
+def test_smart_layout_separates_pure_keyword_sentence(assets_dir, prefix, visible):
+    """缺少首行识别会保留句号并与后续效果混排，破坏卡牌能力分区。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(100, 100, 400, 300)
+    fitted = fit_in_region(prefix + "对敌方战斗区式神造成2点伤害。", region, lib,
+                           text_layout="smart")
+    assert fitted is not None
+    _, lines = fitted
+    assert lines[0][0] == visible
+    assert len(lines) > 1
+
+
+@pytest.mark.parametrize("prefix", ["突袭。", "坚守。", "鼓舞。", "爆能2。", "运势4。"])
+def test_smart_layout_does_not_separate_followup_abilities(assets_dir, prefix):
+    """带后续效果的能力若进入白名单，会被误拆为独立首行。"""
+    lib = AssetLibrary(assets_dir)
+    text = prefix + "随后触发对应效果。"
+    fitted = fit_in_region(text, rect_region(100, 100, 400, 300), lib,
+                           text_layout="smart")
+    assert fitted is not None
+    assert fitted[1][0][0] != prefix[:-1]
+
+
+def test_smart_layout_prefers_balanced_conditional_break(assets_dir):
+    """候选评分若忽略语义断点，同两行时会保留‘条件：’挤在上一行的结果。"""
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    width = math.ceil(font36.getlength("甲乙丙丁。条件：")) + 1
+    region = rect_region(100, 100, 100 + width, 300)
+    fitted = fit_in_region("甲乙丙丁。[[条件]]：造成伤害", region, lib,
+                           text_layout="smart")
+    assert fitted is not None
+    assert [line[0] for line in fitted[1]] == ["甲乙丙丁。", "条件：造成伤害"]
+
+
+def test_smart_layout_rejects_conditional_break_below_35_percent(assets_dir):
+    """阈值过宽会留下仅两字的前行；35% 下限应拒绝该语义断行候选。"""
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    width = math.ceil(font36.getlength("甲乙丙丁。条件：")) + 1
+    region = rect_region(100, 100, 100 + width, 300)
+    text = "甲。条件：造成伤害"
+    smart = fit_in_region(text, region, lib, text_layout="smart")
+    wrap = fit_in_region(text, region, lib, text_layout="wrap")
+    assert smart == wrap
+
+
+def test_text_layout_wrap_disables_only_semantic_layout(assets_dir):
+    """wrap 若仍走智能候选，会错误拆分纯关键字首句。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(100, 100, 400, 300)
+    text = "贯通，连击。随后造成2点伤害。"
+    smart = fit_in_region(text, region, lib, text_layout="smart")
+    wrap = fit_in_region(text, region, lib, text_layout="wrap")
+    assert smart[1][0][0] == "贯通，连击"
+    assert wrap != smart
+
+
+def test_text_layout_off_uses_explicit_lines_and_max_font(assets_dir):
+    """off 若复用自动适配，会把超宽首行换行或缩小字号。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(100, 100, 220, 300)
+    fitted = fit_in_region("甲乙丙丁\n戊己", region, lib, text_layout="off")
+    assert fitted is not None
+    font, lines = fitted
+    assert font.size == 36
+    assert [line[0] for line in lines] == ["甲乙丙丁", "戊己"]
+
+
+def test_text_layout_rejects_unknown_mode(assets_dir):
+    """外部渲染绕过 store 时仍须拒绝未知模式，避免静默回退。"""
+    lib = AssetLibrary(assets_dir)
+    with pytest.raises(ValueError, match="text_layout"):
+        fit_in_region("文本", rect_region(100, 100, 400, 200), lib,
+                      text_layout="auto")

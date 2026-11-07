@@ -219,6 +219,79 @@ def _normalize_newlines(text: str) -> str:
     return re.sub(r"\n+", "\n", text)
 
 
+TEXT_LAYOUT_MODES = ("smart", "wrap", "off")
+_LEADING_KEYWORDS = frozenset({
+    "贯通", "连击", "吸血", "暴击", "不屈", "远程", "直击", "先攻",
+    "追猎", "必杀", "屏障", "帷幕", "迅捷", "昂扬", "瞬发", "唯一",
+    "不消耗鬼火", "气绝时可用", "仅气绝时可用",
+})
+_CONDITION_LABELS = ("条件：", "增强：", "响应：", "觉醒：")
+_AUTO_BREAK_MIN_FILL = 0.35
+
+
+def _split_paragraphs(items):
+    """按显式换行与内部断点拆段；separators[i] 是第 i 段之后的断点类型。"""
+    paragraphs = [[]]
+    separators = []
+    for item in items:
+        if item[0] == "break" or (item[0] == "char" and item[1] == "\n"):
+            separators.append(item[1] if item[0] == "break" else "explicit")
+            paragraphs.append([])
+        else:
+            paragraphs[-1].append(item)
+    return paragraphs, separators
+
+
+def _separate_leading_keywords(items):
+    """仅处理开头完整、纯能力的句号短句；返回本次渲染用 items 与首行标记。"""
+    period = next((i for i, item in enumerate(items)
+                   if item[0] == "char" and item[1] == "。"), None)
+    if period is None or any(item[0] != "char" or item[1] == "\n"
+                             for item in items[:period]):
+        return items, False
+    visible = "".join(item[1] for item in items[:period])
+    if not all(part in _LEADING_KEYWORDS for part in re.split(r"[，、,]", visible)):
+        return items, False
+    head = list(items[:period])  # 只隐藏首行末尾句号，不改原始输入
+    rest = list(items[period + 1:])
+    if rest and not (rest[0][0] == "char" and rest[0][1] == "\n"):
+        rest.insert(0, ("break", "keyword", False))
+    return head + rest, True
+
+
+def _conditional_breakpoints(items):
+    points = []
+    for i in range(1, len(items)):
+        previous = items[i - 1]
+        if previous[0] == "break" or (previous[0] == "char" and previous[1] == "\n"):
+            continue
+        for label in _CONDITION_LABELS:
+            end = i + len(label)
+            if all(item[0] == "char" for item in items[i:end]) and "".join(
+                    item[1] for item in items[i:end]) == label:
+                points.append(i)
+                break
+        if len(points) == 4:
+            break
+    return points
+
+
+def _smart_candidates(items):
+    """返回 (候选 items, 条件断行数, 是否关键字首行, 原始候选序号)。"""
+    items, keyword_first = _separate_leading_keywords(items)
+    points = _conditional_breakpoints(items)
+    candidates = []
+    for mask in range(1 << len(points)):
+        selected = {point for bit, point in enumerate(points) if mask & (1 << bit)}
+        candidate = []
+        for i, item in enumerate(items):
+            if i in selected:
+                candidate.append(("break", "auto", False))
+            candidate.append(item)
+        candidates.append((candidate, mask.bit_count(), keyword_first, mask))
+    return candidates
+
+
 def _line_height(font: ImageFont.FreeTypeFont, gap: float = _LINE_GAP) -> float:
     box = font.getbbox("国Ag")
     return box[3] - box[1] + gap
@@ -236,6 +309,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
     区域中心 + `center_offset`（缺省 [0,0]，per-type 键）- 临时上移 dy
     （_fit 的自适应尝试用，见 _fit）；区域边界与行宽不变。
     行可用宽度按掩膜墨迹（row_runs）逐行收窄，间距字段 obstacle_gap（缺省 4）。
+    内部 auto 断点另要求上一行至少占可用宽度 35%；keyword/显式断行不受此限。
     """
     cx, cy = region["center"]
     ox, oy = region.get("center_offset", [0, 0])
@@ -269,12 +343,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
             return None
         return [(items, centered_cx(items, acy), acy)]
 
-    paragraphs = [[]]
-    for item in items:
-        if item[0] == "char" and item[1] == "\n":
-            paragraphs.append([])
-        else:
-            paragraphs[-1].append(item)
+    paragraphs, separators = _split_paragraphs(items)
 
     def wrap_from(y: float):
         """从行中心 y 起贪心换行，返回行 item 列表；排不下（出底界/被封死）返回 None。"""
@@ -301,6 +370,12 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
                             return None
                 else:
                     current = trial
+            if pi < len(paragraphs) - 1 and separators[pi] == "auto":
+                span = span_at(y)
+                if (span is None or not current
+                        or _line_width(current, font, icon_w)
+                        < _AUTO_BREAK_MIN_FILL * (span[1] - span[0])):
+                    return None
             if pi < len(paragraphs) - 1 or current:
                 if span_at(y) is None:
                     return None
@@ -335,38 +410,77 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
     return None
 
 
+def _candidate_score(lines, font, region, lib, icon_variant, inline_faction_style,
+                     semantic_breaks, keyword_first, candidate_index):
+    """同字号/锚点下：少行优先，再取行宽更均衡、语义断行更完整的候选。"""
+    scored = lines[1:] if keyword_first and len(lines) > 1 else lines
+    all_items = [item for line, _, _ in scored for item in line]
+    icon_scale = region.get("icon_scale", 1.0)
+    icon_w = _icon_widths(all_items, font, lib, icon_variant, icon_scale,
+                          inline_faction_style)
+    widths = [_line_width(line, font, icon_w) for line, _, _ in scored]
+    mean = sum(widths) / len(widths) if widths else 0.0
+    imbalance = sum((width - mean) ** 2 for width in widths)
+    return len(lines), imbalance, -semantic_breaks, candidate_index
+
+
 def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
          row_runs: dict | None, icon_variant: str | None = None,
-         inline_faction_style: int = 1):
-    """字号从大到小适配；每个字号上先尝试逐 px 临时上移居中锚点（1px 步进、
-    至多半行高）——接受条件：排得下且每一行都水平居中（未被障碍挤偏）。
-    当前字号所有上移量都不行才减小字号。"""
+         inline_faction_style: int = 1, text_layout: str = "wrap"):
+    """字号从大到小适配；每个字号先逐 px 上移居中锚点，再比较该位置的语义候选。"""
+    candidates = (_smart_candidates(items) if text_layout == "smart"
+                  else [(items, 0, False, 0)])
     max_size, min_size = region["font_range"]
     acx = region["center"][0] + region.get("center_offset", [0, 0])[0]
     for size in range(max_size, min_size - 1, -1):
         font = lib.font(region["font"], size)
         max_dy = int(_line_height(font, region.get("_line_gap", _LINE_GAP)) / 2)
         for dy in range(0, max_dy + 1):
-            lines = _layout_at_size(items, font, region, region["wrap"], row_runs,
-                                    dy=dy, lib=lib, icon_variant=icon_variant,
-                                    inline_faction_style=inline_faction_style)
-            if lines is not None and all(abs(cx - acx) < 1e-6 for _, cx, _ in lines):
-                return font, lines
+            choices = []
+            for candidate, semantic_breaks, keyword_first, index in candidates:
+                lines = _layout_at_size(candidate, font, region, region["wrap"], row_runs,
+                                        dy=dy, lib=lib, icon_variant=icon_variant,
+                                        inline_faction_style=inline_faction_style)
+                if lines is not None and all(abs(cx - acx) < 1e-6 for _, cx, _ in lines):
+                    score = _candidate_score(
+                        lines, font, region, lib, icon_variant, inline_faction_style,
+                        semantic_breaks, keyword_first, index)
+                    choices.append((score, lines))
+            if choices:
+                return font, min(choices, key=lambda choice: choice[0])[1]
     return None
+
+
+def _explicit_layout(items, region, lib):
+    """off：最大字号、仅显式分行；保留逐行水平居中与文本块竖直居中。"""
+    font = lib.font(region["font"], region["font_range"][0])
+    paragraphs, _ = _split_paragraphs(items)
+    cx, cy = region["center"]
+    ox, oy = region.get("center_offset", [0, 0])
+    acx, acy = cx + ox, cy + oy
+    lh = _line_height(font, region.get("_line_gap", _LINE_GAP))
+    y0 = acy - len(paragraphs) * lh / 2 + lh / 2
+    return font, [(line, acx, y0 + i * lh) for i, line in enumerate(paragraphs)]
 
 
 def fit_in_region(text: str, region: dict, lib: AssetLibrary,
                   obstacle_mask: Image.Image | None = None,
-                  icon_variant: str | None = None):
-    """字号从大到小适配，返回 (font, [(行文本, cx, cy)])；最小字号仍排不下时返回 None。
+                  icon_variant: str | None = None, text_layout: str = "wrap"):
+    """按 text_layout 排版，返回 (font, [(行文本, cx, cy)])；适配失败返回 None。
 
-    [[关键字]] 与 #xx 图标标记在排版前剥离（宽度按可见内容计），返回的行文本为
-    纯文本（图标项不计入）。
+    缺省 wrap 保持通用旧行为；smart 增加卡牌语义候选；off 仅显式分行且不缩字号。
+    [[关键字]] 与 #xx 图标标记在排版前剥离（宽度按可见内容计），返回纯文本行。
     """
+    if text_layout not in TEXT_LAYOUT_MODES:
+        raise ValueError(f"未知 text_layout 模式: {text_layout!r}")
     text = _normalize_newlines(text)
     items = parse_items(text)
-    row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None
-    fitted = _fit(items, region, lib, row_runs, icon_variant)
+    if text_layout == "off":
+        fitted = _explicit_layout(items, region, lib)
+    else:
+        row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None
+        fitted = _fit(items, region, lib, row_runs, icon_variant,
+                      text_layout=text_layout)
     if fitted is None:
         return None
     font, lines = fitted
@@ -377,13 +491,19 @@ def draw_region(canvas: Image.Image, lib: AssetLibrary, text: str,
                 region: dict, obstacle_mask: Image.Image | None = None,
                 fill=TEXT_FILL, keyword_fill=None,
                 icon_variant: str | None = None,
-                inline_faction_style: int = 1) -> Image.Image:
+                inline_faction_style: int = 1, text_layout: str = "wrap") -> Image.Image:
     """排版并绘制文本。[[关键字]] 段用 keyword_fill 异色绘制（None 时与正文同色）；
-    #xx 代码绘制为行内小图标，派系图标使用 inline_faction_style 指定的 1/2/3 样式。"""
+    #xx 代码绘制为行内小图标；text_layout 三态口径同 fit_in_region。"""
+    if text_layout not in TEXT_LAYOUT_MODES:
+        raise ValueError(f"未知 text_layout 模式: {text_layout!r}")
     text = _normalize_newlines(text)
     items = parse_items(text)
-    row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None
-    fitted = _fit(items, region, lib, row_runs, icon_variant, inline_faction_style)
+    if text_layout == "off":
+        fitted = _explicit_layout(items, region, lib)
+    else:
+        row_runs = mask_row_runs(obstacle_mask) if obstacle_mask is not None else None
+        fitted = _fit(items, region, lib, row_runs, icon_variant, inline_faction_style,
+                      text_layout)
     if fitted is None:
         font = lib.font(region["font"], region["font_range"][1])
         lines = _layout_at_size(items, font, region, region["wrap"], row_runs,

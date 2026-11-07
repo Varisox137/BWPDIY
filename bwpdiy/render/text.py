@@ -198,6 +198,22 @@ def _line_width(line: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
     return w
 
 
+_NO_LINE_START = set("，。！？；：、,.!?;:%）】》〉」』〕〗〙﹚﹜﹞”’)]}…")
+
+
+def _carry_for_punctuation(current, item):
+    if not (item[0] == "char" and item[1] in _NO_LINE_START):
+        return None
+    cut = len(current)
+    while cut and current[cut - 1][0] == "char" and current[cut - 1][1] in _NO_LINE_START:
+        cut -= 1
+    if cut:
+        cut -= 1
+    if cut == 0:
+        return None
+    return current[:cut], current[cut:] + [item]
+
+
 def _normalize_newlines(text: str) -> str:
     """连续 \n 合并为一个换行（显式 \n 是强制断行，但不产生空行）。"""
     return re.sub(r"\n+", "\n", text)
@@ -272,11 +288,12 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
                 if current and _line_width(trial, font, icon_w) > width:
                     if span is None:  # 障碍封死本行：排版失败，交由字号递减/强排兜底
                         return None
-                    lines.append(current)
+                    carried = _carry_for_punctuation(current, item)
+                    remaining, current = carried if carried is not None else (current, [item])
+                    lines.append(remaining)
                     y += lh
                     if y + lh / 2 > y_bottom:
                         return None
-                    current = [item]
                 else:
                     current = trial
             if pi < len(paragraphs) - 1 or current:

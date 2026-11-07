@@ -1,8 +1,70 @@
+import math
+
 from PIL import Image, ImageChops, ImageFilter
 import pytest
 
 from bwpdiy.render.assets import AssetLibrary
 from bwpdiy.render.text import TEXT_FILL, draw_region, fit_in_region
+
+
+def _wrapped_plain(lib, text, width_text="甲乙"):
+    from bwpdiy.render.text import _layout_at_size, _plain, parse_items
+    font = lib.font("desc", 36)
+    width = math.ceil(font.getlength(width_text)) + 1
+    region = rect_region(0, 0, width, 200)
+    lines = _layout_at_size(parse_items(text), font, region, True, lib=lib)
+    return [_plain(line) for line, _, _ in lines]
+
+
+def test_wrap_moves_previous_char_with_punctuation(assets_dir):
+    lib = AssetLibrary(assets_dir)
+    assert _wrapped_plain(lib, "甲乙，丙") == ["甲", "乙，", "丙"]
+    assert _wrapped_plain(lib, "甲乙。”丙", "甲乙。") == ["甲", "乙。”", "丙"]
+    assert _wrapped_plain(lib, "甲\n，乙") == ["甲", "，乙"]  # 显式换行不改写
+    font = lib.font("desc", 36)
+    for text, width_text in (("甲乙，丙", "甲乙"), ("甲乙。”丙", "甲乙。")):
+        width = math.ceil(font.getlength(width_text)) + 1
+        assert all(font.getlength(line) <= width
+                   for line in _wrapped_plain(lib, text, width_text))
+
+
+def test_wrap_carries_icon_before_punctuation(assets_dir):
+    from bwpdiy.render.text import _icon_widths, _layout_at_size, _line_width, parse_items
+    lib = AssetLibrary(assets_dir)
+    font = lib.font("desc", 36)
+    items = parse_items("甲#ll，")
+    icon_w = _icon_widths(items, font, lib, None)
+    width = math.ceil(_line_width(items[:-1], font, icon_w)) + 1
+    region = rect_region(0, 0, width, 200)
+    lines = _layout_at_size(items, font, region, True, lib=lib)
+    assert [[(kind, value) for kind, value, _ in line] for line, _, _ in lines] == [
+        [("char", "甲")], [("icon", "ll"), ("char", "，")]]
+    assert all(_line_width(line, font, icon_w) <= width for line, _, _ in lines)
+
+
+def test_wrap_punctuation_respects_obstacle_span(assets_dir):
+    from bwpdiy.render.geometry import mask_row_runs
+    from bwpdiy.render.text import _icon_widths, _layout_at_size, _line_width, _plain, parse_items
+    lib = AssetLibrary(assets_dir)
+    font = lib.font("desc", 36)
+    width = math.ceil(font.getlength("甲乙")) + 1
+    region = rect_region(0, 0, width + 8, 200)
+    mask = ink_mask([(width + 4, 0, width + 8, 200)])
+    runs = mask_row_runs(mask)
+    items = parse_items("甲乙，")
+    lines = _layout_at_size(items, font, region, True, runs, lib=lib)
+    assert [_plain(line) for line, _, _ in lines] == ["甲", "乙，"]
+    icon_w = _icon_widths(items, font, lib, None)
+    assert all(_line_width(line, font, icon_w) <= width for line, _, _ in lines)
+
+
+def test_fit_preserves_font_size_when_carrying_punctuation(assets_dir):
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    width = math.ceil(font36.getlength("甲乙")) + 1
+    font, lines = fit_in_region("甲乙，", rect_region(0, 0, width, 200), lib)
+    assert font.size == 36
+    assert [text for text, _, _ in lines] == ["甲", "乙，"]
 
 
 def canvas():

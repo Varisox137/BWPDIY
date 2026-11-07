@@ -79,13 +79,42 @@ def test_project_id_round_trip_and_unique(lib):
 
     store.create_project(lib, "甲", "051")
     store.create_project(lib, "乙")
-    assert store.load_project(lib, "甲") == {"id": "051"}
-    assert store.load_project(lib, "乙") == {"id": ""}
+    assert store.load_project(lib, "甲") == {"id": "051", "release_date": ""}
+    assert store.load_project(lib, "乙") == {"id": "", "release_date": ""}
     with pytest.raises(StoreError, match="三位"):
         store.save_project_id(lib, "乙", "51")
     with pytest.raises(StoreError, match="已使用"):
         store.save_project_id(lib, "乙", "051")
     assert store.save_project_id(lib, "乙", "052") == "052"
+
+
+def test_project_release_date_round_trip_preservation_and_validation(lib):
+    import bwpdiy.store as store
+
+    create_project(lib, "项目", "051", "20260102")
+    assert store.load_project(lib, "项目") == {"id": "051", "release_date": "20260102"}
+    assert store.save_project_id(lib, "项目", "052") == "052"
+    assert store.load_project(lib, "项目")["release_date"] == "20260102"
+    store.save_project_id(lib, "项目", "052", "")
+    assert store.load_project(lib, "项目") == {"id": "052", "release_date": ""}
+    for bad in ("20260230", "2026-01-02", "202601", 20260102, None):
+        with pytest.raises(StoreError, match="发布日期") as exc:
+            store.save_project_id(lib, "项目", "052", bad)
+        assert exc.value.code == "invalid_data"
+
+
+def test_release_date_only_defaults_new_main_shikigami(lib):
+    create_project(lib, "项目", "051", "20260102")
+    save_card(lib, "项目", "甲", {**SHIKIGAMI, "name": "甲"})
+    assert load_card(lib, "项目", "甲")["version_date"] == "20260102"
+    save_card(lib, "项目", "斩", {**FIGHT, "shikigami": "甲"})
+    assert load_card(lib, "项目", "斩")["version_date"] == TODAY
+    save_card(lib, "项目", "甲", {**SHIKIGAMI, "name": "甲", "id": "105101"})
+    assert load_card(lib, "项目", "甲")["version_date"] == TODAY  # 已有式神不回溯发布日期
+
+    create_project(lib, "无日期")
+    save_card(lib, "无日期", "乙", {**SHIKIGAMI, "name": "乙"})
+    assert load_card(lib, "无日期", "乙")["version_date"] == TODAY
 
 
 def test_token_schema_is_explicit_and_type_scoped():
@@ -168,7 +197,7 @@ def test_auto_id_assigns_missing_shikigami_dependency(lib):
     (shiki_dir / "甲.yaml").write_text(
         yaml.safe_dump({**SHIKIGAMI, "name": "甲"}, allow_unicode=True), encoding="utf-8")
     save_card(lib, "项目", "斩", {**FIGHT, "shikigami": "甲"})
-    assert projects.load_project(lib, "项目") == {"id": "051"}
+    assert projects.load_project(lib, "项目") == {"id": "051", "release_date": ""}
     assert load_card(lib, "项目", "甲")["id"] == "105101"
     assert load_card(lib, "项目", "斩")["id"] == "10510101"
 
@@ -240,7 +269,7 @@ def test_project_id_reuses_gap_for_auto_numbering(lib):
     create_project(lib, "丁")
     delete_project(lib, "乙")
     save_card(lib, "丁", "式神", {**SHIKIGAMI, "name": "式神"})
-    assert store.load_project(lib, "丁") == {"id": "052"}
+    assert store.load_project(lib, "丁") == {"id": "052", "release_date": ""}
     assert load_card(lib, "丁", "式神")["id"] == "105201"
 
 
@@ -310,7 +339,7 @@ def test_dependency_assignment_rolls_back_after_outer_directory_conflict(lib):
     with pytest.raises(StoreError, match="与卡牌类型不符") as exc:
         save_card(lib, "项目", "甲", {**FIGHT, "shikigami": "甲"})
     assert exc.value.code == "already_exists"
-    assert store.load_project(lib, "项目") == {"id": ""}
+    assert store.load_project(lib, "项目") == {"id": "", "release_date": ""}
     assert load_card(lib, "项目", "甲")["id"] == ""
     assert load_card(lib, "项目", "甲@20260201")["id"] == ""
     assert not (lib / "项目" / "cards" / "甲.yaml").exists()
@@ -335,7 +364,7 @@ def test_dependency_assignment_rolls_back_after_outer_write_failure(lib, monkeyp
     monkeypatch.setattr(projects, "_dump_yaml", fail_main)
     with pytest.raises(OSError, match="外层主文件"):
         save_card(lib, "项目", "斩", {**FIGHT, "shikigami": "甲"})
-    assert store.load_project(lib, "项目") == {"id": ""}
+    assert store.load_project(lib, "项目") == {"id": "", "release_date": ""}
     assert load_card(lib, "项目", "甲")["id"] == ""
     assert load_card(lib, "项目", "甲@20260201")["id"] == ""
     assert not (lib / "项目" / "cards" / "斩.yaml").exists()

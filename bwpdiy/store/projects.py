@@ -1,7 +1,7 @@
 """式神项目制卡牌库存取：文件系统即数据库，纯函数 + Path 注入（不依赖 FastAPI）。
 
 目录结构（library/ 为用户数据，gitignore）：
-    library/<项目名>/project.yaml                  项目元数据（全库唯一的三位 ID）
+    library/<项目名>/project.yaml                  项目元数据（三位 ID 与可留空发布日期）
     library/<项目名>/shikigami/<任意文件名>.yaml   式神卡（主要式神上限 MAX_SHIKIGAMI 组）
     library/<项目名>/cards/<任意文件名>.yaml       非式神卡，单项目上限 MAX_CARDS 组
     library/<项目名>/images/                       卡图原图
@@ -225,24 +225,30 @@ def list_projects(library: Path) -> list[str]:
                   if p.is_dir() and p.name.casefold() != MECH_DIR_NAME)
 
 
+def _check_release_date(value) -> str:
+    if not isinstance(value, str) or _validate_version_date(value):
+        raise StoreError("项目发布日期必须是合法的 YYYYMMDD 日期字符串（可留空）", code="invalid_data")
+    return value
+
+
 def load_project(library: Path, project: str) -> dict:
-    """读取项目元数据；缺失或空 project.yaml 视为未设置项目 ID。"""
+    """读取项目元数据；缺失或空 project.yaml 视为未设置 ID 与发布日期。"""
     pdir = _require_project(library, project)
     path = pdir / "project.yaml"
     if not path.is_file():
-        return {"id": ""}
+        return {"id": "", "release_date": ""}
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, OSError) as e:
         raise StoreError(f"项目元数据不是合法的 yaml：{project}", code="invalid_data") from e
     if data is None:
-        return {"id": ""}
+        return {"id": "", "release_date": ""}
     if not isinstance(data, dict):
         raise StoreError(f"项目元数据必须是 yaml 映射：{project}", code="invalid_data")
     project_id = data.get("id", "")
     if not isinstance(project_id, str) or (project_id and not re.fullmatch(r"\d{3}", project_id)):
         raise StoreError(f"项目 ID 必须为空或三位数字字符串：{project}", code="invalid_data")
-    return {"id": project_id}
+    return {"id": project_id, "release_date": _check_release_date(data.get("release_date", ""))}
 
 
 def _project_id_in_use(library: Path, project_id: str, exclude: str) -> bool:
@@ -258,16 +264,22 @@ def _check_project_id(library: Path, project: str, project_id) -> str:
     return project_id
 
 
-def save_project_id(library: Path, project: str, project_id) -> str:
-    """设置全库唯一的三位项目 ID。"""
+_KEEP_RELEASE_DATE = object()
+
+
+def save_project_id(library: Path, project: str, project_id, release_date=_KEEP_RELEASE_DATE) -> str:
+    """设置全库唯一的三位项目 ID；缺省保留发布日期，也可同时更新发布日期。"""
     pdir = _require_project(library, project)
     project_id = _check_project_id(library, project, project_id)
-    _dump_yaml(pdir / "project.yaml", {"id": project_id})
+    if release_date is _KEEP_RELEASE_DATE:
+        release_date = load_project(library, project)["release_date"]
+    release_date = _check_release_date(release_date)
+    _dump_yaml(pdir / "project.yaml", {"id": project_id, "release_date": release_date})
     return project_id
 
 
-def create_project(library: Path, project: str, project_id: str = "") -> Path:
-    """新建空项目骨架与可选三位项目 ID；不出厂默认式神卡。"""
+def create_project(library: Path, project: str, project_id: str = "", release_date: str = "") -> Path:
+    """新建空项目骨架与可选项目 ID/发布日期；不出厂默认式神卡。"""
     pdir = _project_dir(library, project)
     if pdir.exists():
         raise StoreError(f"项目已存在：{project}", code="already_exists")
@@ -275,10 +287,11 @@ def create_project(library: Path, project: str, project_id: str = "") -> Path:
         _check_project_id(library, project, project_id)
     elif not isinstance(project_id, str):
         raise StoreError("项目 ID 必须是三位数字字符串", code="invalid_data")
+    release_date = _check_release_date(release_date)
     (pdir / "cards").mkdir(parents=True)
     (pdir / "images").mkdir()
-    if project_id:
-        _dump_yaml(pdir / "project.yaml", {"id": project_id})
+    if project_id or release_date:
+        _dump_yaml(pdir / "project.yaml", {"id": project_id, "release_date": release_date})
     return pdir
 
 
@@ -483,8 +496,6 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
 def _save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[Path, list[str]]:
     pdir = _require_project(library, project)
     ensure_card_id(library, project, data)
-    if not data.get("version_date"):
-        data["version_date"] = date.today().strftime("%Y%m%d")  # 留空按当前系统日期
     sub = "shikigami" if data["type"] == "式神" and not data.get("shikigami") else "cards"
     other = "cards" if sub == "shikigami" else "shikigami"
     if (pdir / other / f"{card_name}.yaml").is_file():
@@ -492,6 +503,9 @@ def _save_card(library: Path, project: str, card_name: str, data: dict) -> tuple
                          f"请先删除或改名", code="already_exists")
     path = pdir / sub / f"{card_name}.yaml"
     is_new = not path.is_file()
+    if not data.get("version_date"):
+        release_date = load_project(library, project)["release_date"] if is_new and sub == "shikigami" else ""
+        data["version_date"] = release_date or date.today().strftime("%Y%m%d")
     old = _read_yaml(path) if not is_new else None
     legacy_group_key = (_group_key(old) if old and not old.get("id") and data.get("id") else None)
     preserved_legacy_artwork = (_materialize_legacy_artwork(data, old)

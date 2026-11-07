@@ -3869,7 +3869,9 @@ def test_project_save_response_preserves_later_edits(tmp_path):
     discard = _extract_js(script, "async function confirmDiscard()")
     driver = f"""
 const assert = require('node:assert');
-let curProject = 'P', projectData = {{id: '052'}}, savedProjectData = {{id: '051'}};
+let curProject = 'P';
+let projectData = {{id: '052', release_date: '20261231'}};
+let savedProjectData = {{id: '051', release_date: '20261230'}};
 let pDirty = true, projectContentRev = 0, cDirty = false, mDirty = false, metadataRefreshes = 0;
 const cStatusEl = {{textContent: ''}};
 function askBusy() {{ return false; }}
@@ -3877,27 +3879,35 @@ function storageBusy() {{ return false; }}
 function enc(value) {{ return value; }}
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 function showFormErrors() {{}}
+function validDateStr() {{ return true; }}
 async function sessionConfirm() {{ return true; }}
 async function loadProjectIds() {{ metadataRefreshes++; }}
 let resolveFetch;
-function fetch() {{ return new Promise(resolve => {{ resolveFetch = resolve; }}); }}
+const requests = [];
+function fetch(url, options) {{
+  requests.push({{url, options}});
+  return new Promise(resolve => {{ resolveFetch = resolve; }});
+}}
 {save}
 {discard}
 (async () => {{
   const pending = saveProjectId();
   while (!resolveFetch) await Promise.resolve();
+  assert.deepStrictEqual(JSON.parse(requests[0].options.body),
+    {{id: '052', release_date: '20261231'}});
   projectData.id = '053';
+  projectData.release_date = '20270102';
   projectContentRev++;
   pDirty = true;
-  resolveFetch({{ok: true, json: async () => ({{id: '052'}})}});
+  resolveFetch({{ok: true, json: async () => ({{id: '052', release_date: '20261231'}})}});
   await pending;
   assert.strictEqual(metadataRefreshes, 1);
-  assert.strictEqual(projectData.id, '053');
-  assert.deepStrictEqual(savedProjectData, {{id: '052'}});
+  assert.deepStrictEqual(projectData, {{id: '053', release_date: '20270102'}});
+  assert.deepStrictEqual(savedProjectData, {{id: '052', release_date: '20261231'}});
   assert.strictEqual(pDirty, true);
   assert.ok(cStatusEl.textContent.includes('仍未保存'));
   assert.strictEqual(await confirmDiscard(), true);
-  assert.deepStrictEqual(projectData, {{id: '052'}});
+  assert.deepStrictEqual(projectData, {{id: '052', release_date: '20261231'}});
   assert.strictEqual(pDirty, false);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
@@ -4027,6 +4037,100 @@ async function fetch(url) {{
   assert.strictEqual(formData.id, '未重置');
   assert.strictEqual(cardData.id, '基准');
   assert.strictEqual(list.children[0].children[0].children[0].textContent, '(052)');
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_project_form_release_date_shares_dirty_revision(tmp_path):
+    build = _extract_js(_script(), "function buildForm()")
+    driver = f"""
+const assert = require('node:assert');
+let activeAsk = null, curProject = 'P', curMech = null, formData = null;
+let projectData = {{id: '051', release_date: '20261231'}}, pDirty = false, projectContentRev = 0;
+const cStatusEl = {{textContent: ''}};
+const rows = [];
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const div = element('div');
+const document = {{getElementById: () => div, createElement: element}};
+function syncCardFrameButtons() {{}}
+function saveProjectId() {{}}
+function textRow(div, label, value, set) {{ rows.push({{label, value, set}}); }}
+{build}
+buildForm();
+const date = rows.find(row => row.label.includes('发布日期'));
+assert(date);
+assert.strictEqual(date.value, '20261231');
+date.set('20270101');
+rows.find(row => row.label.includes('项目 ID')).set('052');
+assert.strictEqual(projectData.release_date, '20270101');
+assert.strictEqual(projectData.id, '052');
+assert.strictEqual(pDirty, true);
+assert.strictEqual(projectContentRev, 2);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_new_project_submit_includes_release_date(tmp_path):
+    handler = _extract_js(_script(), "document.getElementById('c-new-proj').onclick = async () =>")
+    driver = f"""
+const assert = require('node:assert');
+const button = {{}};
+const document = {{getElementById: () => button}};
+let curProject = null, cDirty = false, pDirty = false;
+async function confirmDiscard() {{ return true; }}
+async function ask() {{ return {{text: 'P', id: '051', release_date: '20261231'}}; }}
+function rejectReservedProjectName() {{ return false; }}
+function listErr() {{}}
+async function loadProjects() {{}}
+const requests = [];
+async function fetch(url, options) {{
+  requests.push({{url, options}});
+  return {{ok: true}};
+}}
+{handler}
+(async () => {{
+  await button.onclick();
+  assert.strictEqual(requests.length, 1);
+  assert.deepStrictEqual(JSON.parse(requests[0].options.body),
+    {{name: 'P', id: '051', release_date: '20261231'}});
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_new_project_ask_has_release_date_input(tmp_path):
+    ask = _extract_js(_script(), "function ask(")
+    driver = f"""
+const assert = require('node:assert');
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', value: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); child.parent = this; return child; }},
+  focus() {{}}, select() {{}}}};
+}}
+const box = element('div'), slot = element('div'), home = element('div');
+const document = {{createElement: element,
+  getElementById: id => id === 'c-ask' ? box : id === 'c-ask-home' ? home : slot}};
+function beginAsk() {{ return true; }}
+function endAsk() {{}}
+{ask}
+(async () => {{
+  const pending = ask({{title: '新项目', target: 'slot', withId: true}});
+  assert.strictEqual(box.children.length, 5);
+  const name = box.children[1], id = box.children[2], release = box.children[3];
+  assert.ok(release.placeholder.includes('YYYYMMDD'));
+  name.value = 'P'; id.value = '051'; release.value = '20261231';
+  box.children[4].children[0].onclick();
+  assert.deepStrictEqual(await pending,
+    {{text: 'P', sel: null, id: '051', release_date: '20261231'}});
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """

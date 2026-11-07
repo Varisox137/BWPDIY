@@ -2,8 +2,8 @@
 let projects = [];
 let projectIds = {};
 let curProject = null;
-let projectData = {id: ''};
-let savedProjectData = {id: ''};
+let projectData = {id: '', release_date: ''};
+let savedProjectData = {id: '', release_date: ''};
 let pDirty = false;
 let projectContentRev = 0;
 let cards = {shikigami: [], cards: []};  // list_cards 结构：两组 [{stem, name}]（name 为 null = 文件损坏）
@@ -117,7 +117,7 @@ async function loadProjects(selectStem = null) {
   buildProjectList();
   if (curProject) { await loadProjectMeta(curProject); await loadCards(selectStem); }
   else {
-    projectData = savedProjectData = {id: ''}; pDirty = false;
+    projectData = savedProjectData = {id: '', release_date: ''}; pDirty = false;
     cards = {shikigami: [], cards: []}; buildCardList(); if (!curMech) clearCard();
   }  // 机制编辑态不抢占右栏
 }
@@ -180,7 +180,7 @@ async function selectProject(p) {
   if (curMech) exitMech();
   mainShiki = null; neutralMode = false;
   curProject = p;
-  projectData = savedProjectData = {id: ''}; pDirty = false;
+  projectData = savedProjectData = {id: '', release_date: ''}; pDirty = false;
   clearCard();
   listErr([]);
   buildProjectList();
@@ -411,11 +411,14 @@ function ask({title, value = '', options = null, selDefault = null, target, with
     const input = document.createElement('input');
     input.type = 'text'; input.value = value;
     box.appendChild(input);
-    let idInput = null;
+    let idInput = null, releaseInput = null;
     if (withId) {
       idInput = document.createElement('input');
       idInput.type = 'text'; idInput.placeholder = '项目 ID（3位，留空自动分配）';
       box.appendChild(idInput);
+      releaseInput = document.createElement('input');
+      releaseInput.type = 'text'; releaseInput.placeholder = '发布日期 YYYYMMDD（可留空）';
+      box.appendChild(releaseInput);
     }
     let sel = null;
     if (options) {
@@ -444,7 +447,10 @@ function ask({title, value = '', options = null, selDefault = null, target, with
     };
     ok.onclick = () => {
       const result = {text: input.value, sel: sel ? sel.value : null};
-      if (withId) result.id = idInput.value.trim();
+      if (withId) {
+        result.id = idInput.value.trim();
+        result.release_date = releaseInput.value.trim();
+      }
       done(result);
     };
     cancel.onclick = () => done(null);
@@ -452,7 +458,7 @@ function ask({title, value = '', options = null, selDefault = null, target, with
       if (ev.key === 'Enter') ok.click();
       if (ev.key === 'Escape') cancel.click();
     };
-    if (idInput) idInput.onkeydown = input.onkeydown;
+    if (idInput) idInput.onkeydown = releaseInput.onkeydown = input.onkeydown;
   });
 }
 
@@ -469,7 +475,8 @@ document.getElementById('c-new-proj').onclick = async () => {
   const r = await ask({title: '新项目名', target: 'c-ask-project', withId: true});
   if (!r || !r.text || rejectReservedProjectName(r.text)) return;
   const resp = await fetch('/api/projects', {method: 'POST',
-    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: r.text, id: r.id})});
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: r.text, id: r.id, release_date: r.release_date})});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   curProject = r.text; cDirty = false; pDirty = false;
   listErr([]);
@@ -1034,14 +1041,19 @@ async function saveProjectId() {
   if (!curProject || askBusy() || storageBusy()) return;
   const project = curProject, rev = projectContentRev;
   const id = (projectData.id || '').trim();
+  const releaseDate = (projectData.release_date || '').trim();
+  if (!validDateStr(releaseDate)) {
+    showFormErrors(['发布日期必须是合法 YYYYMMDD 日期（可留空）']);
+    return;
+  }
   const r = await fetch(`/api/projects/${enc(project)}/meta`, {method: 'PUT',
-    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id})});
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id, release_date: releaseDate})});
   if (curProject !== project) return;
   if (!r.ok) { showFormErrors(await parseErrorDetail(r)); return; }
   const res = await r.json();
   if (curProject !== project) return;
   showFormErrors([]);
-  savedProjectData = {id: res.id};
+  savedProjectData = {id: res.id, release_date: res.release_date};
   await loadProjectIds();
   if (curProject !== project) return;
   if (rev !== projectContentRev) {
@@ -1050,8 +1062,9 @@ async function saveProjectId() {
     return;
   }
   projectData.id = res.id;
+  projectData.release_date = res.release_date;
   pDirty = false;
-  cStatusEl.textContent = '项目 ID 已保存';
+  cStatusEl.textContent = '项目设置已保存';
 }
 
 // ---- 右栏卡牌表单：按类型动态显隐字段，即时校验 + 防抖预览 ----
@@ -1064,10 +1077,14 @@ function buildForm() {
     if (!curProject) { div.textContent = '未选中卡牌'; return; }
     textRow(div, '项目 ID（3位，留空自动分配）', projectData.id ?? '', v => {
       projectData.id = v; pDirty = true; projectContentRev++;
-      cStatusEl.textContent = '项目 ID 未保存';
+      cStatusEl.textContent = '项目设置未保存';
+    });
+    textRow(div, '发布日期（YYYYMMDD，可留空）', projectData.release_date ?? '', v => {
+      projectData.release_date = v; pDirty = true; projectContentRev++;
+      cStatusEl.textContent = '项目设置未保存';
     });
     const save = document.createElement('button');
-    save.textContent = '保存项目 ID';
+    save.textContent = '保存项目设置';
     save.onclick = saveProjectId;
     div.appendChild(save);
     const errors = document.createElement('div');

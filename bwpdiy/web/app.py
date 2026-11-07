@@ -380,7 +380,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     @app.post("/api/projects")
     async def post_project(request: dict):
-        create_project(library_dir, request.get("name"), request.get("id", ""))
+        create_project(library_dir, request.get("name"), request.get("id", ""),
+                       request.get("release_date", ""))
         return {"ok": True}
 
     @app.get("/api/projects/{name}/meta")
@@ -389,8 +390,12 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     @app.put("/api/projects/{name}/meta")
     async def put_project_meta(name: str, request: dict):
-        project_id = save_project_id(library_dir, name, request.get("id"))
-        return {"ok": True, "id": project_id}
+        if "release_date" in request:
+            save_project_id(library_dir, name, request.get("id"), request["release_date"])
+        else:
+            save_project_id(library_dir, name, request.get("id"))
+        saved = load_project(library_dir, name)
+        return {"ok": True, **saved}
 
     @app.put("/api/projects/{name}")
     async def put_project(name: str, request: dict):

@@ -128,17 +128,25 @@ def test_project_create_missing_name_422(client):
 
 
 def test_project_metadata_api(client):
-    assert client.post("/api/projects", json={"name": "项目", "id": "051"}).status_code == 200
-    assert client.get("/api/projects/项目/meta").json() == {"id": "051"}
+    assert client.post("/api/projects", json={
+        "name": "项目", "id": "051", "release_date": "20261231"}).status_code == 200
+    assert client.get("/api/projects/项目/meta").json() == {"id": "051", "release_date": "20261231"}
     r = client.put("/api/projects/项目/meta", json={"id": "052"})
-    assert r.status_code == 200 and r.json()["id"] == "052"
+    assert r.status_code == 200 and r.json() == {"ok": True, "id": "052", "release_date": "20261231"}
+    r = client.put("/api/projects/项目/meta", json={"id": "052", "release_date": "20270101"})
+    assert r.status_code == 200 and r.json()["release_date"] == "20270101"
     assert client.put("/api/projects/项目/meta", json={"id": "52"}).status_code == 422
+    assert client.put("/api/projects/项目/meta", json={
+        "id": "052", "release_date": "20270230"}).status_code == 422
+    assert client.post("/api/projects", json={
+        "name": "坏日期", "release_date": "不是日期"}).status_code == 422
 
 
 def test_save_returns_assigned_id(client):
-    client.post("/api/projects", json={"name": "项目"})
+    client.post("/api/projects", json={"name": "项目", "release_date": "20260102"})
     r = client.put("/api/projects/项目/cards/甲", json=_shikigami_card("甲"))
     assert r.status_code == 200 and r.json()["id"] == "105101"
+    assert client.get("/api/projects/项目/cards/甲").json()["version_date"] == "20260102"
 
 
 def test_upload_uses_current_token_and_returns_id(client, library_dir):

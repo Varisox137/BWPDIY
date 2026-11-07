@@ -1,6 +1,9 @@
 // ================= 卡牌库 tab =================
 let projects = [];
 let curProject = null;
+let projectData = {id: ''};
+let savedProjectData = {id: ''};
+let pDirty = false;
 let cards = {shikigami: [], cards: []};  // list_cards 结构：两组 [{stem, name}]（name 为 null = 文件损坏）
 let curCard = null;    // 当前卡的 stem（文件名，不含扩展名）；卡名以文件内 name 字段为准
 let cardData = null;   // 服务端已保存内容
@@ -97,6 +100,8 @@ async function confirmDiscard() {
   if (askBusy() || storageBusy()) return false;
   if (cDirty && !await sessionConfirm('当前卡牌有未保存修改，切换将丢弃，继续？', 'unsaved')) return false;
   if (mDirty && !await sessionConfirm('当前机制有未保存修改，切换将丢弃，继续？', 'unsaved')) return false;
+  if (pDirty && !await sessionConfirm('项目 ID 有未保存修改，切换将丢弃，继续？', 'unsaved')) return false;
+  if (pDirty) { projectData = deepCopy(savedProjectData); pDirty = false; }
   return true;
 }
 
@@ -107,8 +112,11 @@ async function loadProjects(selectStem = null) {
   projects = await r.json();
   if (!projects.includes(curProject)) curProject = null;
   buildProjectList();
-  if (curProject) await loadCards(selectStem);
-  else { cards = {shikigami: [], cards: []}; buildCardList(); if (!curMech) clearCard(); }  // 机制编辑态不抢占右栏
+  if (curProject) { await loadProjectMeta(curProject); await loadCards(selectStem); }
+  else {
+    projectData = savedProjectData = {id: ''}; pDirty = false;
+    cards = {shikigami: [], cards: []}; buildCardList(); if (!curMech) clearCard();
+  }  // 机制编辑态不抢占右栏
 }
 function fitListHeight(div) {
   const items = div.children;
@@ -129,18 +137,35 @@ function buildProjectList() {
   }
   fitListHeight(div);
 }
+let projectMetaSeq = 0;
+async function loadProjectMeta(project) {
+  const seq = ++projectMetaSeq;
+  let r;
+  try { r = await fetch(`/api/projects/${enc(project)}/meta`); }
+  catch (e) { if (seq === projectMetaSeq) listErr(['项目元数据请求失败: ' + e]); return false; }
+  if (seq !== projectMetaSeq) return false;
+  if (!r.ok) { listErr(await parseErrorDetail(r)); return false; }
+  projectData = await r.json();
+  savedProjectData = deepCopy(projectData);
+  pDirty = false;
+  if (!formData && !curMech) buildForm();
+  return true;
+}
 async function selectProject(p) {
   if (p === curProject || !await confirmDiscard()) return;
-  cDirty = false;
+  if (curMech) exitMech();
   mainShiki = null; neutralMode = false;
   curProject = p;
+  projectData = savedProjectData = {id: ''}; pDirty = false;
+  clearCard();
   listErr([]);
   buildProjectList();
-  await loadCards();
+  await loadProjectMeta(p);
+  await loadCards(null, false);
 }
 
 // ---- 卡牌列表 ----
-async function loadCards(selectStem = null) {
+async function loadCards(selectStem = null, selectFirst = true) {
   let r;
   try { r = await fetch(`/api/projects/${enc(curProject)}/cards`); }
   catch (e) { listErr(['卡牌列表请求失败: ' + e]); return; }
@@ -152,9 +177,9 @@ async function loadCards(selectStem = null) {
   const all = [...cards.shikigami, ...cards.cards];
   const stems = new Set(all.flatMap(c => (c.versions || []).map(v => v.stem)));
   const target = selectStem && stems.has(selectStem) ? selectStem
-    : (all.length ? all[0].stem : null);
+    : (selectFirst && all.length ? all[0].stem : null);
   if (target) await selectCard(target, true);
-  else clearCard();
+  else { clearCard(); buildForm(); }
 }
 // 当前项目式神名列表（所属式神下拉选项来源；损坏文件无 name 不提供）
 function shikigamiNames() {
@@ -348,8 +373,8 @@ document.addEventListener('click', ev => {
     ev.preventDefault(); ev.stopImmediatePropagation(); storageBusy();
   }
 }, true);
-// 通用内联输入条：标题 + 文本框 + 可选下拉（selDefault 默认选中），确定/取消
-function ask({title, value = '', options = null, selDefault = null, target}) {
+// 通用内联输入条：标题 + 文本框 + 可选下拉/项目 ID，确定/取消
+function ask({title, value = '', options = null, selDefault = null, target, withId = false}) {
   return new Promise(resolve => {
     if (!beginAsk(title)) { resolve(null); return; }
     const box = document.getElementById('c-ask');
@@ -362,6 +387,12 @@ function ask({title, value = '', options = null, selDefault = null, target}) {
     const input = document.createElement('input');
     input.type = 'text'; input.value = value;
     box.appendChild(input);
+    let idInput = null;
+    if (withId) {
+      idInput = document.createElement('input');
+      idInput.type = 'text'; idInput.placeholder = '项目 ID（3位，留空自动分配）';
+      box.appendChild(idInput);
+    }
     let sel = null;
     if (options) {
       sel = document.createElement('select');
@@ -387,12 +418,17 @@ function ask({title, value = '', options = null, selDefault = null, target}) {
       document.getElementById('c-ask-home').appendChild(box);
       box.style.display = 'none'; box.innerHTML = ''; resolve(v);
     };
-    ok.onclick = () => done({text: input.value, sel: sel ? sel.value : null});
+    ok.onclick = () => {
+      const result = {text: input.value, sel: sel ? sel.value : null};
+      if (withId) result.id = idInput.value.trim();
+      done(result);
+    };
     cancel.onclick = () => done(null);
     input.onkeydown = ev => {
       if (ev.key === 'Enter') ok.click();
       if (ev.key === 'Escape') cancel.click();
     };
+    if (idInput) idInput.onkeydown = input.onkeydown;
   });
 }
 
@@ -405,12 +441,13 @@ function rejectReservedProjectName(name) {
   return true;
 }
 document.getElementById('c-new-proj').onclick = async () => {
-  const r = await ask({title: '新项目名', target: 'c-ask-project'});
+  if (!await confirmDiscard()) return;
+  const r = await ask({title: '新项目名', target: 'c-ask-project', withId: true});
   if (!r || !r.text || rejectReservedProjectName(r.text)) return;
   const resp = await fetch('/api/projects', {method: 'POST',
-    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: r.text})});
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name: r.text, id: r.id})});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
-  curProject = r.text; cDirty = false;
+  curProject = r.text; cDirty = false; pDirty = false;
   listErr([]);
   await loadProjects();
 };
@@ -942,10 +979,9 @@ async function deleteCurrentVersion() {
     await loadCards(next);
   }
 }
-async function confirmFallbackNaming() {  // 保存/上传卡图前：id 与版本日期未都填写时提示回退口径
+async function confirmFallbackNaming() {  // 保存/上传卡图前：版本日期留空时提示取当天
   const data = curMech ? mechForm : formData;
   const missing = [];
-  if (!curMech && !(data.id || '').trim()) missing.push('id 未填写：配置文件与卡图将回退按卡名命名');
   if (!(data.version_date || '').trim()) missing.push('版本日期留空：保存时将取当前系统日期');
   if (!missing.length) return true;
   return await sessionConfirm(missing.join('\n') + '\n继续？', 'naming');
@@ -968,15 +1004,46 @@ document.querySelectorAll('#c-frame-variants .fv').forEach(b => b.onclick = () =
 });
 syncCardFrameButtons();
 
+async function saveProjectId() {
+  if (!curProject || askBusy() || storageBusy()) return;
+  const project = curProject;
+  const id = (projectData.id || '').trim();
+  const r = await fetch(`/api/projects/${enc(project)}/meta`, {method: 'PUT',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id})});
+  if (curProject !== project) return;
+  if (!r.ok) { showFormErrors(await parseErrorDetail(r)); return; }
+  const res = await r.json();
+  if (curProject !== project) return;
+  projectData.id = res.id;
+  savedProjectData = deepCopy(projectData);
+  pDirty = false;
+  showFormErrors([]);
+  cStatusEl.textContent = '项目 ID 已保存';
+}
+
 // ---- 右栏卡牌表单：按类型动态显隐字段，即时校验 + 防抖预览 ----
 function buildForm() {
   if (activeAsk) return;  // 防止键盘/程序化变更绕过点击锁后销毁未完成输入框
   const div = document.getElementById('c-form');
   div.innerHTML = '';
   syncCardFrameButtons();
-  if (!formData) { div.textContent = '未选中卡牌'; return; }
+  if (!formData) {
+    if (!curProject) { div.textContent = '未选中卡牌'; return; }
+    textRow(div, '项目 ID（3位，留空自动分配）', projectData.id ?? '', v => {
+      projectData.id = v; pDirty = true;
+      cStatusEl.textContent = '项目 ID 未保存';
+    });
+    const save = document.createElement('button');
+    save.textContent = '保存项目 ID';
+    save.onclick = saveProjectId;
+    div.appendChild(save);
+    const errors = document.createElement('div');
+    errors.id = 'c-form-errors';
+    div.appendChild(errors);
+    return;
+  }
   const t = formData.type;
-  // 类型创建时定死；id 可留空（上传卡图按 id 命名、留空回退卡名；改 id 不动已有卡图）；
+  // 类型创建时定死；id 留空由服务端自动分配（改 id 不动已有卡图）；
   // 卡名直接编辑（name 字段，文件名 stem 不在 GUI 改）
   infoRow(div, '类型', t);
   textRow(div, 'id（2/6/8位）', formData.id ?? '', v => setOptText('id', v));
@@ -1012,6 +1079,10 @@ function buildForm() {
       });
     } else {
       shikigamiRow(div, '所属式神', 'shikigami');
+      checkRowC(div, '衍生牌', !!formData.token, v => {
+        if (v) formData.token = true; else delete formData.token;
+        afterEdit(true);
+      });
     }
     textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
   }
@@ -1056,10 +1127,17 @@ function buildForm() {
     guiDebug('artwork.upload.start', `${f.name} (${f.size} bytes, ${f.type || 'unknown'})`);
     if (!await confirmFallbackNaming()) { fileInput.value = ''; return; }
     const seq = selectSeq, project = curProject, stem = curCard, targetForm = formData;
-    const uploadId = formData.id ?? '';
+    const params = new URLSearchParams({filename: f.name, id: targetForm.id ?? ''});
+    params.set('token', targetForm.token === true ? '1' : '0');
+    if (targetForm.type === '协战') {
+      params.set('shikigami1', targetForm.shikigami1 ?? '');
+      params.set('shikigami2', targetForm.shikigami2 ?? '');
+    } else {
+      params.set('shikigami', targetForm.shikigami ?? '');
+    }
     let resp;
     try {
-      resp = await fetch(`/api/projects/${enc(project)}/cards/${enc(stem)}/artwork?filename=${enc(f.name)}&id=${enc(uploadId)}`,
+      resp = await fetch(`/api/projects/${enc(project)}/cards/${enc(stem)}/artwork?${params}`,
         {method: 'POST', headers: {'Content-Type': 'application/octet-stream'}, body: f});
     } catch (e) {
       if (seq === selectSeq) showFormErrors(['上传请求失败: ' + e]);
@@ -1074,7 +1152,9 @@ function buildForm() {
     const res = await resp.json();
     guiDebug('artwork.upload.saved', res.path);
     if (seq !== selectSeq || formData !== targetForm) return;  // 旧上传不得污染新卡/已撤回表单
-    // 上传已写盘：把 artwork 路径并进表单数据（不置脏），避免后续保存用旧值覆盖
+    // 上传已写盘：把最终 id 与 artwork 路径并进当前编辑（不覆盖在途新编辑、不置脏）
+    formData.id = res.id;
+    if (cardData) cardData.id = res.id;
     ensureArtFirst().path = res.path;
     buildForm();  // 重建表单：立即出现卡图定位输入框（原先仅表单构建时按旧 path 条件渲染）
     if (cDirty) scheduleCardPreview(); else cPreviewProject();
@@ -1357,7 +1437,7 @@ function validateCardJS(d) {
     // 协战白名单：shikigami 移除，改为可选 shikigami1/shikigami2（与 store schema 同口径）
     const base = ['level', 'rarity', 'special_type', ...STATS_BY_TYPE[t]];
     if (t === '协战') base.push('shikigami1', 'shikigami2', 'duo_frame');
-    else base.push('shikigami');
+    else base.push('shikigami', 'token');
     base.forEach(f => allowed.add(f));
     if (EVOLVE_TYPES.has(t)) allowed.add('evolve');
     if (FRAME_VARIANT_TYPES.has(t)) allowed.add('frame_variant');
@@ -1414,6 +1494,7 @@ function validateCardJS(d) {
       errors.push(`字段 rarity：非法稀有度「${d.rarity}」，须为 ${RARITIES.join('/')} 之一`);
     }
     if ('evolve' in d && typeof d.evolve !== 'boolean') errors.push('字段 evolve：必须是布尔值（true/false）');
+    if ('token' in d && typeof d.token !== 'boolean') errors.push('字段 token：必须是布尔值（true/false）');
     if ('duo_frame' in d && typeof d.duo_frame !== 'boolean') errors.push('字段 duo_frame：必须是布尔值（true/false）');
     if ('frame_variant' in d && !FRAME_VARIANT_VALUES.has(d.frame_variant)) {
       errors.push(`字段 frame_variant：非法框品「${d.frame_variant}」，须为 ${[...FRAME_VARIANT_VALUES].join('/')} 之一`);
@@ -1475,6 +1556,7 @@ async function saveCard() {
   const res = await r.json();
   if (seq !== selectSeq) return true;  // 已切卡：旧响应不得改写新卡表单/选中态
   if (res.stem) curCard = res.stem;
+  payload.id = res.id;
   cardData = deepCopy(payload);
   if (rev !== contentRev) {  // 保存期间又有编辑：保留新编辑与脏标记，不以旧快照覆盖
     cDirty = true;

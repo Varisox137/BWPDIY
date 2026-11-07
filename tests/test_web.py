@@ -939,7 +939,7 @@ const document = {{getElementById: () => null}};
   const first = saveCard();
   while (!resolveFetch) await Promise.resolve();
   selectSeq++; curCard = 'B'; formData = {{name: 'B'}};
-  resolveFetch({{ok: true, json: async () => ({{stem: 'A', updated: []}})}});
+  resolveFetch({{ok: true, json: async () => ({{stem: 'A', updated: [], id: '10510101'}})}});
   assert.strictEqual(await first, true);
   assert.strictEqual(curCard, 'B');
   assert.strictEqual(formData.name, 'B');
@@ -952,9 +952,9 @@ const document = {{getElementById: () => null}};
   const second = saveCard();
   while (!resolveFetch) await Promise.resolve();
   contentRev++;  // 模拟写盘在途时键盘继续编辑
-  resolveFetch({{ok: true, json: async () => ({{stem: 'A', updated: []}})}});
+  resolveFetch({{ok: true, json: async () => ({{stem: 'A', updated: [], id: '10510101'}})}});
   assert.strictEqual(await second, true);
-  assert.deepStrictEqual(cardData, {{name: 'A'}});
+  assert.deepStrictEqual(cardData, {{name: 'A', id: '10510101'}});
   assert.strictEqual(cDirty, true);
   assert.strictEqual(reloads, 0);
   assert.ok(cStatusEl.textContent.includes('仍未保存'));
@@ -1376,6 +1376,10 @@ assert.ok(validateCardJS({{...ok, duo_frame: '是'}}).some(e => e.includes('duo_
 const battle = {{type: '战斗', name: '斩', level: 2, rarity: 'R', shikigami: '甲',
                 'power+': 1, 'shield+': 1, description: ''}};
 assert.deepStrictEqual(validateCardJS(battle), []);
+assert.deepStrictEqual(validateCardJS({{...battle, token: true}}), []);
+assert.deepStrictEqual(validateCardJS({{...battle, token: false}}), []);
+assert.ok(validateCardJS({{...battle, token: 1}}).some(e => e.includes('token')));
+assert.ok(validateCardJS({{...ok, token: true}}).some(e => e.includes('token') && e.includes('白名单')));
 assert.ok(validateCardJS({{...battle, duo_frame: true}}).some(e => e.includes('白名单')));
 assert.ok(validateCardJS({{...battle, shikigami1: '甲'}}).some(e => e.includes('白名单')));
 assert.ok(validateCardJS({{...battle, name: ''}}).some(e => e.includes('name')));
@@ -3693,6 +3697,37 @@ assert.strictEqual(cardOverrides['战斗'].status, 'shown');
 status.set('');
 assert.strictEqual(cardOverrides['战斗'].status, null);
 assert.strictEqual(dirty, false);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+def test_auto_id_editor_static_contract():
+    cards = (EDITOR_HTML.parent / "editor-cards.js").read_text(encoding="utf-8")
+    main = (EDITOR_HTML.parent / "editor-main.js").read_text(encoding="utf-8")
+    assert "checkRowC(div, '衍生牌'" in cards
+    assert "payload.id = res.id" in cards
+    assert "formData.id = res.id" in cards and "cardData.id = res.id" in cards
+    assert "params.set('token'" in cards
+    for field in ("shikigami", "shikigami1", "shikigami2"):
+        assert f"params.set('{field}'" in cards
+    assert "/meta" in cards and "loadCards(null, false)" in cards
+    assert "c-new-proj').onclick = async () => {\n  if (!await confirmDiscard()) return;" in cards
+    assert "pDirty" in main
+    naming = _extract_js(cards, "async function confirmFallbackNaming()")
+    assert "id 未填写" not in naming
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_project_id_dirty_included_in_unified_unsaved_check(tmp_path):
+    has_unsaved = _extract_js(_script(), "function hasUnsavedChanges()")
+    driver = f"""
+const assert = require('node:assert');
+let dirty = false, singleDirty = false, cDirty = false, mDirty = false, pDirty = true;
+{has_unsaved}
+assert.strictEqual(hasUnsavedChanges(), true);
+pDirty = false;
+assert.strictEqual(hasUnsavedChanges(), false);
 console.log('OK');
 """
     _run_node(tmp_path, driver)

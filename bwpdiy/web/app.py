@@ -43,16 +43,19 @@ from bwpdiy.store import (
     delete_card,
     delete_mechanism,
     delete_project,
+    ensure_card_id,
     list_cards,
     list_mechanisms,
     list_projects,
     load_card,
     load_mechanism,
+    load_project,
     new_card_version,
     new_mechanism_version,
     rename_project,
     save_card,
     save_mechanism,
+    save_project_id,
 )
 from bwpdiy.store.schema import layout_numbers_valid
 from bwpdiy.web.sample_cards import SAMPLE_CARDS
@@ -372,8 +375,17 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
 
     @app.post("/api/projects")
     async def post_project(request: dict):
-        create_project(library_dir, request.get("name"))
+        create_project(library_dir, request.get("name"), request.get("id", ""))
         return {"ok": True}
+
+    @app.get("/api/projects/{name}/meta")
+    def get_project_meta(name: str):
+        return load_project(library_dir, name)
+
+    @app.put("/api/projects/{name}/meta")
+    async def put_project_meta(name: str, request: dict):
+        project_id = save_project_id(library_dir, name, request.get("id"))
+        return {"ok": True, "id": project_id}
 
     @app.put("/api/projects/{name}")
     async def put_project(name: str, request: dict):
@@ -399,7 +411,8 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         # updated 为被更新卡的卡名列表（前端据此提示并刷新列表）；
         # stem 为最终文件名——无 id 卡改名时服务端已把 yaml 重命名为新卡名，前端据此切换选中
         path, updated = save_card(library_dir, project, card, request)
-        return {"ok": True, "updated": updated, "stem": path.stem}
+        saved = load_card(library_dir, project, path.stem)
+        return {"ok": True, "updated": updated, "stem": path.stem, "id": saved["id"]}
 
     @app.post("/api/projects/{project}/cards/{card}/new_version")
     def post_card_new_version(project: str, card: str, request: dict = Body(...)):
@@ -485,9 +498,9 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     async def post_artwork(project: str, card: str, request: Request):
         """上传卡图：裸字节 body + filename 查询参数（只取扩展名）。
 
-        落盘名 = <id 或卡名><ext>（id 字段可留空，留空回退卡名）：对齐 BWPro 按 id 取
-        卡图的约定；同 id/卡名复用同名文件（覆盖写），不同版本不同 id 各自成文。
-        若目标图已被其他卡组引用（如无 id 卡改名后仍引用旧图名），改用 _2/_3 后缀，
+        编号查询参数覆盖当前表单的 id/token/所属字段；空白 ID 先自动补号，再按 <id><ext>
+        落盘，对齐 BWPro 按 id 取卡图的约定；同 id 复用同名文件（覆盖写），不同版本不同 id 各自成文。
+        若目标图已被其他卡组引用，改用 _2/_3 后缀，
         避免新卡上传覆盖旧卡图片；同组多版本仍共享并允许覆盖。
         修改 id 不重命名已有卡图（其他卡可能正引用该文件）；不做旧图清理（孤儿文件用户自理）。
         图片真实性/像素上限在写盘前校验；写盘后走 save_card 更新 artwork.images[0].path
@@ -511,9 +524,21 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
         card_data = load_card(library_dir, project, card)  # 卡牌不存在 → 404；卡名合法性在此校验
         if "id" in request.query_params:
             card_data["id"] = request.query_params["id"]  # 表单当前 id（可尚未保存）
+        if "token" in request.query_params:
+            token = request.query_params["token"]
+            if token not in ("0", "1"):
+                raise HTTPException(422, "token 查询参数只允许 0 或 1")
+            if token == "1":
+                card_data["token"] = True
+            else:
+                card_data.pop("token", None)
+        for field in ("shikigami", "shikigami1", "shikigami2"):
+            if field in request.query_params:
+                card_data[field] = request.query_params[field]
         from bwpdiy.store.projects import _expand_shorthand_id, artwork_file_in_use
         _expand_shorthand_id(library_dir / project, card_data)  # 两位简写与保存同口径展开
-        stem = card_data.get("id") or card_data.get("name", "")
+        ensure_card_id(library_dir, project, card_data)
+        stem = card_data["id"]
         stem = "".join(c for c in str(stem) if c not in '<>:"/\\|?*').strip().rstrip(". ")
         _WIN_RESERVED = {"CON", "PRN", "AUX", "NUL",
                          *(f"COM{i}" for i in range(1, 10)),
@@ -556,7 +581,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             elif old_bytes != data:
                 _atomic_write_bytes(target, old_bytes)  # 同名覆盖：还原原文件内容
             raise
-        return {"ok": True, "path": filename}
+        return {"ok": True, "path": filename, "id": card_data["id"]}
 
     # ---------- 机制 REST（全局共享池 library/mechanisms/，不属任何项目） ----------
 

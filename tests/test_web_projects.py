@@ -55,13 +55,13 @@ def with_today(card):
     return {**card, "version_date": TODAY}
 
 
-def entry(stem, name, vd=TODAY, shiki=None, stats=False, rarity="R", ctype=None):
+def entry(stem, name, vd=TODAY, shiki=None, stats=False, rarity="R", ctype=None, card_id=None):
     version = {"stem": stem, "date": vd}
     if shiki is not None or stats:
         version.update(type=ctype or ("式神" if stats else "战斗"),
                        rarity=None if stats else rarity, shikigami=shiki,
                        shikigami1=None, shikigami2=None)
-    data = {"stem": stem, "name": name, "id": None,
+    data = {"stem": stem, "name": name, "id": card_id,
             "versions": [version], "count": 1,
             "shikigami": shiki, "shikigami1": None, "shikigami2": None}
     if stats:
@@ -118,6 +118,35 @@ def test_project_create_missing_name_422(client):
     assert r.status_code == 422
 
 
+def test_project_metadata_api(client):
+    assert client.post("/api/projects", json={"name": "项目", "id": "051"}).status_code == 200
+    assert client.get("/api/projects/项目/meta").json() == {"id": "051"}
+    r = client.put("/api/projects/项目/meta", json={"id": "052"})
+    assert r.status_code == 200 and r.json()["id"] == "052"
+    assert client.put("/api/projects/项目/meta", json={"id": "52"}).status_code == 422
+
+
+def test_save_returns_assigned_id(client):
+    client.post("/api/projects", json={"name": "项目"})
+    r = client.put("/api/projects/项目/cards/甲", json=_shikigami_card("甲"))
+    assert r.status_code == 200 and r.json()["id"] == "105101"
+
+
+def test_upload_uses_current_token_and_returns_id(client, library_dir):
+    client.post("/api/projects", json={"name": "项目", "id": "051"})
+    client.put("/api/projects/项目/cards/甲", json=_shikigami_card("甲"))
+    (library_dir / "项目" / "cards" / "衍生.yaml").write_text(
+        yaml.safe_dump(_battle_card("衍生", shikigami="甲"), allow_unicode=True), encoding="utf-8")
+    r = client.post("/api/projects/项目/cards/衍生/artwork?filename=a.png&token=1&shikigami=甲",
+                    content=SAMPLE_ART.read_bytes())
+    assert r.status_code == 200
+    assert r.json()["id"] == "10510151"
+    saved = client.get("/api/projects/项目/cards/衍生").json()
+    assert saved["id"] == "10510151"
+    assert saved["artwork"]["images"][0]["path"] == "10510151.png"
+    assert saved["token"] is True
+
+
 def test_project_rename(client):
     client.post("/api/projects", json={"name": "旧名"})
     r = client.put("/api/projects/旧名", json={"new_name": "新名"})
@@ -157,17 +186,19 @@ def project(client):
     return "测试项目"
 
 
-_SHIKI_ENTRY = entry("shikigami", "测试式神", stats=True)
+_SHIKI_ENTRY = entry("shikigami", "测试式神", stats=True, card_id="105101")
 
 
 def test_card_save_and_load_roundtrip(client, project):
     card = _battle_card()
     r = client.put(f"/api/projects/{project}/cards/测试斩", json=card)
-    assert r.status_code == 200 and r.json() == {"ok": True, "updated": [], "stem": "测试斩"}
+    assert r.status_code == 200 and r.json() == {
+        "ok": True, "updated": [], "stem": "测试斩", "id": "10510101"}
     assert client.get(f"/api/projects/{project}/cards").json() == {
-        "shikigami": [_SHIKI_ENTRY], "cards": [entry("测试斩", "测试斩", shiki="测试式神")]}
+        "shikigami": [_SHIKI_ENTRY],
+        "cards": [entry("测试斩", "测试斩", shiki="测试式神", card_id="10510101")]}
     got = client.get(f"/api/projects/{project}/cards/测试斩").json()
-    assert got == with_today(card)
+    assert got == with_today({**card, "id": "10510101"})
 
 
 def test_derived_shikigami_is_card_not_main_shikigami(client, project):
@@ -178,28 +209,33 @@ def test_derived_shikigami_is_card_not_main_shikigami(client, project):
     assert r.status_code == 200
     assert client.get(f"/api/projects/{project}/cards").json() == {
         "shikigami": [_SHIKI_ENTRY],
-        "cards": [entry("召唤物", "召唤物", shiki="测试式神", rarity=None, ctype="式神")],
+        "cards": [entry("召唤物", "召唤物", shiki="测试式神", rarity=None, ctype="式神",
+                        card_id="10510199")],
     }
-    assert client.get(f"/api/projects/{project}/cards/召唤物").json() == with_today(card)
+    assert client.get(f"/api/projects/{project}/cards/召唤物").json() == with_today(
+        {**card, "id": "10510199"})
 
 
-def test_card_rename_without_id_renames_file(client, project):
-    """无 id 卡改名：保存后服务端重命名 yaml，响应 stem 为新文件名。"""
-    client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
+def test_card_rename_without_id_renames_file(client, project, library_dir):
+    """历史无 id 卡改名：保存后服务端重命名 yaml，响应 stem 为新文件名。"""
+    (library_dir / project / "cards" / "测试斩.yaml").write_text(
+        yaml.safe_dump(_battle_card(), allow_unicode=True), encoding="utf-8")
     r = client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card("斩改"))
     assert r.status_code == 200 and r.json()["stem"] == "斩改"
     assert client.get(f"/api/projects/{project}/cards").json()["cards"] == [
-        entry("斩改", "斩改", shiki="测试式神")]
+        entry("斩改", "斩改", shiki="测试式神", card_id="10510101")]
     r2 = client.get(f"/api/projects/{project}/cards/测试斩")
     assert r2.status_code == 404
 
 
-def test_card_list_sorted_by_name(client, project):
-    """list_cards 各组按卡内 name 排序（与文件名脱钩；stem 与名字序相反以排除按文件名排序）。"""
+def test_card_list_sorted_by_id(client, project):
+    """list_cards 各组按自动 ID 排序，与卡名和文件名脱钩。"""
     client.put(f"/api/projects/{project}/cards/stem-a", json=_battle_card("B卡"))
     client.put(f"/api/projects/{project}/cards/stem-b", json=_battle_card("A卡"))
     lst = client.get(f"/api/projects/{project}/cards").json()
-    assert lst["cards"] == [entry("stem-b", "A卡", shiki="测试式神"), entry("stem-a", "B卡", shiki="测试式神")]
+    assert lst["cards"] == [
+        entry("stem-a", "B卡", shiki="测试式神", card_id="10510101"),
+        entry("stem-b", "A卡", shiki="测试式神", card_id="10510102")]
 
 
 def test_card_save_schema_error_422_chinese(client, project):
@@ -217,7 +253,7 @@ def test_card_save_name_decoupled_from_stem(client, project):
     r = client.put(f"/api/projects/{project}/cards/stem-1", json=_battle_card("卡内名"))
     assert r.status_code == 200
     lst = client.get(f"/api/projects/{project}/cards").json()
-    assert lst["cards"] == [entry("stem-1", "卡内名", shiki="测试式神")]
+    assert lst["cards"] == [entry("stem-1", "卡内名", shiki="测试式神", card_id="10510101")]
     assert client.get(f"/api/projects/{project}/cards/stem-1").json()["name"] == "卡内名"
 
 
@@ -226,10 +262,10 @@ def test_card_save_shikigami_rename_syncs_references(client, project):
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
     r = client.put(f"/api/projects/{project}/cards/shikigami", json=_shikigami_card("新名"))
     assert r.status_code == 200
-    assert r.json() == {"ok": True, "updated": ["测试斩"], "stem": "shikigami"}
+    assert r.json() == {"ok": True, "updated": ["测试斩"], "stem": "shikigami", "id": "105102"}
     assert client.get(f"/api/projects/{project}/cards/测试斩").json()["shikigami"] == "新名"
     lst = client.get(f"/api/projects/{project}/cards").json()
-    assert lst["shikigami"] == [entry("shikigami", "新名", stats=True)]
+    assert lst["shikigami"] == [entry("shikigami", "新名", stats=True, card_id="105102")]
 
 
 def test_card_save_shikigami_overwrite(client, project):
@@ -252,7 +288,7 @@ def test_card_save_over_299_forbidden_422(client, project, library_dir):
 
 def test_card_save_reinforce_shikigami12(client, project):
     """协战白名单：shikigami1/shikigami2 可选字符串；旧 shikigami 键已移除（422）。"""
-    card = {"type": "协战", "name": "共鸣", "level": 1, "rarity": "R",
+    card = {"type": "协战", "name": "共鸣", "level": 1, "rarity": "R", "id": "10510121",
             "shikigami1": "测试式神", "shikigami2": "另一式神", "description": "测试描述。"}
     r = client.put(f"/api/projects/{project}/cards/共鸣", json=card)
     assert r.status_code == 200
@@ -566,18 +602,19 @@ def test_encoded_slash_in_path_rejected(client, project):
     assert r.status_code == 404
 
 
-# ---------- 卡图上传（落盘名 = <id 或卡名><ext>） ----------
+# ---------- 卡图上传（落盘名 = <id><ext>） ----------
 
 def test_artwork_upload_roundtrip(client, project, library_dir):
-    """上传合法 png（卡无 id）：落盘 images/<卡名>.png、yaml 写回 artwork.images[0].path、预览可用。"""
+    """上传合法 png：落盘 images/<自动 id>.png、yaml 写回 artwork.images[0].path、预览可用。"""
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
     data = SAMPLE_ART.read_bytes()
     r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=立绘.PNG",
                     content=data)
-    assert r.status_code == 200 and r.json()["path"] == "测试斩.png"  # 扩展名小写化
-    assert _img_files(library_dir, project) == ["测试斩.png"]
+    assert r.status_code == 200 and r.json() == {
+        "ok": True, "path": "10510101.png", "id": "10510101"}  # 扩展名小写化
+    assert _img_files(library_dir, project) == ["10510101.png"]
     card = client.get(f"/api/projects/{project}/cards/测试斩").json()
-    assert card["artwork"]["images"][0]["path"] == "测试斩.png"
+    assert card["artwork"]["images"][0]["path"] == "10510101.png"
     r = client.post(f"/api/projects/{project}/cards/测试斩/preview", json={})
     assert r.status_code == 200 and _assert_tight_card(r)
 
@@ -614,25 +651,29 @@ def test_artwork_upload_preserves_offset_scale_and_keeps_old(client, project, li
     Image.new("RGB", (8, 8)).save(jpg, "JPEG")
     r = client.post(f"/api/projects/{project}/cards/测试斩/artwork?filename=b.jpg",
                     content=jpg.getvalue())
-    assert r.status_code == 200 and r.json()["path"] == "测试斩.jpg"
-    assert _img_files(library_dir, project) == ["测试斩.jpg", "测试斩.png"]  # 旧图保留
+    assert r.status_code == 200 and r.json()["path"] == "10510101.jpg"
+    assert _img_files(library_dir, project) == ["10510101.jpg", "10510101.png"]  # 旧图保留
     got = client.get(f"/api/projects/{project}/cards/测试斩").json()["artwork"]["images"][0]
-    assert got["path"] == "测试斩.jpg" and got["offset_x"] == 5 and got["scale"] == 1.2
+    assert got["path"] == "10510101.jpg" and got["offset_x"] == 5 and got["scale"] == 1.2
 
 
 def _upload_solid(client, project, stem, color):
     buf = BytesIO()
     Image.new("RGB", (16, 16), color).save(buf, "PNG")
-    r = client.post(f"/api/projects/{project}/cards/{stem}/artwork?filename=source.png&id=",
+    r = client.post(f"/api/projects/{project}/cards/{stem}/artwork?filename=source.png",
                     content=buf.getvalue())
     assert r.status_code == 200
     return r.json()["path"]
 
 
 def test_card_rename_without_id_renames_local_artwork(client, project, library_dir):
-    """无 id 卡改名时卡图同步改名，保留独立变换；旧卡名可安全用于新卡。"""
-    client.put(f"/api/projects/{project}/cards/旧名", json=_battle_card("旧名"))
-    assert _upload_solid(client, project, "旧名", (255, 0, 0)) == "旧名.png"
+    """历史无 id 卡改名时卡图同步改名，保留独立变换；旧卡名可安全用于新卡。"""
+    legacy = _battle_card("旧名")
+    legacy["artwork"] = {"images": [{"path": "旧名.png"}]}
+    (library_dir / project / "cards" / "旧名.yaml").write_text(
+        yaml.safe_dump(legacy, allow_unicode=True), encoding="utf-8")
+    images = library_dir / project / "images"
+    Image.new("RGB", (16, 16), (255, 0, 0)).save(images / "旧名.png")
     card = client.get(f"/api/projects/{project}/cards/旧名").json()
     card["name"] = "新名"
     card["artwork"]["images"][0].update(offset_x=17, scale=1.2)
@@ -640,19 +681,23 @@ def test_card_rename_without_id_renames_local_artwork(client, project, library_d
     renamed = client.get(f"/api/projects/{project}/cards/新名").json()
     assert renamed["artwork"]["images"][0] == {
         "path": "新名.png", "offset_x": 17, "scale": 1.2}
-    images = library_dir / project / "images"
     assert Image.open(images / "新名.png").getpixel((0, 0)) == (255, 0, 0)
 
-    client.put(f"/api/projects/{project}/cards/旧名", json=_battle_card("旧名"))
-    assert _upload_solid(client, project, "旧名", (0, 255, 0)) == "旧名.png"
-    assert Image.open(images / "旧名.png").getpixel((0, 0)) == (0, 255, 0)
+    created = client.put(f"/api/projects/{project}/cards/旧名", json=_battle_card("旧名"))
+    new_id = created.json()["id"]
+    assert _upload_solid(client, project, "旧名", (0, 255, 0)) == f"{new_id}.png"
+    assert Image.open(images / f"{new_id}.png").getpixel((0, 0)) == (0, 255, 0)
     assert Image.open(images / "新名.png").getpixel((0, 0)) == (255, 0, 0)
 
 
 def test_card_rename_with_shared_artwork_copies_image(client, project, library_dir):
     """其他卡仍引用原图时，改名卡复制出新图，其他卡路径与内容均不变。"""
-    client.put(f"/api/projects/{project}/cards/共享A", json=_battle_card("共享A"))
-    assert _upload_solid(client, project, "共享A", (255, 0, 0)) == "共享A.png"
+    legacy = _battle_card("共享A")
+    legacy["artwork"] = {"images": [{"path": "共享A.png"}]}
+    (library_dir / project / "cards" / "共享A.yaml").write_text(
+        yaml.safe_dump(legacy, allow_unicode=True), encoding="utf-8")
+    Image.new("RGB", (16, 16), (255, 0, 0)).save(
+        library_dir / project / "images" / "共享A.png")
     other = _battle_card("共享B")
     other["artwork"] = {"images": [{"path": "共享A.png", "offset_x": 22}]}
     client.put(f"/api/projects/{project}/cards/共享B", json=other)
@@ -668,27 +713,26 @@ def test_card_rename_with_shared_artwork_copies_image(client, project, library_d
     assert Image.open(images / "共享A.png").getpixel((0, 0)) == (255, 0, 0)
 
 
-def test_artwork_upload_reused_name_does_not_overwrite_legacy_reference(
+def test_artwork_upload_reused_id_does_not_overwrite_other_reference(
         client, project, library_dir):
-    """旧版遗留的改名卡仍引用旧图名时，新卡上传另分配文件名而非覆盖。"""
-    client.put(f"/api/projects/{project}/cards/旧名", json=_battle_card("旧名"))
-    _upload_solid(client, project, "旧名", (255, 0, 0))
-    card = client.get(f"/api/projects/{project}/cards/旧名").json()
-    card["name"] = "改名卡"
-    client.put(f"/api/projects/{project}/cards/旧名", json=card)
-    card["artwork"]["images"][0]["path"] = "旧名.png"  # 模拟修复前留下的数据
-    client.put(f"/api/projects/{project}/cards/改名卡", json=card)
-    client.put(f"/api/projects/{project}/cards/旧名", json=_battle_card("旧名"))
-    assert _upload_solid(client, project, "旧名", (0, 255, 0)) == "旧名_2.png"
+    """目标图已被其他卡组引用时，新卡上传另分配文件名而非覆盖。"""
+    first = {**_battle_card("原卡"), "id": "100301"}
+    client.put(f"/api/projects/{project}/cards/原卡", json=first)
+    assert _upload_solid(client, project, "原卡", (255, 0, 0)) == "100301.png"
+    other = {**_battle_card("其他卡"), "id": "100301",
+             "artwork": {"images": [{"path": "100301.png"}]}}
+    client.put(f"/api/projects/{project}/cards/其他卡", json=other)
+    client.put(f"/api/projects/{project}/cards/新卡", json={**_battle_card("新卡"), "id": "100301"})
+    assert _upload_solid(client, project, "新卡", (0, 255, 0)) == "100301_2.png"
     images = library_dir / project / "images"
-    assert Image.open(images / "旧名.png").getpixel((0, 0)) == (255, 0, 0)
-    assert Image.open(images / "旧名_2.png").getpixel((0, 0)) == (0, 255, 0)
+    assert Image.open(images / "100301.png").getpixel((0, 0)) == (255, 0, 0)
+    assert Image.open(images / "100301_2.png").getpixel((0, 0)) == (0, 255, 0)
 
 
 def test_artwork_upload_write_failure_preserves_existing_file(client, project, library_dir, monkeypatch):
     """写盘异常不得截断同名旧图；原子替换失败时旧内容原样保留。"""
     client.put(f"/api/projects/{project}/cards/测试斩", json=_battle_card())
-    target = library_dir / project / "images" / "测试斩.png"
+    target = library_dir / project / "images" / "10510101.png"
     target.write_bytes(b"ORIGINAL")
     monkeypatch.setattr("bwpdiy.web.app._atomic_write_bytes",
                         lambda *args: (_ for _ in ()).throw(OSError("模拟磁盘写入失败")))
@@ -725,7 +769,7 @@ def test_artwork_upload_card_not_found_404(client, project):
 # ---------- 协战双式神框预览（_duo 注入） ----------
 
 def _duo_card(**kw):
-    card = {"type": "协战", "name": "共鸣", "level": 1, "rarity": "R",
+    card = {"type": "协战", "name": "共鸣", "level": 1, "rarity": "R", "id": "10510121",
             "shikigami1": "测试式神", "shikigami2": "式神乙",
             "duo_frame": True, "description": "测试描述。"}
     card.update(kw)
@@ -734,9 +778,9 @@ def _duo_card(**kw):
 
 def test_preview_duo_frame_injects_shikigami_art(client, project, library_dir):
     """协战 duo_frame 预览：_duo 按 shikigami1/2 在项目 shikigami/ 按名找式神卡，
-    注入其卡图（缺省 <卡名>.png）与派系；缺式神引用的槽位留空仍渲染成功。"""
+    注入其卡图（缺省 <id>.png）与派系；缺式神引用的槽位留空仍渲染成功。"""
     images = library_dir / project / "images"
-    shutil.copy2(SAMPLE_ART, images / "测试式神.png")  # 槽位1：缺省 <卡名>.png 命中
+    shutil.copy2(SAMPLE_ART, images / "105101.png")  # 槽位1：缺省 <id>.png 命中
     client.put(f"/api/projects/{project}/cards/shiki-b",
                json={"type": "式神", "name": "式神乙", "faction": "苍叶", "power": 2,
                      "health": 5, "artwork": {"images": [{"path": "式神乙.png"}]}})
@@ -781,7 +825,7 @@ def test_portrait_preview_shikigami_200(client, project, library_dir):
     assert empty.status_code == 200 and empty.headers["content-type"] == "image/png"
     images = library_dir / project / "images"
     images.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(SAMPLE_ART, images / "测试式神.png")  # 缺省 <卡名>.png 命中
+    shutil.copy2(SAMPLE_ART, images / "105101.png")  # 缺省 <id>.png 命中
     with_art = client.post(f"/api/projects/{project}/cards/shikigami/portrait_preview", json={})
     assert with_art.status_code == 200 and with_art.content != empty.content
 
@@ -790,15 +834,15 @@ def test_portrait_preview_override_transform(client, project, library_dir):
     """override 合并表单数据：portrait 偏移改变输出；派系标随 faction。"""
     images = library_dir / project / "images"
     images.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(SAMPLE_ART, images / "测试式神.png")
+    shutil.copy2(SAMPLE_ART, images / "105101.png")
     base = client.post(f"/api/projects/{project}/cards/shikigami/portrait_preview", json={})
     moved = client.post(
         f"/api/projects/{project}/cards/shikigami/portrait_preview",
-        json={"card": {**_shikigami_card(), "portrait": {"offset_x": 8, "offset_y": -6}}})
+        json={"card": {**_shikigami_card(), "id": "105101", "portrait": {"offset_x": 8, "offset_y": -6}}})
     assert moved.status_code == 200 and moved.content != base.content
     other_faction = client.post(
         f"/api/projects/{project}/cards/shikigami/portrait_preview",
-        json={"card": {**_shikigami_card(), "faction": "青岚"}})
+        json={"card": {**_shikigami_card(), "id": "105101", "faction": "青岚"}})
     assert other_faction.status_code == 200 and other_faction.content != base.content
 
 
@@ -825,11 +869,11 @@ def test_portrait_preview_frame_toggle(client, project, library_dir):
     """头像框开关：portrait.frame=false 时预览不画斜方框与派系标（输出不同且仍 200）。"""
     images = library_dir / project / "images"
     images.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(SAMPLE_ART, images / "测试式神.png")
+    shutil.copy2(SAMPLE_ART, images / "105101.png")
     framed = client.post(f"/api/projects/{project}/cards/shikigami/portrait_preview", json={})
     bare = client.post(
         f"/api/projects/{project}/cards/shikigami/portrait_preview",
-        json={"card": {**_shikigami_card(), "portrait": {"frame": False}}})
+        json={"card": {**_shikigami_card(), "id": "105101", "portrait": {"frame": False}}})
     assert bare.status_code == 200 and bare.content != framed.content
     assert _png_size(bare)[0] < _png_size(framed)[0]  # 不画框画布更小
 
@@ -1005,13 +1049,13 @@ def test_upload_artwork_uses_form_id(client, project):
                     content=SAMPLE_ART.read_bytes(),
                     headers={"Content-Type": "application/octet-stream"})
     assert r.status_code == 200 and r.json()["path"] == "10010101.png"
-    # 无 id 卡且不带 query：回退卡名命名
+    # 无 id 中立卡且不带 query：保存时已自动编号，上传沿用该 ID
     client.put(f"/api/projects/{project}/cards/无id卡",
                json={"type": "法术", "name": "无id卡", "level": 1, "rarity": "R"})
     r = client.post(f"/api/projects/{project}/cards/无id卡/artwork?filename=a.png",
                     content=SAMPLE_ART.read_bytes(),
                     headers={"Content-Type": "application/octet-stream"})
-    assert r.status_code == 200 and r.json()["path"] == "无id卡.png"
+    assert r.status_code == 200 and r.json()["path"] == "19999999.png"
 
 
 def test_battle_preview_temporary_fields_return_png_without_writes(client, project, library_dir):

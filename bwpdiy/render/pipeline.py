@@ -243,7 +243,8 @@ def _draw_static(canvas, type_layout: dict, card: dict, lib, variant: str):
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
                              obstacle_mask=obstacle_mask, fill=desc_fill,
                              keyword_fill=kw_fill, icon_variant=variant,
-                             inline_faction_style=card.get("inline_faction_style", 1))
+                             inline_faction_style=card.get("inline_faction_style", 1),
+                             text_layout=card.get("text_layout", "smart"))
     # 数值层最后画：描述文本避让数值（掩膜含数值墨迹），数值压在文本之上
     for elem_name, elem in numbered_elems:
         canvas = render_element(canvas, lib, elem_name, elem, card, ctx,

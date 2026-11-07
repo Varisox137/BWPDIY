@@ -145,6 +145,21 @@ def test_render_card_unmatched_brackets_render(assets_dir):
     assert list(plain.getdata()) != list(marked.getdata())
 
 
+def test_render_card_text_layout_default_and_overrides(assets_dir):
+    """管线若缺省 wrap 或忽略字段，外部调用无法获得默认智能排版与三态覆盖。"""
+    text = "贯通，连击。" + "对敌方式神造成2点伤害。" * 4
+    card = _battle_card(text)
+    original = dict(card)
+    default = render_card(card, ASSETS, crop=False)
+    smart = render_card({**card, "text_layout": "smart"}, ASSETS, crop=False)
+    wrap = render_card({**card, "text_layout": "wrap"}, ASSETS, crop=False)
+    off = render_card({**card, "text_layout": "off"}, ASSETS, crop=False)
+    assert default.tobytes() == smart.tobytes()
+    assert default.tobytes() != wrap.tobytes()
+    assert off.tobytes() != wrap.tobytes()
+    assert card == original and card["description"] == text
+
+
 def test_preview_unknown_icon_code_422(tmp_path):
     """未知图标代码仍在预览端报 422（括号不配对已改为字面显示，不再报错）。"""
     client = TestClient(create_app(ASSETS, library_dir=tmp_path / "library"))

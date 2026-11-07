@@ -36,8 +36,10 @@ LEVELS = (1, 2, 3)
 FRAME_VARIANTS = ("norm", "blue", "black", "red")
 LEVEL_COLORS = ("yellow", "cyan", "purple", "red", "blue", "brown", "greyblue", "orange")
 FACTION_STYLES = (1, 2, 3)
+TEXT_LAYOUT_MODES = ("smart", "wrap", "off")
 
-_COMMON_FIELDS = ("type", "name", "id", "description", "version_date", "inline_faction_style")
+_COMMON_FIELDS = ("type", "name", "id", "description", "version_date", "inline_faction_style",
+                  "text_layout")
 _SHIKIGAMI_ONLY = ("faction",)
 # 式神专属可选渲染段字段：portrait 头像设置（{offset_x, offset_y, scale, rotate} 变换 +
 # frame 头像框开关，全可缺省；协战双式神框引用该式神卡图作头像时使用；缺省 0/0/1.0/0/画框）
@@ -250,6 +252,9 @@ def validate_card(data) -> list[str]:
             or data["inline_faction_style"] not in FACTION_STYLES):
         errors.append(f"字段 inline_faction_style：内嵌派系样式必须是整数 "
                       f"{'/'.join(map(str, FACTION_STYLES))} 之一")
+    if "text_layout" in data and data["text_layout"] not in TEXT_LAYOUT_MODES:
+        errors.append(f"字段 text_layout：非法排版模式「{data['text_layout']}」，"
+                      f"须为 {'/'.join(TEXT_LAYOUT_MODES)} 之一")
     # 单卡布局覆盖段：形状校验（键名合法性由渲染层兜底）
     if "layout" in data:
         lay = data["layout"]

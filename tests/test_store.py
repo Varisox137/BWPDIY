@@ -136,6 +136,20 @@ def test_token_schema_is_explicit_and_type_scoped():
     assert any("token" in e for e in validate_card({**FIGHT, "token": 1}))
 
 
+def test_text_layout_schema_and_store_round_trip(lib):
+    """缺少枚举校验会接受拼写错误；保存过滤字段则会丢失用户排版选择。"""
+    for mode in ("smart", "wrap", "off"):
+        assert validate_card({**FIGHT, "text_layout": mode}) == []
+    for bad in ("auto", False, 1, None):
+        assert any("text_layout" in e for e in validate_card({**FIGHT, "text_layout": bad}))
+    mechanism = {"name": "测试", "frame": "skill", "text": "正文", "text_layout": "smart"}
+    assert any("白名单" in e and "text_layout" in e for e in validate_mechanism(mechanism))
+    create_project(lib, "项目")
+    save_card(lib, "项目", "山风", SHIKIGAMI)
+    save_card(lib, "项目", "斩", {**FIGHT, "text_layout": "off"})
+    assert load_card(lib, "项目", "斩")["text_layout"] == "off"
+
+
 def test_ensure_card_id_public_and_in_place(lib):
     import bwpdiy.store as store
 

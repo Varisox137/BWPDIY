@@ -4,6 +4,7 @@ let curProject = null;
 let projectData = {id: ''};
 let savedProjectData = {id: ''};
 let pDirty = false;
+let projectContentRev = 0;
 let cards = {shikigami: [], cards: []};  // list_cards 结构：两组 [{stem, name}]（name 为 null = 文件损坏）
 let curCard = null;    // 当前卡的 stem（文件名，不含扩展名）；卡名以文件内 name 字段为准
 let cardData = null;   // 服务端已保存内容
@@ -456,7 +457,7 @@ document.getElementById('c-ren-proj').onclick = async () => {
   const r = await ask({title: `重命名项目「${curProject}」为`, value: curProject,
     target: 'c-ask-project'});
   if (!r || !r.text || r.text === curProject || rejectReservedProjectName(r.text)) return;
-  if (cDirty && !await sessionConfirm('当前卡牌有未保存修改，项目重命名后将丢弃，继续？', 'unsaved')) return;
+  if (!await confirmDiscard()) return;
   const resp = await fetch(`/api/projects/${enc(curProject)}`, {method: 'PUT',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify({new_name: r.text})});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
@@ -1006,7 +1007,7 @@ syncCardFrameButtons();
 
 async function saveProjectId() {
   if (!curProject || askBusy() || storageBusy()) return;
-  const project = curProject;
+  const project = curProject, rev = projectContentRev;
   const id = (projectData.id || '').trim();
   const r = await fetch(`/api/projects/${enc(project)}/meta`, {method: 'PUT',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id})});
@@ -1014,10 +1015,15 @@ async function saveProjectId() {
   if (!r.ok) { showFormErrors(await parseErrorDetail(r)); return; }
   const res = await r.json();
   if (curProject !== project) return;
+  showFormErrors([]);
+  if (rev !== projectContentRev) {
+    pDirty = true;
+    cStatusEl.textContent = '已保存；此后修改仍未保存';
+    return;
+  }
   projectData.id = res.id;
   savedProjectData = deepCopy(projectData);
   pDirty = false;
-  showFormErrors([]);
   cStatusEl.textContent = '项目 ID 已保存';
 }
 
@@ -1030,7 +1036,7 @@ function buildForm() {
   if (!formData) {
     if (!curProject) { div.textContent = '未选中卡牌'; return; }
     textRow(div, '项目 ID（3位，留空自动分配）', projectData.id ?? '', v => {
-      projectData.id = v; pDirty = true;
+      projectData.id = v; pDirty = true; projectContentRev++;
       cStatusEl.textContent = '项目 ID 未保存';
     });
     const save = document.createElement('button');
@@ -1126,7 +1132,7 @@ function buildForm() {
     if (!f) return;
     guiDebug('artwork.upload.start', `${f.name} (${f.size} bytes, ${f.type || 'unknown'})`);
     if (!await confirmFallbackNaming()) { fileInput.value = ''; return; }
-    const seq = selectSeq, project = curProject, stem = curCard, targetForm = formData;
+    const seq = selectSeq, rev = contentRev, project = curProject, stem = curCard, targetForm = formData;
     const params = new URLSearchParams({filename: f.name, id: targetForm.id ?? ''});
     params.set('token', targetForm.token === true ? '1' : '0');
     if (targetForm.type === '协战') {
@@ -1152,10 +1158,12 @@ function buildForm() {
     const res = await resp.json();
     guiDebug('artwork.upload.saved', res.path);
     if (seq !== selectSeq || formData !== targetForm) return;  // 旧上传不得污染新卡/已撤回表单
-    // 上传已写盘：把最终 id 与 artwork 路径并进当前编辑（不覆盖在途新编辑、不置脏）
-    formData.id = res.id;
-    if (cardData) cardData.id = res.id;
+    // 图片路径必须并入最新表单，避免后续保存丢图；id 只在期间无新编辑时回写
     ensureArtFirst().path = res.path;
+    if (rev === contentRev) {
+      formData.id = res.id;
+      if (cardData) cardData.id = res.id;
+    }
     buildForm();  // 重建表单：立即出现卡图定位输入框（原先仅表单构建时按旧 path 条件渲染）
     if (cDirty) scheduleCardPreview(); else cPreviewProject();
   };

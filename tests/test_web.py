@@ -3731,3 +3731,153 @@ assert.strictEqual(hasUnsavedChanges(), false);
 console.log('OK');
 """
     _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_upload_response_preserves_later_edits_but_merges_artwork(tmp_path):
+    script = _script()
+    build = _extract_js(script, "function buildForm()")
+    ensure_art = _extract_js(script, "function ensureArtFirst()")
+    driver = f"""
+const assert = require('node:assert');
+let activeAsk = null, curProject = 'P', curCard = 'A', curMech = null;
+let selectSeq = 0, contentRev = 0, cDirty = false;
+let formData = {{type: '战斗', name: '斩', id: '01', shikigami: '甲',
+  level: 1, rarity: 'R', description: '', artwork: {{images: [{{offset_x: 7}}]}}}};
+let cardData = {{id: '10510101'}};
+const cStatusEl = {{textContent: ''}};
+const extOptions = {{marker: false, layout: false}};
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', value: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const div = element('div');
+const document = {{getElementById: () => div, createElement: element}};
+function syncCardFrameButtons() {{}}
+function infoRow() {{}}
+function textRow() {{}}
+function versionRows() {{}}
+function levelRow() {{}}
+function shikigamiRow() {{}}
+function numRowC() {{}}
+function artRow() {{}}
+function isMainShikigami() {{ return false; }}
+function rarityOptions() {{ return ['R']; }}
+function selRowC() {{}}
+function checkRowC() {{}}
+function showFormErrors() {{}}
+function validateCardJS() {{ return []; }}
+function undoAll() {{}}
+function undoLast() {{}}
+function saveCard() {{}}
+function openExport() {{}}
+function askBusy() {{ return false; }}
+function storageBusy() {{ return false; }}
+function guiDebug() {{}}
+async function confirmFallbackNaming() {{ return true; }}
+function enc(value) {{ return value; }}
+let resolveFetch;
+const requests = [];
+function fetch(url, options) {{
+  requests.push({{url, options}});
+  return new Promise(resolve => {{ resolveFetch = resolve; }});
+}}
+function scheduleCardPreview() {{}}
+function cPreviewProject() {{}}
+const EVOLVE_TYPES = new Set(['战斗']);
+const NONNEG_TYPES = new Set();
+const STATS_BY_TYPE = {{战斗: []}};
+const STAT_MATRIX = {{战斗: {{}}}};
+{ensure_art}
+{build}
+function findFileInput(node) {{
+  if (node.type === 'file') return node;
+  for (const child of node.children) {{ const found = findFileInput(child); if (found) return found; }}
+  return null;
+}}
+(async () => {{
+  buildForm();
+  const input = findFileInput(div);
+  input.files = [{{name: 'a.png', size: 1, type: 'image/png'}}];
+  const pending = input.onchange();
+  while (!resolveFetch) await Promise.resolve();
+  formData.id = '02';
+  formData.name = '上传期间的新编辑';
+  contentRev++;
+  cDirty = true;
+  resolveFetch({{ok: true, json: async () => ({{path: '10510101.png', id: '10510101'}})}});
+  await pending;
+  assert.strictEqual(formData.id, '02');
+  assert.strictEqual(formData.name, '上传期间的新编辑');
+  assert.strictEqual(cDirty, true);
+  assert.deepStrictEqual(formData.artwork.images[0],
+    {{offset_x: 7, path: '10510101.png'}});
+  assert.ok(requests[0].url.includes('id=01'));
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_project_save_response_preserves_later_edits(tmp_path):
+    save = _extract_js(_script(), "async function saveProjectId()")
+    driver = f"""
+const assert = require('node:assert');
+let curProject = 'P', projectData = {{id: '052'}}, savedProjectData = {{id: '051'}};
+let pDirty = true, projectContentRev = 0;
+const cStatusEl = {{textContent: ''}};
+function askBusy() {{ return false; }}
+function storageBusy() {{ return false; }}
+function enc(value) {{ return value; }}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function showFormErrors() {{}}
+let resolveFetch;
+function fetch() {{ return new Promise(resolve => {{ resolveFetch = resolve; }}); }}
+{save}
+(async () => {{
+  const pending = saveProjectId();
+  while (!resolveFetch) await Promise.resolve();
+  projectData.id = '053';
+  projectContentRev++;
+  pDirty = true;
+  resolveFetch({{ok: true, json: async () => ({{id: '052'}})}});
+  await pending;
+  assert.strictEqual(projectData.id, '053');
+  assert.deepStrictEqual(savedProjectData, {{id: '051'}});
+  assert.strictEqual(pDirty, true);
+  assert.ok(cStatusEl.textContent.includes('仍未保存'));
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_project_rename_uses_unified_dirty_guard(tmp_path):
+    handler = _extract_js(_script(), "document.getElementById('c-ren-proj').onclick = async () =>")
+    driver = f"""
+const assert = require('node:assert');
+const button = {{}};
+const document = {{getElementById: () => button}};
+let curProject = 'P', curCard = null, cDirty = false, pDirty = true;
+let guards = 0;
+const requests = [];
+async function ask() {{ return {{text: 'Q'}}; }}
+function rejectReservedProjectName() {{ return false; }}
+async function confirmDiscard() {{ guards++; return false; }}
+async function sessionConfirm() {{ throw new Error('应使用统一检查'); }}
+function enc(value) {{ return value; }}
+async function fetch(url) {{ requests.push(url); return {{ok: true}}; }}
+function listErr() {{}}
+async function loadProjects() {{}}
+{handler}
+(async () => {{
+  await button.onclick();
+  assert.strictEqual(guards, 1);
+  assert.deepStrictEqual(requests, []);
+  assert.strictEqual(curProject, 'P');
+  assert.strictEqual(pDirty, true);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)

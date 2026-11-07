@@ -67,6 +67,163 @@ def lib(tmp_path):
 
 # ---------- 项目 CRUD ----------
 
+def test_project_id_round_trip_and_unique(lib):
+    import bwpdiy.store as store
+
+    store.create_project(lib, "甲", "051")
+    store.create_project(lib, "乙")
+    assert store.load_project(lib, "甲") == {"id": "051"}
+    assert store.load_project(lib, "乙") == {"id": ""}
+    with pytest.raises(StoreError, match="三位"):
+        store.save_project_id(lib, "乙", "51")
+    with pytest.raises(StoreError, match="已使用"):
+        store.save_project_id(lib, "乙", "051")
+    assert store.save_project_id(lib, "乙", "052") == "052"
+
+
+def test_token_schema_is_explicit_and_type_scoped():
+    assert validate_card({**FIGHT, "token": True}) == []
+    assert any("白名单" in e for e in validate_card({**SHIKIGAMI, "token": True}))
+    assert any("token" in e for e in validate_card({**FIGHT, "token": 1}))
+
+
+def test_ensure_card_id_public_and_in_place(lib):
+    import bwpdiy.store as store
+
+    store.create_project(lib, "项目")
+    data = {**SHIKIGAMI, "name": "甲"}
+    assert store.ensure_card_id(lib, "项目", data) == "05101"
+    assert data["id"] == "05101"
+
+
+def test_auto_id_ranges_and_gap_reuse(lib):
+    create_project(lib, "项目")
+    save_card(lib, "项目", "甲", {**SHIKIGAMI, "name": "甲"})
+    save_card(lib, "项目", "乙", {**SHIKIGAMI, "name": "乙"})
+    assert load_card(lib, "项目", "甲")["id"] == "05101"
+    assert load_card(lib, "项目", "乙")["id"] == "05102"
+    save_card(lib, "项目", "斩", {**FIGHT, "shikigami": "甲"})
+    save_card(lib, "项目", "衍生", {**FIGHT, "name": "衍生", "shikigami": "甲", "token": True})
+    summon = {**SHIKIGAMI, "name": "召唤", "shikigami": "甲"}
+    save_card(lib, "项目", "召唤", summon)
+    assert load_card(lib, "项目", "斩")["id"] == "0510101"
+    assert load_card(lib, "项目", "衍生")["id"] == "0510151"
+    assert load_card(lib, "项目", "召唤")["id"] == "0510199"
+
+    save_card(lib, "项目", "丙", {**SHIKIGAMI, "name": "丙"})
+    assert load_card(lib, "项目", "丙")["id"] == "05103"
+    delete_card(lib, "项目", "乙")
+    save_card(lib, "项目", "丁", {**SHIKIGAMI, "name": "丁"})
+    assert load_card(lib, "项目", "丁")["id"] == "05102"
+
+
+def test_auto_id_neutral_and_shared_derivative_range(lib):
+    create_project(lib, "项目", "051")
+    save_card(lib, "项目", "中立", {**FIGHT, "name": "中立", "shikigami": ""})
+    assert load_card(lib, "项目", "中立")["id"] == "19999999"
+    save_card(lib, "项目", "甲", {**SHIKIGAMI, "name": "甲"})
+    save_card(lib, "项目", "衍生一", {**FIGHT, "name": "衍生一", "shikigami": "甲", "token": True})
+    save_card(lib, "项目", "召唤一", {**SHIKIGAMI, "name": "召唤一", "shikigami": "甲"})
+    save_card(lib, "项目", "衍生二", {**FIGHT, "name": "衍生二", "shikigami": "甲", "token": True})
+    save_card(lib, "项目", "召唤二", {**SHIKIGAMI, "name": "召唤二", "shikigami": "甲"})
+    assert load_card(lib, "项目", "衍生一")["id"] == "0510151"
+    assert load_card(lib, "项目", "召唤一")["id"] == "0510199"
+    assert load_card(lib, "项目", "衍生二")["id"] == "0510152"
+    assert load_card(lib, "项目", "召唤二")["id"] == "0510198"
+
+
+def test_auto_id_assist_uses_smaller_shikigami_prefix(lib):
+    create_project(lib, "项目", "051")
+    save_card(lib, "项目", "薰", {**SHIKIGAMI, "name": "薰"})
+    save_card(lib, "项目", "山风", SHIKIGAMI)
+    assert load_card(lib, "项目", "薰")["id"] == "05101"
+    assert load_card(lib, "项目", "山风")["id"] == "05102"
+    save_card(lib, "项目", "鸮羽共鸣", ASSIST)
+    assert load_card(lib, "项目", "鸮羽共鸣")["id"] == "0510121"
+
+
+def test_auto_id_assist_compares_prefixes_numerically(lib):
+    create_project(lib, "项目", "999")
+    save_card(lib, "项目", "甲", {**SHIKIGAMI, "name": "甲"})
+    save_card(lib, "项目", "乙", {**SHIKIGAMI, "name": "乙", "id": "100000"})
+    save_card(lib, "项目", "协战", {
+        **ASSIST, "name": "协战", "shikigami1": "乙", "shikigami2": "甲"})
+    assert load_card(lib, "项目", "协战")["id"] == "9990121"
+
+
+def test_auto_id_assigns_missing_shikigami_dependency(lib):
+    from bwpdiy.store import projects
+
+    create_project(lib, "项目")
+    shiki_dir = lib / "项目" / "shikigami"
+    shiki_dir.mkdir()
+    (shiki_dir / "甲.yaml").write_text(
+        yaml.safe_dump({**SHIKIGAMI, "name": "甲"}, allow_unicode=True), encoding="utf-8")
+    save_card(lib, "项目", "斩", {**FIGHT, "shikigami": "甲"})
+    assert projects.load_project(lib, "项目") == {"id": "051"}
+    assert load_card(lib, "项目", "甲")["id"] == "05101"
+    assert load_card(lib, "项目", "斩")["id"] == "0510101"
+
+
+def test_auto_id_rejects_missing_or_invalid_shikigami(lib):
+    create_project(lib, "项目", "051")
+    with pytest.raises(StoreError, match="所属式神") as exc:
+        save_card(lib, "项目", "斩", FIGHT)
+    assert exc.value.code == "invalid_data"
+    assert not (lib / "项目" / "cards" / "斩.yaml").exists()
+    save_card(lib, "项目", "山风", {**SHIKIGAMI, "id": "手动"})
+    with pytest.raises(StoreError, match="六位") as exc:
+        save_card(lib, "项目", "斩", FIGHT)
+    assert exc.value.code == "invalid_data"
+    save_card(lib, "项目", "薰", {**SHIKIGAMI, "name": "薰", "id": "1234"})
+    with pytest.raises(StoreError, match="六位") as exc:
+        save_card(lib, "项目", "烈", {**SPELL, "shikigami": "薰"})
+    assert exc.value.code == "invalid_data"
+
+
+def test_auto_id_scans_all_projects_and_ignores_broken_yaml(lib):
+    create_project(lib, "甲", "051")
+    create_project(lib, "乙", "052")
+    neutral = {**FIGHT, "name": "中立", "shikigami": ""}
+    save_card(lib, "甲", "中立", neutral)
+    (lib / "乙" / "cards" / "坏.yaml").write_text("a: [未闭合", encoding="utf-8")
+    save_card(lib, "乙", "中立", neutral)
+    assert load_card(lib, "甲", "中立")["id"] == "19999999"
+    assert load_card(lib, "乙", "中立")["id"] == "19999998"
+
+
+def test_auto_id_synchronizes_legacy_blank_id_versions(lib):
+    create_project(lib, "项目", "051")
+    shiki_dir = lib / "项目" / "shikigami"
+    shiki_dir.mkdir()
+    for version_date in ("20260101", "20260201"):
+        data = {**SHIKIGAMI, "name": "甲", "id": "", "version_date": version_date}
+        (shiki_dir / f"甲@{version_date}.yaml").write_text(
+            yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    data = load_card(lib, "项目", "甲@20260201")
+    save_card(lib, "项目", "甲@20260201", data)
+    assert load_card(lib, "项目", "甲@20260101")["id"] == "05101"
+    assert load_card(lib, "项目", "甲@20260201")["id"] == "05101"
+    listed = list_cards(lib, "项目")["shikigami"]
+    assert len(listed) == 1 and listed[0]["count"] == 2 and listed[0]["id"] == "05101"
+
+
+def test_manual_id_synchronizes_legacy_blank_id_versions(lib):
+    create_project(lib, "项目", "051")
+    shiki_dir = lib / "项目" / "shikigami"
+    shiki_dir.mkdir()
+    for version_date in ("20260101", "20260201"):
+        data = {**SHIKIGAMI, "name": "甲", "id": "", "version_date": version_date}
+        (shiki_dir / f"甲@{version_date}.yaml").write_text(
+            yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    data = {**load_card(lib, "项目", "甲@20260201"), "id": "123456"}
+    save_card(lib, "项目", "甲@20260201", data)
+    assert load_card(lib, "项目", "甲@20260101")["id"] == "123456"
+    assert load_card(lib, "项目", "甲@20260201")["id"] == "123456"
+    listed = list_cards(lib, "项目")["shikigami"]
+    assert len(listed) == 1 and listed[0]["count"] == 2 and listed[0]["id"] == "123456"
+
+
 def test_create_and_list_projects(lib):
     create_project(lib, "山风")
     create_project(lib, "鸩")
@@ -90,10 +247,11 @@ def test_create_project_duplicate(lib):
 
 def test_rename_project(lib):
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", FIGHT)
+    card = {**FIGHT, "shikigami": ""}
+    save_card(lib, "山风", "斩", card)
     rename_project(lib, "山风", "岚")
     assert list_projects(lib) == ["岚"]
-    assert load_card(lib, "岚", "斩") == with_today(FIGHT)
+    assert load_card(lib, "岚", "斩") == {**with_today(card), "id": "19999999"}
 
 
 def test_rename_project_errors(lib):
@@ -183,34 +341,37 @@ def test_project_dir_not_escape(lib):
 
 def test_card_round_trip(lib):
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", FIGHT)
-    assert list_cards(lib, "山风") == {"shikigami": [], "cards": [entry("斩", "斩", shiki="山风")]}
-    assert load_card(lib, "山风", "斩") == with_today(FIGHT)
+    card = {**FIGHT, "shikigami": ""}
+    save_card(lib, "山风", "斩", card)
+    assert list_cards(lib, "山风") == {
+        "shikigami": [], "cards": [entry("斩", "斩", cid="19999999", shiki="")]}
+    assert load_card(lib, "山风", "斩") == {**with_today(card), "id": "19999999"}
 
 
 def test_list_cards_reads_name_and_sorts(lib):
     """列表 name 取自文件内容；各组按 name 排序，损坏/非映射文件 name=None 仍列出且排最后。"""
     create_project(lib, "山风")
+    save_card(lib, "山风", "100307", SHIKIGAMI)        # name=山风
     save_card(lib, "山风", "10030701", FIGHT)          # name=斩
     save_card(lib, "山风", "10030702", SPELL)          # name=烈
-    save_card(lib, "山风", "100307", SHIKIGAMI)        # name=山风
     (lib / "山风" / "cards" / "坏.yaml").write_text("- 这不是映射", encoding="utf-8")
     listed = list_cards(lib, "山风")
-    assert listed["shikigami"] == [entry("100307", "山风", stats=True)]
+    assert listed["shikigami"] == [entry("100307", "山风", cid="05101", stats=True)]
     assert listed["cards"] == [
-        entry("10030701", "斩", shiki="山风"),
-        entry("10030702", "烈", shiki="山风", rarity="SR", ctype="法术"),
+        entry("10030701", "斩", cid="0510101", shiki="山风"),
+        entry("10030702", "烈", cid="0510102", shiki="山风", rarity="SR", ctype="法术"),
         entry("坏", None, vd=""),
     ]
 
 
 def test_save_preserves_unicode_and_key_order(lib):
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", FIGHT)
+    card = {**FIGHT, "shikigami": ""}
+    save_card(lib, "山风", "斩", card)
     text = (lib / "山风" / "cards" / "斩.yaml").read_text(encoding="utf-8")
     assert "斩" in text and "\\u" not in text  # 中文不转义
     keys = [line.split(":")[0] for line in text.splitlines() if line and not line.startswith(" ")]
-    assert keys == [*FIGHT.keys(), "version_date"]  # 键序稳定（插入序；日期保存时追加）
+    assert keys == [*card.keys(), "id", "version_date"]  # 自动 id 与日期按保存顺序追加
 
 
 def test_load_card_missing(lib):
@@ -280,7 +441,7 @@ def test_store_error_codes(lib):
 
 def test_delete_card(lib):
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", FIGHT)
+    save_card(lib, "山风", "斩", {**FIGHT, "shikigami": ""})
     delete_card(lib, "山风", "斩")
     assert list_cards(lib, "山风")["cards"] == []
     with pytest.raises(StoreError, match="不存在"):
@@ -310,16 +471,16 @@ def test_save_card_type_dispatches_directory(lib):
     # 同名文件已存在于另一目录（类型与目录不符）→ 报错指引
     with pytest.raises(StoreError, match="与卡牌类型不符"):
         save_card(lib, "山风", "100307", {**FIGHT, "shikigami": "山风"})
-    assert load_card(lib, "山风", "100307") == with_today(SHIKIGAMI)  # 未被覆盖
+    assert load_card(lib, "山风", "100307") == {**with_today(SHIKIGAMI), "id": "05101"}  # 未被覆盖
 
 
 def test_save_card_name_ne_stem(lib):
     """name==文件名强制校验已删除：文件名任意，卡名以文件内容为准。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "10030701", {**FIGHT, "name": "突"})
+    save_card(lib, "山风", "10030701", {**FIGHT, "name": "突", "shikigami": ""})
     assert load_card(lib, "山风", "10030701")["name"] == "突"
     listed = list_cards(lib, "山风")["cards"]
-    assert listed == [entry("10030701", "突", shiki="山风")]
+    assert listed == [entry("10030701", "突", cid="19999999", shiki="")]
 
 
 def test_save_card_validates_schema(lib):
@@ -371,9 +532,9 @@ def test_shikigami_name_unique(lib):
     with pytest.raises(SchemaError, match="唯一"):
         save_card(lib, "山风", "200307", {**SHIKIGAMI, "id": "200307"})  # 跨组同名拒绝
     # 同组（id+name 均相同）另一文件：视作多版本，允许
-    save_card(lib, "山风", "100307@20260102", with_today(SHIKIGAMI))
+    save_card(lib, "山风", "100307@20260102", {**with_today(SHIKIGAMI), "id": "05101"})
     # 同名覆盖自身（同 stem）不冲突
-    save_card(lib, "山风", "100307", {**SHIKIGAMI, "power": 4})
+    save_card(lib, "山风", "100307", {**SHIKIGAMI, "id": "05101", "power": 4})
     assert load_card(lib, "山风", "100307")["power"] == 4
 
 
@@ -404,14 +565,16 @@ def test_rename_cascade_only_for_shikigami(lib):
     save_card(lib, "山风", "斩", FIGHT)
     _, updated = save_card(lib, "山风", "斩", {**FIGHT, "name": "斩改"})
     assert updated == []
-    assert load_card(lib, "山风", "100307") == with_today(SHIKIGAMI)
+    assert load_card(lib, "山风", "100307") == {**with_today(SHIKIGAMI), "id": "05101"}
 
 
 def test_rename_card_renames_file_without_id(lib):
-    """无 id 且文件按卡名回退命名（stem == 旧卡名）：改名同步重命名 yaml。"""
+    """旧文件无 id 且按卡名命名：自动补 id 后改名仍同步重命名 yaml。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", FIGHT)
-    path, _ = save_card(lib, "山风", "斩", {**FIGHT, "name": "斩改"})
+    card = {**FIGHT, "shikigami": ""}
+    (lib / "山风" / "cards" / "斩.yaml").write_text(
+        yaml.safe_dump(card, allow_unicode=True), encoding="utf-8")
+    path, _ = save_card(lib, "山风", "斩", {**card, "name": "斩改"})
     assert path.name == "斩改.yaml"
     assert not (lib / "山风" / "cards" / "斩.yaml").exists()
     assert load_card(lib, "山风", "斩改")["name"] == "斩改"
@@ -427,38 +590,46 @@ def test_rename_card_with_id_keeps_stem(lib):
 
 
 def test_rename_card_custom_stem_kept(lib):
-    """文件名本就和卡名脱钩（数字 stem 无 id）：改名不重命名。"""
+    """旧文件无 id 但文件名本就和卡名脱钩：改名不重命名。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "100301", FIGHT)  # stem 100301 ≠ 卡名 斩
-    path, _ = save_card(lib, "山风", "100301", {**FIGHT, "name": "斩改"})
+    card = {**FIGHT, "shikigami": ""}
+    (lib / "山风" / "cards" / "100301.yaml").write_text(
+        yaml.safe_dump(card, allow_unicode=True), encoding="utf-8")
+    path, _ = save_card(lib, "山风", "100301", {**card, "name": "斩改"})
     assert path.name == "100301.yaml"
 
 
 def test_rename_card_file_conflict(lib):
     """无 id 改名的目标文件名已存在：报 SchemaError，原文件不动。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", FIGHT)
-    save_card(lib, "山风", "突", {**FIGHT, "name": "突"})
+    card = {**FIGHT, "shikigami": ""}
+    for stem, data in (("斩", card), ("突", {**card, "name": "突"})):
+        (lib / "山风" / "cards" / f"{stem}.yaml").write_text(
+            yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     with pytest.raises(SchemaError, match="已存在"):
-        save_card(lib, "山风", "斩", {**FIGHT, "name": "突"})
+        save_card(lib, "山风", "斩", {**card, "name": "突"})
     assert load_card(lib, "山风", "斩")["name"] == "斩"
 
 
 def test_rename_card_illegal_name(lib):
     """无 id 改名但新卡名不是合法文件名：报 SchemaError 并指引填写 id，不落盘。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", FIGHT)
+    card = {**FIGHT, "shikigami": ""}
+    (lib / "山风" / "cards" / "斩.yaml").write_text(
+        yaml.safe_dump(card, allow_unicode=True), encoding="utf-8")
     with pytest.raises(SchemaError, match="id"):
-        save_card(lib, "山风", "斩", {**FIGHT, "name": "斩:改"})
+        save_card(lib, "山风", "斩", {**card, "name": "斩:改"})
     assert load_card(lib, "山风", "斩")["name"] == "斩"  # 原文件内容不变
 
 
 def test_rename_conflict_keeps_references_intact(lib):
     """式神改名但重命名目标冲突：报错时引用联动不得先行落盘（悬空引用回归）。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "山风", SHIKIGAMI)                      # 文件按卡名回退命名
+    (lib / "山风" / "shikigami").mkdir()
+    (lib / "山风" / "shikigami" / "山风.yaml").write_text(
+        yaml.safe_dump(SHIKIGAMI, allow_unicode=True), encoding="utf-8")
     save_card(lib, "山风", "岚", {**SHIKIGAMI, "name": "薰"})      # 占用目标文件名（卡名不同）
-    save_card(lib, "山风", "斩", FIGHT)                            # shikigami: 山风
+    save_card(lib, "山风", "斩", {**FIGHT, "id": "12345678"})     # 手动 id，不触发依赖补号
     with pytest.raises(SchemaError, match="已存在"):
         save_card(lib, "山风", "山风", {**SHIKIGAMI, "name": "岚"})
     assert load_card(lib, "山风", "斩")["shikigami"] == "山风"      # 引用未被先行改写
@@ -472,8 +643,10 @@ def test_rename_conflict_keeps_references_intact(lib):
 def test_rename_card_case_only(lib):
     """纯大小写改名（Windows 大小写不敏感）不误判自身为冲突。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "zhan", {**FIGHT, "name": "zhan"})
-    path, _ = save_card(lib, "山风", "zhan", {**FIGHT, "name": "Zhan"})
+    card = {**FIGHT, "name": "zhan", "shikigami": ""}
+    (lib / "山风" / "cards" / "zhan.yaml").write_text(
+        yaml.safe_dump(card, allow_unicode=True), encoding="utf-8")
+    path, _ = save_card(lib, "山风", "zhan", {**card, "name": "Zhan"})
     assert load_card(lib, "山风", path.stem)["name"] == "Zhan"
 
 
@@ -617,7 +790,7 @@ MECH_SEAL = {"name": "加护", "frame": "seal", "text": "恢复2点生命。", "
 @pytest.mark.parametrize("style", [1, 2, 3])
 def test_inline_faction_style_store_round_trip(lib, style):
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", {**FIGHT, "inline_faction_style": style})
+    save_card(lib, "山风", "斩", {**FIGHT, "shikigami": "", "inline_faction_style": style})
     save_mechanism(lib, "蛊蚀", {**MECH, "inline_faction_style": style})
     assert load_card(lib, "山风", "斩")["inline_faction_style"] == style
     assert load_mechanism(lib, "蛊蚀")["inline_faction_style"] == style
@@ -778,9 +951,12 @@ def test_list_cards_groups_by_id_and_name(lib):
 def test_list_cards_versions_carry_deck_snapshot_metadata(lib):
     """历史卡组校验需要逐版本的稀有度和所属式神，不能只看最新版本。"""
     create_project(lib, "山风")
+    save_card(lib, "山风", "山风", SHIKIGAMI)
+    save_card(lib, "山风", "薰", {**SHIKIGAMI, "name": "薰"})
     save_card(lib, "山风", "斩", {**FIGHT, "version_date": "20260101"})
     save_card(lib, "山风", "斩@20260201",
-              {**FIGHT, "rarity": "SR", "shikigami": "薰", "version_date": "20260201"})
+              {**FIGHT, "id": "0510101", "rarity": "SR", "shikigami": "薰",
+               "version_date": "20260201"})
     versions = list_cards(lib, "山风")["cards"][0]["versions"]
     assert versions[0] == {"stem": "斩@20260201", "date": "20260201", "type": "战斗",
                            "rarity": "SR", "shikigami": "薰",
@@ -792,16 +968,17 @@ def test_list_cards_versions_carry_deck_snapshot_metadata(lib):
 def test_save_propagates_shared_layout_and_artwork(lib):
     """同组共享 layout/artwork：保存任一版本同步到其他版本；键删除同样同步。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", FIGHT)
-    save_card(lib, "山风", "斩@20260102", {**FIGHT, "version_date": "20260102"})
-    v2 = {**FIGHT, "version_date": "20260102",
+    card = {**FIGHT, "id": "19999999", "shikigami": ""}
+    save_card(lib, "山风", "斩", card)
+    save_card(lib, "山风", "斩@20260102", {**card, "version_date": "20260102"})
+    v2 = {**card, "version_date": "20260102",
           "layout": {"elements": {"name": {"pos": [1, 2]}}},
           "artwork": {"images": [{"path": "a.png", "offset_x": 5}]}}
     save_card(lib, "山风", "斩@20260102", v2)
     old = load_card(lib, "山风", "斩")
     assert old["layout"] == v2["layout"] and old["artwork"] == v2["artwork"]
     # 老版本再保存（无 layout/artwork）：同步删除新版本的这两段
-    save_card(lib, "山风", "斩", FIGHT)
+    save_card(lib, "山风", "斩", card)
     new = load_card(lib, "山风", "斩@20260102")
     assert "layout" not in new and "artwork" not in new
 
@@ -811,9 +988,9 @@ def test_card_limit_counts_groups(lib, monkeypatch):
     import bwpdiy.store.projects as projects
     monkeypatch.setattr(projects, "MAX_CARDS", 1)
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", FIGHT)
+    save_card(lib, "山风", "斩", {**FIGHT, "shikigami": ""})
     with pytest.raises(StoreError, match="上限"):
-        save_card(lib, "山风", "烈", SPELL)
+        save_card(lib, "山风", "烈", {**SPELL, "shikigami": ""})
     path = new_card_version(lib, "山风", "斩", "20260102")
     assert path.name == "斩@20260102.yaml"  # 同组新版本不受组数限制
 
@@ -821,22 +998,25 @@ def test_card_limit_counts_groups(lib, monkeypatch):
 def test_version_date_change_renames_at_stem(lib):
     """带 @ 文件改日期→重命名；无 @ 旧文件不因日期改名；目标冲突拒绝。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩@20260101", {**FIGHT, "version_date": "20260101"})
-    path, _ = save_card(lib, "山风", "斩@20260101", {**FIGHT, "version_date": "20260301"})
+    fight = {**FIGHT, "id": "19999999", "shikigami": ""}
+    spell = {**SPELL, "id": "19999998", "shikigami": ""}
+    save_card(lib, "山风", "斩@20260101", {**fight, "version_date": "20260101"})
+    path, _ = save_card(lib, "山风", "斩@20260101", {**fight, "version_date": "20260301"})
     assert path.name == "斩@20260301.yaml"
     assert not (lib / "山风" / "cards" / "斩@20260101.yaml").exists()
-    save_card(lib, "山风", "烈", SPELL)
-    path, _ = save_card(lib, "山风", "烈", {**SPELL, "version_date": "20260401"})
+    save_card(lib, "山风", "烈", spell)
+    path, _ = save_card(lib, "山风", "烈", {**spell, "version_date": "20260401"})
     assert path.name == "烈.yaml"  # 无 @ 不迁移命名
-    save_card(lib, "山风", "斩@20260501", {**FIGHT, "version_date": "20260501"})
+    save_card(lib, "山风", "斩@20260501", {**fight, "version_date": "20260501"})
     with pytest.raises(SchemaError, match="已存在"):
-        save_card(lib, "山风", "斩@20260501", {**FIGHT, "version_date": "20260301"})
+        save_card(lib, "山风", "斩@20260501", {**fight, "version_date": "20260301"})
 
 
 def test_new_card_version_copies_latest(lib):
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", {**FIGHT, "version_date": "20260101", "power+": 1})
-    save_card(lib, "山风", "斩@20260201", {**FIGHT, "version_date": "20260201", "power+": 9})
+    card = {**FIGHT, "id": "19999999", "shikigami": ""}
+    save_card(lib, "山风", "斩", {**card, "version_date": "20260101", "power+": 1})
+    save_card(lib, "山风", "斩@20260201", {**card, "version_date": "20260201", "power+": 9})
     path = new_card_version(lib, "山风", "斩", "20260301")  # 传入旧版 stem 也复制最新版
     data = load_card(lib, "山风", path.stem)
     assert data["power+"] == 9 and data["version_date"] == "20260301"
@@ -881,21 +1061,23 @@ def test_new_mechanism_version_rejects_missing_name(lib):
 def test_cleanup_unused_images(lib):
     create_project(lib, "山风")
     images = lib / "山风" / "images"
-    save_card(lib, "山风", "斩", {**FIGHT, "artwork": {"images": [{"path": "used.png"}]}})
-    save_card(lib, "山风", "烈", SPELL)  # 无 artwork：缺省引用 烈.png
-    for name in ("used.png", "烈.png", "orphan.png", "orphan.jpg"):
+    save_card(lib, "山风", "斩",
+              {**FIGHT, "shikigami": "", "artwork": {"images": [{"path": "used.png"}]}})
+    save_card(lib, "山风", "烈", {**SPELL, "id": "19999998", "shikigami": ""})
+    for name in ("used.png", "19999998.png", "orphan.png", "orphan.jpg"):
         (images / name).write_bytes(b"x")
     (images / "notes.txt").write_text("keep", encoding="utf-8")
     deleted = cleanup_unused_images(lib)
     assert sorted(d.replace("\\", "/") for d in deleted) == ["山风/images/orphan.jpg", "山风/images/orphan.png"]
-    assert (images / "used.png").is_file() and (images / "烈.png").is_file()
+    assert (images / "used.png").is_file() and (images / "19999998.png").is_file()
     assert (images / "notes.txt").is_file()  # 非图片不动
 
 
 def test_cleanup_preserves_all_images_when_any_yaml_is_broken(lib):
     """损坏 YAML 不可按“无引用”处理：整个项目跳过清理，避免二次数据损失。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", {**FIGHT, "artwork": {"images": [{"path": "used.png"}]}})
+    save_card(lib, "山风", "斩",
+              {**FIGHT, "shikigami": "", "artwork": {"images": [{"path": "used.png"}]}})
     images = lib / "山风" / "images"
     (images / "used.png").write_bytes(b"used")
     (images / "orphan.png").write_bytes(b"orphan")
@@ -907,7 +1089,8 @@ def test_cleanup_preserves_all_images_when_any_yaml_is_broken(lib):
 def test_cleanup_normalizes_relative_artwork_paths(lib):
     """sub/../used.png 与 used.png 是同一引用，路径未归一不得误删。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", {**FIGHT, "artwork": {"images": [{"path": "sub/../used.png"}]}})
+    save_card(lib, "山风", "斩",
+              {**FIGHT, "shikigami": "", "artwork": {"images": [{"path": "sub/../used.png"}]}})
     images = lib / "山风" / "images"
     (images / "used.png").write_bytes(b"used")
     (images / "orphan.png").write_bytes(b"orphan")
@@ -959,7 +1142,7 @@ def test_schema_rejects_nonfinite_layout_values_and_overlong_stats(lib):
 def test_legacy_dashed_version_date_normalized(lib):
     """旧带短横线日期（v1.6.0）：保存/读取归一为 8 位数字（v1.6.1）。"""
     create_project(lib, "山风")
-    save_card(lib, "山风", "斩", {**FIGHT, "version_date": "2026-01-02"})
+    save_card(lib, "山风", "斩", {**FIGHT, "shikigami": "", "version_date": "2026-01-02"})
     assert load_card(lib, "山风", "斩")["version_date"] == "20260102"
     save_mechanism(lib, "蛊蚀", {**MECH, "version_date": "2026-01-02"})
     assert load_mechanism(lib, "蛊蚀")["version_date"] == "20260102"

@@ -17,7 +17,8 @@ frame 头像框开关，全可缺省；协战双式神框取该式神卡图作�
 扩展功能字段（均可选）：level_color 勾玉颜色（yellow/cyan/purple/red/blue/brown/greyblue/orange，
 缺省 yellow，凡可带 level 的类型皆可携带）；level 全类型可缺省（缺省 = 无等级，衍生牌/无等级卡口粮，
 GUI 等级下拉 0 = 删 level 键）；rarity 全类型可缺省（缺省 = 无稀有度，衍生牌口径，
-对齐 BWPro token 卡 rarity 须缺省）；式神另可携带可选 faction_style 派系样式
+对齐 BWPro token 卡 rarity 须缺省）；非式神卡另可携带布尔 token（衍生卡自动编号号段标记）；
+式神另可携带可选 faction_style 派系样式
 （1/2/3，缺省 2）；卡牌与机制另可携带 inline_faction_style 内嵌派系样式
 （1/2/3，缺省 1）；各 stat 字段可带 <field>_color 数值变色（red/green/purple，缺省白）。
 """
@@ -171,6 +172,7 @@ def _allowed_fields(ctype: str) -> set[str]:
     else:
         allowed |= set(_NON_SHIKIGAMI_FIELDS) | set(_STATS_BY_TYPE[ctype])
         allowed |= set(_ASSIST_FIELDS) if ctype == "协战" else {"shikigami"}
+        allowed.add("token")
         if ctype == "协战":
             allowed |= set(_REINFORCE_FIELDS)
         if ctype in _EVOLVE_TYPES:
@@ -226,6 +228,8 @@ def validate_card(data) -> list[str]:
             errors.append(f"字段 rarity：非法稀有度「{rarity}」，须为 {'/'.join(RARITIES)} 之一")
         if "evolve" in data and not isinstance(data["evolve"], bool):
             errors.append("字段 evolve：必须是布尔值（true/false）")
+        if "token" in data and not isinstance(data["token"], bool):
+            errors.append("字段 token：必须是布尔值（true/false）")
         if "duo_frame" in data and not isinstance(data["duo_frame"], bool):
             errors.append("字段 duo_frame：必须是布尔值（true/false）")
         if "frame_variant" in data and data["frame_variant"] not in FRAME_VARIANTS:

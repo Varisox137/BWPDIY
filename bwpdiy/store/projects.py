@@ -1,6 +1,7 @@
 """式神项目制卡牌库存取：文件系统即数据库，纯函数 + Path 注入（不依赖 FastAPI）。
 
 目录结构（library/ 为用户数据，gitignore）：
+    library/<项目名>/project.yaml                  项目元数据（全库唯一的三位 ID）
     library/<项目名>/shikigami/<任意文件名>.yaml   式神卡（主要式神上限 MAX_SHIKIGAMI 组）
     library/<项目名>/cards/<任意文件名>.yaml       非式神卡，单项目上限 MAX_CARDS 组
     library/<项目名>/images/                       卡图原图
@@ -16,6 +17,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import tempfile
 from datetime import date
@@ -223,13 +225,60 @@ def list_projects(library: Path) -> list[str]:
                   if p.is_dir() and p.name.casefold() != MECH_DIR_NAME)
 
 
-def create_project(library: Path, project: str) -> Path:
-    """新建空项目骨架：cards/ 与 images/（不出厂默认式神卡）。"""
+def load_project(library: Path, project: str) -> dict:
+    """读取项目元数据；缺失或空 project.yaml 视为未设置项目 ID。"""
+    pdir = _require_project(library, project)
+    path = pdir / "project.yaml"
+    if not path.is_file():
+        return {"id": ""}
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError) as e:
+        raise StoreError(f"项目元数据不是合法的 yaml：{project}", code="invalid_data") from e
+    if data is None:
+        return {"id": ""}
+    if not isinstance(data, dict):
+        raise StoreError(f"项目元数据必须是 yaml 映射：{project}", code="invalid_data")
+    project_id = data.get("id", "")
+    if not isinstance(project_id, str) or (project_id and not re.fullmatch(r"\d{3}", project_id)):
+        raise StoreError(f"项目 ID 必须为空或三位数字字符串：{project}", code="invalid_data")
+    return {"id": project_id}
+
+
+def _project_id_in_use(library: Path, project_id: str, exclude: str) -> bool:
+    return any(p != exclude and load_project(library, p)["id"] == project_id
+               for p in list_projects(library))
+
+
+def _check_project_id(library: Path, project: str, project_id) -> str:
+    if not isinstance(project_id, str) or not re.fullmatch(r"\d{3}", project_id):
+        raise StoreError("项目 ID 必须是三位数字字符串", code="invalid_data")
+    if _project_id_in_use(library, project_id, project):
+        raise StoreError(f"项目 ID 已使用：{project_id}", code="already_exists")
+    return project_id
+
+
+def save_project_id(library: Path, project: str, project_id) -> str:
+    """设置全库唯一的三位项目 ID。"""
+    pdir = _require_project(library, project)
+    project_id = _check_project_id(library, project, project_id)
+    _dump_yaml(pdir / "project.yaml", {"id": project_id})
+    return project_id
+
+
+def create_project(library: Path, project: str, project_id: str = "") -> Path:
+    """新建空项目骨架与可选三位项目 ID；不出厂默认式神卡。"""
     pdir = _project_dir(library, project)
     if pdir.exists():
         raise StoreError(f"项目已存在：{project}", code="already_exists")
+    if project_id:
+        _check_project_id(library, project, project_id)
+    elif not isinstance(project_id, str):
+        raise StoreError("项目 ID 必须是三位数字字符串", code="invalid_data")
     (pdir / "cards").mkdir(parents=True)
     (pdir / "images").mkdir()
+    if project_id:
+        _dump_yaml(pdir / "project.yaml", {"id": project_id})
     return pdir
 
 
@@ -247,6 +296,96 @@ def delete_project(library: Path, project: str) -> None:
     if pdir.resolve().parent != Path(library).resolve():
         raise StoreError(f"项目路径越界：{project}", code="path_escape")
     shutil.rmtree(pdir)
+
+
+def _all_card_data(library: Path) -> list[dict]:
+    """全库卡牌数据；损坏/非映射 YAML 不参与编号占用扫描。"""
+    records = []
+    for project_name in list_projects(library):
+        pdir = library / project_name
+        for sub in ("shikigami", "cards"):
+            cdir = pdir / sub
+            for path in sorted(cdir.glob("*.yaml")) if cdir.is_dir() else []:
+                data = _read_yaml(path)
+                if data:
+                    records.append(data)
+    return records
+
+
+def _first_available_id(candidates, used_ids: set[str]) -> str:
+    for card_id in candidates:
+        if card_id not in used_ids:
+            return card_id
+    raise StoreError("该类别自动 ID 号段已耗尽", code="forbidden")
+
+
+def _ensure_project_id(library: Path, project: str) -> str:
+    project_id = load_project(library, project)["id"]
+    if project_id:
+        return project_id
+    used_ids = {load_project(library, name)["id"] for name in list_projects(library)}
+    project_id = _first_available_id((f"{seq:03d}" for seq in range(51, 1000)), used_ids)
+    return save_project_id(library, project, project_id)
+
+
+def _find_main_shikigami(pdir: Path, name) -> tuple[Path, dict]:
+    if not isinstance(name, str) or not name:
+        raise StoreError("所属式神引用无效", code="invalid_data")
+    matches = []
+    cdir = pdir / "shikigami"
+    for path in sorted(cdir.glob("*.yaml")) if cdir.is_dir() else []:
+        data = _read_yaml(path)
+        if (data and data.get("type") == "式神" and not data.get("shikigami")
+                and data.get("name") == name):
+            matches.append((path, data))
+    if not matches:
+        raise StoreError(f"所属式神不存在：{name}", code="invalid_data")
+    return max(matches, key=lambda pd: (_norm_date(pd[1].get("version_date")) or "", pd[0].stem))
+
+
+def _ensure_shikigami_id(library: Path, project: str, name) -> str:
+    pdir = _require_project(library, project)
+    path, data = _find_main_shikigami(pdir, name)
+    card_id = data.get("id")
+    if not card_id:
+        saved_path, _ = save_card(library, project, path.stem, data)
+        card_id = _read_yaml(saved_path).get("id")
+    if not isinstance(card_id, str) or not re.fullmatch(r"\d{5,6}", card_id):
+        raise StoreError(f"所属式神「{name}」的 ID 必须是五位或六位数字字符串", code="invalid_data")
+    return card_id
+
+
+def ensure_card_id(library: Path, project: str, data: dict) -> str:
+    """为空白 ID 按卡牌类别分配全库唯一编号，原地写入并返回。"""
+    _require_project(library, project)
+    card_id = data.get("id")
+    if card_id:
+        if not isinstance(card_id, str):
+            raise StoreError("已有卡牌 ID 必须是字符串", code="invalid_data")
+        return card_id
+    used_ids = {card["id"] for card in _all_card_data(library)
+                if isinstance(card.get("id"), str) and card["id"]}
+    ctype = data.get("type")
+    shikigami = data.get("shikigami")
+    if ctype == "式神" and not shikigami:
+        prefix = _ensure_project_id(library, project)
+        candidates = (f"{prefix}{seq:02d}" for seq in range(1, 100))
+    elif ctype == "式神":
+        prefix = _ensure_shikigami_id(library, project, shikigami)
+        candidates = (f"{prefix}{seq:02d}" for seq in range(99, 50, -1))
+    elif ctype == "协战":
+        prefixes = [_ensure_shikigami_id(library, project, data.get(field))
+                    for field in ("shikigami1", "shikigami2")]
+        prefix = min(prefixes, key=int)
+        candidates = (f"{prefix}{seq:02d}" for seq in range(21, 51))
+    elif shikigami:
+        prefix = _ensure_shikigami_id(library, project, shikigami)
+        seqs = range(51, 100) if data.get("token") is True else range(1, 21)
+        candidates = (f"{prefix}{seq:02d}" for seq in seqs)
+    else:
+        candidates = (str(seq) for seq in range(19999999, 9999999, -1))
+    data["id"] = _first_available_id(candidates, used_ids)
+    return data["id"]
 
 
 # ---------- 卡牌 CRUD ----------
@@ -289,8 +428,9 @@ def load_card(library: Path, project: str, card_name: str) -> dict:
 
 
 def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[Path, list[str]]:
-    """schema 校验通过才落盘；无所属式神的式神入 shikigami/，其余入 cards/。
+    """schema 校验后自动补空白 ID，通过才落盘；无所属式神的式神入 shikigami/，其余入 cards/。
 
+    旧空白 ID 卡补号时同步旧组全部版本，不拆分历史版本。
     文件名任意（卡名以文件内 name 为准，方便 BWPro 按 id 命名文件）；
     请求 stem 已存在于另一目录（类型与目录不符）报错指引。衍生物/非式神卡新增超 MAX_CARDS 拒绝。
     主要式神 name 全项目唯一（引用按名关联）；改名时联动改写其余卡的 shikigami/shikigami1/
@@ -306,6 +446,7 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
     errors = validate_card(data)
     if errors:
         raise SchemaError(errors)
+    ensure_card_id(library, project, data)
     if not data.get("version_date"):
         data["version_date"] = date.today().strftime("%Y%m%d")  # 留空按当前系统日期
     sub = "shikigami" if data["type"] == "式神" and not data.get("shikigami") else "cards"
@@ -315,6 +456,8 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
                          f"请先删除或改名", code="already_exists")
     path = pdir / sub / f"{card_name}.yaml"
     is_new = not path.is_file()
+    old = _read_yaml(path) if not is_new else None
+    legacy_group_key = (_group_key(old) if old and not old.get("id") and data.get("id") else None)
     if is_new and not _card_group(pdir, sub, _group_key(data)):
         # 数量限制按组计：同 id+name 的新版本不重复占名额；损坏文件不计入
         keys = set()
@@ -335,17 +478,17 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
             other_data = _read_yaml(p)
             # 同组（id+name 相同）的多版本允许同名；跨组同名拒绝（引用按名关联）
             if (other_data and other_data.get("name") == data["name"]
-                    and _group_key(other_data) != _group_key(data)):
+                    and _group_key(other_data) != _group_key(data)
+                    and (legacy_group_key is None or _group_key(other_data) != legacy_group_key)):
                 raise SchemaError([f"式神卡名「{data['name']}」与已有式神卡（{p.stem}.yaml）重复："
                                    f"引用按名关联，式神卡名必须唯一（同 id+卡名的多版本除外）"])
     updated: list[str] = []
-    old = _read_yaml(path) if not is_new else None
     old_name = old.get("name") if isinstance(old, dict) else None
-    # 无 id 且文件名是卡名回退命名（stem == 旧卡名）：改名时同步重命名 yaml 与本地卡图。
-    # 有 id 或文件名本就与卡名脱钩（如数字 stem）时不动，供 BWPro 按 id 取文件。
+    # 旧文件无 id 且文件名是卡名回退命名（stem == 旧卡名）：改名时同步重命名 yaml 与本地卡图。
+    # 旧文件有 id 或文件名本就与卡名脱钩（如数字 stem）时不动，供 BWPro 按 id 取文件。
     # 校验必须先于引用联动落盘：冲突/非法名报错时不得留下悬空引用
     rename_to: Path | None = None
-    renaming_card_name = (not is_new and not data.get("id") and isinstance(old_name, str)
+    renaming_card_name = (not is_new and old and not old.get("id") and isinstance(old_name, str)
                           and old_name == card_name and data["name"] != card_name)
     if renaming_card_name:
         try:
@@ -387,6 +530,8 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
                 if other_data and any(other_data.get(f) == old_name for f in _REF_FIELDS):
                     affected.add(p)
     affected.update(p for p, _ in _card_group(pdir, sub, _group_key(data)))
+    if legacy_group_key is not None:
+        affected.update(p for p, _ in _card_group(pdir, sub, legacy_group_key))
     backups = {p: p.read_bytes() if p.is_file() else None for p in affected}
     try:
         if renaming_card_name:
@@ -397,6 +542,10 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
         if rename_to is not None and rename_to != path:
             os.replace(path, rename_to)
             path = rename_to
+        if legacy_group_key is not None:
+            for p, sibling in _card_group(pdir, sub, legacy_group_key):
+                sibling["id"] = data["id"]
+                _dump_yaml(p, sibling)
         _propagate_shared(pdir, sub, path, data)
     except BaseException:
         for p, content in backups.items():

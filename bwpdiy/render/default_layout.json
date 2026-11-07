@@ -45,7 +45,6 @@
           0,
           0
         ],
-        "stroke_width": 3,
         "sign_size_plus": 28,
         "sign_size_minus": 16
       },
@@ -67,8 +66,7 @@
           0
         ],
         "sign_size_plus": 28,
-        "sign_size_minus": 16,
-        "stroke_width": 3
+        "sign_size_minus": 16
       },
       "name": {
         "kind": "text",
@@ -292,7 +290,6 @@
           0,
           0
         ],
-        "stroke_width": 3,
         "group_offset": [
           -1,
           0
@@ -321,7 +318,6 @@
           0,
           0
         ],
-        "stroke_width": 3,
         "sign_size_plus": 32,
         "sign_size_minus": 20,
         "fragile_pos": [
@@ -376,7 +372,6 @@
           0,
           0
         ],
-        "stroke_width": 2,
         "sign_size_plus": 24,
         "sign_size_minus": 16
       },
@@ -590,7 +585,6 @@
           0,
           0
         ],
-        "stroke_width": 3,
         "group_offset": [
           -2,
           0
@@ -620,8 +614,7 @@
           0
         ],
         "sign_size_plus": 32,
-        "sign_size_minus": 20,
-        "stroke_width": 3
+        "sign_size_minus": 20
       },
       "name": {
         "kind": "text",
@@ -661,7 +654,6 @@
           0,
           0
         ],
-        "stroke_width": 2,
         "sign_size_plus": 24,
         "sign_size_minus": 16
       },
@@ -897,7 +889,6 @@
           0,
           0
         ],
-        "stroke_width": 3,
         "sign_size_plus": 28,
         "sign_size_minus": 16
       },
@@ -919,8 +910,7 @@
           0
         ],
         "sign_size_plus": 28,
-        "sign_size_minus": 16,
-        "stroke_width": 3
+        "sign_size_minus": 16
       },
       "name": {
         "kind": "text",
@@ -960,7 +950,6 @@
           0,
           0
         ],
-        "stroke_width": 2,
         "sign_size_plus": 24,
         "sign_size_minus": 16
       },
@@ -1162,12 +1151,12 @@
         "field": "durability",
         "pos": [
           251,
-          480
+          482
         ],
-        "icon_size": 72,
+        "icon_size": 70,
         "num_offset": [
-          2,
-          4
+          1,
+          3
         ],
         "font_size": 52,
         "sign_offset": [
@@ -1175,8 +1164,7 @@
           0
         ],
         "sign_size_plus": 25,
-        "sign_size_minus": 25,
-        "stroke_width": 3
+        "sign_size_minus": 25
       },
       "name": {
         "kind": "text",
@@ -1216,7 +1204,6 @@
           0,
           0
         ],
-        "stroke_width": 2,
         "sign_size_plus": 24,
         "sign_size_minus": 16
       },
@@ -1262,7 +1249,7 @@
           "durability": {
             "pos": [
               248,
-              480
+              482
             ]
           },
           "name": {
@@ -1304,8 +1291,8 @@
           },
           "durability": {
             "pos": [
-              267,
-              480
+              268,
+              482
             ]
           },
           "name": {
@@ -1347,8 +1334,8 @@
           },
           "durability": {
             "pos": [
-              258,
-              479
+              259,
+              481
             ]
           },
           "name": {

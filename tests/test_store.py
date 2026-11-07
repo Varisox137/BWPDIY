@@ -46,6 +46,13 @@ def entry(stem, name, cid=None, vd=TODAY, shiki=None, stats=False, rarity="R", c
     return data
 
 
+def write_card_yaml(lib, project, stem, data, sub="cards"):
+    path = lib / project / sub / f"{stem}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    return path
+
+
 SHIKIGAMI = {"type": "式神", "name": "山风", "faction": "红莲", "power": 3, "health": 4}
 FIGHT = {
     "type": "战斗", "name": "斩", "level": 1, "rarity": "R",
@@ -84,6 +91,7 @@ def test_project_id_round_trip_and_unique(lib):
 def test_token_schema_is_explicit_and_type_scoped():
     assert validate_card({**FIGHT, "token": True}) == []
     assert any("白名单" in e for e in validate_card({**SHIKIGAMI, "token": True}))
+    assert any("白名单" in e and "token" in e for e in validate_card({**ASSIST, "token": True}))
     assert any("token" in e for e in validate_card({**FIGHT, "token": 1}))
 
 
@@ -222,6 +230,203 @@ def test_manual_id_synchronizes_legacy_blank_id_versions(lib):
     assert load_card(lib, "项目", "甲@20260201")["id"] == "123456"
     listed = list_cards(lib, "项目")["shikigami"]
     assert len(listed) == 1 and listed[0]["count"] == 2 and listed[0]["id"] == "123456"
+
+
+def test_project_id_reuses_gap_for_auto_numbering(lib):
+    import bwpdiy.store as store
+
+    for project, project_id in (("甲", "051"), ("乙", "052"), ("丙", "053")):
+        create_project(lib, project, project_id)
+    create_project(lib, "丁")
+    delete_project(lib, "乙")
+    save_card(lib, "丁", "式神", {**SHIKIGAMI, "name": "式神"})
+    assert store.load_project(lib, "丁") == {"id": "052"}
+    assert load_card(lib, "丁", "式神")["id"] == "105201"
+
+
+def restrict_auto_id_candidates_to_first(monkeypatch):
+    from bwpdiy.store import projects
+
+    original = projects._first_available_id
+
+    def only_first(candidates, used_ids):
+        return original((next(iter(candidates)),), used_ids)
+
+    monkeypatch.setattr(projects, "_first_available_id", only_first)
+
+
+def test_auto_id_regular_range_exhaustion(lib, monkeypatch):
+    create_project(lib, "项目", "051")
+    save_card(lib, "项目", "山风", SHIKIGAMI)
+    restrict_auto_id_candidates_to_first(monkeypatch)
+    save_card(lib, "项目", "斩", FIGHT)
+    with pytest.raises(StoreError, match="号段已耗尽") as exc:
+        save_card(lib, "项目", "斩二", {**FIGHT, "name": "斩二"})
+    assert exc.value.code == "forbidden"
+    assert not (lib / "项目" / "cards" / "斩二.yaml").exists()
+
+
+def test_auto_id_assist_range_exhaustion(lib, monkeypatch):
+    create_project(lib, "项目", "051")
+    save_card(lib, "项目", "山风", SHIKIGAMI)
+    save_card(lib, "项目", "薰", {**SHIKIGAMI, "name": "薰"})
+    restrict_auto_id_candidates_to_first(monkeypatch)
+    save_card(lib, "项目", "协战一", {**ASSIST, "name": "协战一"})
+    with pytest.raises(StoreError, match="号段已耗尽") as exc:
+        save_card(lib, "项目", "协战二", {**ASSIST, "name": "协战二"})
+    assert exc.value.code == "forbidden"
+    assert not (lib / "项目" / "cards" / "协战二.yaml").exists()
+
+
+def test_auto_id_derivative_range_exhaustion(lib, monkeypatch):
+    create_project(lib, "项目", "051")
+    save_card(lib, "项目", "山风", SHIKIGAMI)
+    restrict_auto_id_candidates_to_first(monkeypatch)
+    save_card(lib, "项目", "衍生一", {**FIGHT, "name": "衍生一", "token": True})
+    with pytest.raises(StoreError, match="号段已耗尽") as exc:
+        save_card(lib, "项目", "衍生二", {**FIGHT, "name": "衍生二", "token": True})
+    assert exc.value.code == "forbidden"
+    assert not (lib / "项目" / "cards" / "衍生二.yaml").exists()
+
+
+def test_auto_id_neutral_range_exhaustion(lib, monkeypatch):
+    create_project(lib, "项目", "051")
+    restrict_auto_id_candidates_to_first(monkeypatch)
+    save_card(lib, "项目", "中立一", {**FIGHT, "name": "中立一", "shikigami": ""})
+    with pytest.raises(StoreError, match="号段已耗尽") as exc:
+        save_card(lib, "项目", "中立二", {**FIGHT, "name": "中立二", "shikigami": ""})
+    assert exc.value.code == "forbidden"
+    assert not (lib / "项目" / "cards" / "中立二.yaml").exists()
+
+
+def test_dependency_assignment_rolls_back_after_outer_directory_conflict(lib):
+    import bwpdiy.store as store
+
+    create_project(lib, "项目")
+    for stem, version_date in (("甲", "20260101"), ("甲@20260201", "20260201")):
+        write_card_yaml(lib, "项目", stem,
+                        {**SHIKIGAMI, "name": "甲", "id": "", "version_date": version_date},
+                        sub="shikigami")
+    with pytest.raises(StoreError, match="与卡牌类型不符") as exc:
+        save_card(lib, "项目", "甲", {**FIGHT, "shikigami": "甲"})
+    assert exc.value.code == "already_exists"
+    assert store.load_project(lib, "项目") == {"id": ""}
+    assert load_card(lib, "项目", "甲")["id"] == ""
+    assert load_card(lib, "项目", "甲@20260201")["id"] == ""
+    assert not (lib / "项目" / "cards" / "甲.yaml").exists()
+
+
+def test_dependency_assignment_rolls_back_after_outer_write_failure(lib, monkeypatch):
+    import bwpdiy.store as store
+    from bwpdiy.store import projects
+
+    create_project(lib, "项目")
+    for stem, version_date in (("甲", "20260101"), ("甲@20260201", "20260201")):
+        write_card_yaml(lib, "项目", stem,
+                        {**SHIKIGAMI, "name": "甲", "id": "", "version_date": version_date},
+                        sub="shikigami")
+    original = projects._dump_yaml
+
+    def fail_main(path, data):
+        if path.name == "斩.yaml":
+            raise OSError("模拟外层主文件写盘失败")
+        return original(path, data)
+
+    monkeypatch.setattr(projects, "_dump_yaml", fail_main)
+    with pytest.raises(OSError, match="外层主文件"):
+        save_card(lib, "项目", "斩", {**FIGHT, "shikigami": "甲"})
+    assert store.load_project(lib, "项目") == {"id": ""}
+    assert load_card(lib, "项目", "甲")["id"] == ""
+    assert load_card(lib, "项目", "甲@20260201")["id"] == ""
+    assert not (lib / "项目" / "cards" / "斩.yaml").exists()
+
+
+def test_legacy_group_sibling_write_failure_rolls_back_every_version(lib, monkeypatch):
+    from bwpdiy.store import projects
+
+    create_project(lib, "项目", "051")
+    for stem, version_date in (("甲@20260101", "20260101"), ("甲@20260201", "20260201")):
+        write_card_yaml(lib, "项目", stem,
+                        {**SHIKIGAMI, "name": "甲", "id": "", "version_date": version_date},
+                        sub="shikigami")
+    original = projects._dump_yaml
+
+    def fail_sibling(path, data):
+        if path.name == "甲@20260101.yaml" and data.get("id") == "105101":
+            raise OSError("模拟历史版本写盘失败")
+        return original(path, data)
+
+    monkeypatch.setattr(projects, "_dump_yaml", fail_sibling)
+    with pytest.raises(OSError, match="历史版本"):
+        save_card(lib, "项目", "甲@20260201", load_card(lib, "项目", "甲@20260201"))
+    assert load_card(lib, "项目", "甲@20260101")["id"] == ""
+    assert load_card(lib, "项目", "甲@20260201")["id"] == ""
+    listed = list_cards(lib, "项目")["shikigami"]
+    assert len(listed) == 1 and listed[0]["count"] == 2 and listed[0]["id"] is None
+
+
+def test_legacy_blank_id_rename_keeps_versions_and_references_together(lib):
+    create_project(lib, "项目", "051")
+    for stem, version_date in (("甲", "20260101"), ("甲@20260201", "20260201")):
+        write_card_yaml(lib, "项目", stem,
+                        {**SHIKIGAMI, "name": "甲", "id": "", "version_date": version_date},
+                        sub="shikigami")
+    save_card(lib, "项目", "斩", {**FIGHT, "id": "12345678", "shikigami": "甲"})
+    data = {**load_card(lib, "项目", "甲"), "name": "乙"}
+    path, _ = save_card(lib, "项目", "甲", data)
+    assert path.name == "乙.yaml"
+    assert load_card(lib, "项目", "甲@20260201")["name"] == "乙"
+    assert load_card(lib, "项目", "甲@20260201")["id"] == "105101"
+    assert load_card(lib, "项目", "斩")["shikigami"] == "乙"
+    listed = list_cards(lib, "项目")["shikigami"]
+    assert len(listed) == 1 and listed[0]["count"] == 2
+    assert listed[0]["name"] == "乙" and listed[0]["id"] == "105101"
+
+
+def test_legacy_blank_id_preserves_implicit_artwork_and_cleanup(lib):
+    create_project(lib, "项目", "051")
+    card = {**FIGHT, "name": "旧卡", "id": "", "shikigami": ""}
+    write_card_yaml(lib, "项目", "旧卡", card)
+    image = lib / "项目" / "images" / "旧卡.png"
+    image.write_bytes(b"old")
+    save_card(lib, "项目", "旧卡", card)
+    saved = load_card(lib, "项目", "旧卡")
+    assert saved["id"] == "19999999"
+    assert saved["artwork"]["images"][0]["path"] == "旧卡.png"
+    assert cleanup_unused_images(lib) == []
+    assert image.read_bytes() == b"old"
+
+
+def test_legacy_blank_id_rename_preserves_implicit_artwork_and_transform(lib):
+    create_project(lib, "项目", "051")
+    card = {**FIGHT, "name": "旧名", "id": "", "shikigami": "",
+            "artwork": {"images": [{"offset_x": 7, "scale": 1.2}]}}
+    write_card_yaml(lib, "项目", "旧名", card)
+    image = lib / "项目" / "images" / "旧名.png"
+    image.write_bytes(b"old")
+    path, _ = save_card(lib, "项目", "旧名", {**card, "name": "新名"})
+    assert path.name == "新名.yaml"
+    first = load_card(lib, "项目", "新名")["artwork"]["images"][0]
+    assert first == {"offset_x": 7, "scale": 1.2, "path": "旧名.png"}
+    assert cleanup_unused_images(lib) == []
+    assert image.read_bytes() == b"old"
+
+
+def test_legacy_blank_id_versions_preserve_implicit_artwork(lib):
+    create_project(lib, "项目", "051")
+    for stem, version_date in (("旧卡", "20260101"), ("旧卡@20260201", "20260201")):
+        write_card_yaml(lib, "项目", stem,
+                        {**FIGHT, "name": "旧卡", "id": "", "shikigami": "",
+                         "version_date": version_date})
+    image = lib / "项目" / "images" / "旧卡.png"
+    image.write_bytes(b"old")
+    save_card(lib, "项目", "旧卡@20260201", load_card(lib, "项目", "旧卡@20260201"))
+    for stem in ("旧卡", "旧卡@20260201"):
+        saved = load_card(lib, "项目", stem)
+        assert saved["id"] == "19999999"
+        assert saved["artwork"]["images"][0]["path"] == "旧卡.png"
+    assert cleanup_unused_images(lib) == []
+    assert image.read_bytes() == b"old"
 
 
 def test_create_and_list_projects(lib):

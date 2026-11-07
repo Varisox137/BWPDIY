@@ -427,6 +427,31 @@ def load_card(library: Path, project: str, card_name: str) -> dict:
     return data
 
 
+def _project_yaml_paths(pdir: Path) -> list[Path]:
+    paths = [pdir / "project.yaml"]
+    for sub in ("shikigami", "cards"):
+        cdir = pdir / sub
+        paths.extend(sorted(cdir.glob("*.yaml")) if cdir.is_dir() else [])
+    return paths
+
+
+def _restore_project_yaml(pdir: Path, backups: dict[Path, bytes | None]) -> None:
+    for path in _project_yaml_paths(pdir):
+        if path not in backups:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+    for path, content in backups.items():
+        try:
+            if content is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(content)
+        except OSError:
+            pass  # 保留原异常；回滚失败须由用户从备份/版本控制恢复
+
+
 def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[Path, list[str]]:
     """schema 校验后自动补空白 ID，通过才落盘；无所属式神的式神入 shikigami/，其余入 cards/。
 
@@ -446,6 +471,17 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
     errors = validate_card(data)
     if errors:
         raise SchemaError(errors)
+    backups = {path: path.read_bytes() if path.is_file() else None
+               for path in _project_yaml_paths(pdir)}
+    try:
+        return _save_card(library, project, card_name, data)
+    except BaseException:
+        _restore_project_yaml(pdir, backups)
+        raise
+
+
+def _save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[Path, list[str]]:
+    pdir = _require_project(library, project)
     ensure_card_id(library, project, data)
     if not data.get("version_date"):
         data["version_date"] = date.today().strftime("%Y%m%d")  # 留空按当前系统日期
@@ -458,6 +494,8 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
     is_new = not path.is_file()
     old = _read_yaml(path) if not is_new else None
     legacy_group_key = (_group_key(old) if old and not old.get("id") and data.get("id") else None)
+    preserved_legacy_artwork = (_materialize_legacy_artwork(data, old)
+                                if legacy_group_key is not None else False)
     if is_new and not _card_group(pdir, sub, _group_key(data)):
         # 数量限制按组计：同 id+name 的新版本不重复占名额；损坏文件不计入
         keys = set()
@@ -515,26 +553,11 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
                                f"无法重命名；请更换日期"])
         rename_to = target
     copied_artwork = None
-    # 卡图复制/联动引用/主文件/重命名/共享段是一个逻辑事务：先备份所有可能被改写的文件，
-    # 任一步失败都尽力回滚，避免主卡旧名未改而其他卡已指向新名等半完成状态。
-    affected = {path}
-    if rename_to is not None:
-        affected.add(rename_to)
     renaming_shiki = (sub == "shikigami" and isinstance(old_name, str) and old_name
                       and old.get("type") == "式神" and old_name != data["name"])
-    if renaming_shiki:
-        for group in ("shikigami", "cards"):
-            cdir = pdir / group
-            for p in cdir.glob("*.yaml") if cdir.is_dir() else []:
-                other_data = _read_yaml(p)
-                if other_data and any(other_data.get(f) == old_name for f in _REF_FIELDS):
-                    affected.add(p)
-    affected.update(p for p, _ in _card_group(pdir, sub, _group_key(data)))
-    if legacy_group_key is not None:
-        affected.update(p for p, _ in _card_group(pdir, sub, legacy_group_key))
-    backups = {p: p.read_bytes() if p.is_file() else None for p in affected}
+    # 外层项目级快照回滚全部 YAML；这里只清理可能新建的卡图。
     try:
-        if renaming_card_name:
+        if renaming_card_name and not preserved_legacy_artwork:
             copied_artwork = _copy_renamed_artwork(library, project, data, data["name"])
         if renaming_shiki:
             updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
@@ -544,18 +567,12 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
             path = rename_to
         if legacy_group_key is not None:
             for p, sibling in _card_group(pdir, sub, legacy_group_key):
+                _materialize_legacy_artwork(sibling, sibling)
                 sibling["id"] = data["id"]
+                sibling["name"] = data["name"]
                 _dump_yaml(p, sibling)
         _propagate_shared(pdir, sub, path, data)
     except BaseException:
-        for p, content in backups.items():
-            try:
-                if content is None:
-                    p.unlink(missing_ok=True)
-                else:
-                    p.write_bytes(content)
-            except OSError:
-                pass  # 保留原异常；回滚失败须由用户从备份/版本控制恢复
         if copied_artwork is not None:
             try:
                 copied_artwork.unlink(missing_ok=True)
@@ -645,6 +662,30 @@ def _referenced_image_path(data: dict, images_dir: Path) -> Path:
     name = raw if isinstance(raw, str) and raw else f"{data.get('id') or data.get('name', '')}.png"
     path = Path(name)
     return (path if path.is_absolute() else images_dir / path).resolve()
+
+
+def _has_explicit_artwork_path(data: dict) -> bool:
+    artwork = data.get("artwork")
+    images = artwork.get("images") if isinstance(artwork, dict) else None
+    first = images[0] if isinstance(images, list) and images else None
+    return isinstance(first, dict) and isinstance(first.get("path"), str) and bool(first["path"])
+
+
+def _materialize_legacy_artwork(data: dict, old: dict) -> bool:
+    """旧缺省卡图在补 ID 后仍按旧卡名引用，保留当前首图变换。"""
+    if _has_explicit_artwork_path(old) or _has_explicit_artwork_path(data):
+        return False
+    old_name = old.get("name")
+    if not isinstance(old_name, str) or not old_name:
+        return False
+    artwork = dict(data.get("artwork") or {})
+    images = artwork.get("images")
+    images = list(images) if isinstance(images, list) else []
+    first = dict(images[0]) if images and isinstance(images[0], dict) else {}
+    first["path"] = f"{old_name}.png"
+    artwork["images"] = [first, *images[1:]]
+    data["artwork"] = artwork
+    return True
 
 
 def artwork_file_in_use(library: Path, project: str, filename: str,

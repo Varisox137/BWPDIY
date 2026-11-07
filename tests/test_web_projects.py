@@ -1,4 +1,4 @@
-"""web 层项目/卡牌 REST API 测试：CRUD 全路径、错误映射、项目卡预览、卡图上传（id/卡名命名）。
+"""web 层项目/卡牌 REST API 测试：CRUD 全路径、错误映射、项目卡预览、卡图上传（空白 ID 自动补齐并按最终 ID 命名，旧数据保留隐式 <id 或卡名>.png 读取回退）。
 
 fixture 用 tmp_path 的 library_dir + 共享 assets 拷贝（逐用例恢复布局），不碰真实用户数据。
 存储模型：library/<项目>/{shikigami,cards}/<任意文件名>.yaml + images/；

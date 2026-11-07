@@ -67,6 +67,15 @@ def test_fit_preserves_font_size_when_carrying_punctuation(assets_dir):
     assert [text for text, _, _ in lines] == ["甲", "乙，"]
 
 
+def test_wrap_rejects_carried_group_too_wide_for_new_line(assets_dir):
+    from bwpdiy.render.text import _layout_at_size, parse_items
+    lib = AssetLibrary(assets_dir)
+    font = lib.font("desc", 36)
+    region = rect_region(0, 0, 46, 200)
+    assert font.getlength("i甲") <= 46 < font.getlength("甲，")
+    assert _layout_at_size(parse_items("i甲，"), font, region, True, lib=lib) is None
+
+
 def canvas():
     return Image.new("RGBA", (512, 512), (0, 0, 0, 0))
 

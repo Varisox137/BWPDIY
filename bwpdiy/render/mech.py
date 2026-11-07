@@ -36,6 +36,7 @@ from PIL import Image, ImageDraw
 from bwpdiy.render.assets import AssetLibrary, get_library
 from bwpdiy.render.size import MAX_RENDER_PIXELS, MAX_RENDER_SIDE
 from bwpdiy.render.text import (
+    _carry_for_punctuation,
     _draw_styled_line,
     _icon_widths,
     _line_width,
@@ -230,8 +231,13 @@ def _wrap_items(items: list[tuple[str, str, bool]], font, lib: AssetLibrary,
         for item in paragraph:
             trial = current + [item]
             if current and _line_width(trial, font, icon_w) > width:
-                lines.append(current)
-                current = [item]
+                carried = _carry_for_punctuation(current, item)
+                if carried is not None and _line_width(carried[1], font, icon_w) <= width:
+                    lines.append(carried[0])
+                    current = carried[1]
+                else:
+                    lines.append(current)
+                    current = [item]
             else:
                 current = trial
         if current or pi < len(paragraphs) - 1:

@@ -106,6 +106,15 @@ def test_keyword_highlight(assets_dir):
     assert any(p[:3] == NAME_FILL[:3] and p[3] > 200 for p in kw.getdata())
 
 
+def test_wrap_items_moves_previous_char_with_punctuation(lib):
+    from bwpdiy.render.mech import _wrap_items
+    from bwpdiy.render.text import _plain, parse_items
+    font = lib.font("desc", 36)
+    width = font.getlength("甲乙") + 1
+    lines = _wrap_items(parse_items("甲乙，丙"), font, lib, width, None)
+    assert [_plain(line) for line in lines] == ["甲", "乙，", "丙"]
+
+
 def test_inline_icon(assets_dir):
     """#ll 行内力量图标：图标像素（ teal 力量色）出现在描述区，无图标版无此色。"""
     with_icon = render_mechanism(_mech(text="获得 #ll 1 点力量。"), assets_dir)

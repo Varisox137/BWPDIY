@@ -294,6 +294,11 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
                     y += lh
                     if y + lh / 2 > y_bottom:
                         return None
+                    if carried is not None:
+                        new_span = span_at(y)
+                        if (new_span is None or _line_width(current, font, icon_w)
+                                > new_span[1] - new_span[0]):
+                            return None
                 else:
                     current = trial
             if pi < len(paragraphs) - 1 or current:

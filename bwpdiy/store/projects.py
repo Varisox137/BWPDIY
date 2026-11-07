@@ -257,9 +257,9 @@ def _project_id_in_use(library: Path, project_id: str, exclude: str) -> bool:
 
 
 def _check_project_id(library: Path, project: str, project_id) -> str:
-    if not isinstance(project_id, str) or not re.fullmatch(r"\d{3}", project_id):
-        raise StoreError("项目 ID 必须是三位数字字符串", code="invalid_data")
-    if _project_id_in_use(library, project_id, project):
+    if not isinstance(project_id, str) or (project_id and not re.fullmatch(r"\d{3}", project_id)):
+        raise StoreError("项目 ID 必须为空或三位数字字符串", code="invalid_data")
+    if project_id and _project_id_in_use(library, project_id, project):
         raise StoreError(f"项目 ID 已使用：{project_id}", code="already_exists")
     return project_id
 

@@ -4135,3 +4135,153 @@ function endAsk() {{}}
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
     _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_project_save_allows_blank_id_with_release_date(tmp_path):
+    save = _extract_js(_script(), "async function saveProjectId()")
+    driver = f"""
+const assert = require('node:assert');
+let curProject = 'P', projectData = {{id: '', release_date: '20260102'}};
+let savedProjectData = {{id: '', release_date: ''}}, pDirty = true, projectContentRev = 0;
+const cStatusEl = {{textContent: ''}};
+function askBusy() {{ return false; }}
+function storageBusy() {{ return false; }}
+function validDateStr() {{ return true; }}
+function enc(value) {{ return value; }}
+function showFormErrors() {{}}
+async function loadProjectIds() {{}}
+const requests = [];
+async function fetch(url, options) {{
+  requests.push({{url, options}});
+  return {{ok: true, json: async () => ({{id: '', release_date: '20260102'}})}};
+}}
+{save}
+(async () => {{
+  await saveProjectId();
+  assert.deepStrictEqual(JSON.parse(requests[0].options.body),
+    {{id: '', release_date: '20260102'}});
+  assert.deepStrictEqual(savedProjectData, {{id: '', release_date: '20260102'}});
+  assert.strictEqual(pDirty, false);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_save_stops_when_selection_changes_during_project_id_refresh(tmp_path):
+    save = _extract_js(_script(), "async function saveCard()")
+    driver = f"""
+const assert = require('node:assert');
+let selectSeq = 0, contentRev = 0, curProject = 'P', curCard = 'A';
+let formData = {{name: 'A'}}, cardData = null, cDirty = true;
+const cStatusEl = {{textContent: ''}};
+let resolveSave, resolveRefresh, reloads = 0, undoResets = 0;
+function askBusy() {{ return false; }}
+function storageBusy() {{ return false; }}
+function guiDebug() {{}}
+function validateCardJS() {{ return []; }}
+async function confirmFallbackNaming() {{ return true; }}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function enc(value) {{ return value; }}
+function fetch() {{ return new Promise(resolve => {{ resolveSave = resolve; }}); }}
+function loadProjectIds() {{ return new Promise(resolve => {{ resolveRefresh = resolve; }}); }}
+function showFormErrors() {{}}
+function resetUndo() {{ undoResets++; }}
+async function loadCards() {{ reloads++; }}
+const document = {{getElementById: () => null}};
+{save}
+(async () => {{
+  const pending = saveCard();
+  while (!resolveSave) await Promise.resolve();
+  resolveSave({{ok: true, json: async () => ({{stem: 'A', updated: [], id: '10510101'}})}});
+  while (!resolveRefresh) await Promise.resolve();
+  selectSeq++; curCard = null; cDirty = true;
+  resolveRefresh();
+  assert.strictEqual(await pending, true);
+  assert.strictEqual(reloads, 0);
+  assert.strictEqual(undoResets, 0);
+  assert.strictEqual(cDirty, true);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_new_card_handlers_stop_after_refresh_selection_change(tmp_path):
+    script = _script()
+    handlers = "\n".join(_extract_js(script, decl) for decl in (
+        "document.getElementById('c-new-card').onclick = async () =>",
+        "document.getElementById('c-new-shiki').onclick = async () =>",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+const buttons = {{}};
+const document = {{getElementById: id => buttons[id] = {{}}}};
+let curProject = 'P', curCard = 'A', mainShiki = null, selectSeq = 0;
+let resolveRefresh;
+const loads = [];
+async function confirmDiscard() {{ return true; }}
+async function askNewCard() {{ return {{name: '卡', type: '战斗', shiki: {{}}}}; }}
+async function ask() {{ return {{text: '式神'}}; }}
+function sanitizeStem(value) {{ return value; }}
+function uniqueStem(value) {{ return value; }}
+function skeleton(type, name) {{ return {{type, name}}; }}
+function rejectReservedProjectName() {{ return false; }}
+function enc(value) {{ return value; }}
+function listErr() {{}}
+async function fetch() {{ return {{ok: true}}; }}
+function loadProjectIds() {{ return new Promise(resolve => {{ resolveRefresh = resolve; }}); }}
+async function loadCards(stem) {{ loads.push(stem); }}
+{handlers}
+(async () => {{
+  for (const id of ['c-new-card', 'c-new-shiki']) {{
+    resolveRefresh = null; selectSeq = 0; curCard = 'A';
+    const pending = buttons[id].onclick();
+    while (!resolveRefresh) await Promise.resolve();
+    selectSeq++; curCard = null;
+    resolveRefresh();
+    await pending;
+    assert.deepStrictEqual(loads, []);
+  }}
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_new_version_refreshes_project_ids_without_stale_continuation(tmp_path):
+    create = _extract_js(_script(), "async function createNewVersion()")
+    driver = f"""
+const assert = require('node:assert');
+let curMech = null, curProject = 'P', curCard = 'A', selectSeq = 0, cDirty = true;
+let resolveRefresh, refreshStarted = false;
+const loads = [];
+async function confirmDiscard() {{ return true; }}
+async function ask() {{ return {{text: '20270101'}}; }}
+function localToday() {{ return '20270101'; }}
+function validDateStr() {{ return true; }}
+function enc(value) {{ return value; }}
+function showFormErrors() {{}}
+async function fetch() {{ return {{ok: true, json: async () => ({{stem: 'A@20270101'}})}}; }}
+function loadProjectIds() {{
+  refreshStarted = true;
+  return new Promise(resolve => {{ resolveRefresh = resolve; }});
+}}
+async function loadCards(stem) {{ loads.push(stem); }}
+{create}
+(async () => {{
+  const pending = createNewVersion();
+  while (!refreshStarted && !loads.length) await Promise.resolve();
+  assert.strictEqual(refreshStarted, true);
+  selectSeq++; curCard = null;
+  resolveRefresh();
+  await pending;
+  assert.deepStrictEqual(loads, []);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)

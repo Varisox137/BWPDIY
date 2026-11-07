@@ -103,6 +103,18 @@ def test_project_release_date_round_trip_preservation_and_validation(lib):
         assert exc.value.code == "invalid_data"
 
 
+def test_blank_project_id_can_save_release_date_without_auto_assignment(lib):
+    import bwpdiy.store as store
+
+    create_project(lib, "项目")
+    assert store.save_project_id(lib, "项目", "", "20260102") == ""
+    assert store.load_project(lib, "项目") == {"id": "", "release_date": "20260102"}
+    with pytest.raises(StoreError, match="三位"):
+        store.save_project_id(lib, "项目", "52", "20260102")
+    save_card(lib, "项目", "甲", {**SHIKIGAMI, "name": "甲"})
+    assert store.load_project(lib, "项目") == {"id": "051", "release_date": "20260102"}
+
+
 def test_release_date_only_defaults_new_main_shikigami(lib):
     create_project(lib, "项目", "051", "20260102")
     save_card(lib, "项目", "甲", {**SHIKIGAMI, "name": "甲"})

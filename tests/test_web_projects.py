@@ -142,6 +142,16 @@ def test_project_metadata_api(client):
         "name": "坏日期", "release_date": "不是日期"}).status_code == 422
 
 
+def test_project_release_date_api_allows_blank_id(client):
+    client.post("/api/projects", json={"name": "项目"})
+    r = client.put("/api/projects/项目/meta", json={"id": "", "release_date": "20260102"})
+    assert r.status_code == 200
+    assert r.json() == {"ok": True, "id": "", "release_date": "20260102"}
+    assert client.get("/api/projects/项目/meta").json() == {"id": "", "release_date": "20260102"}
+    assert client.put("/api/projects/项目/meta", json={
+        "id": "52", "release_date": "20260102"}).status_code == 422
+
+
 def test_save_returns_assigned_id(client):
     client.post("/api/projects", json={"name": "项目", "release_date": "20260102"})
     r = client.put("/api/projects/项目/cards/甲", json=_shikigami_card("甲"))

@@ -631,7 +631,9 @@ document.getElementById('c-new-card').onclick = async () => {
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(newCard)});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   listErr([]);
+  const seq = selectSeq;
   await loadProjectIds();
+  if (seq !== selectSeq) return;
   await loadCards(stem);
 };
 document.getElementById('c-new-shiki').onclick = async () => {
@@ -645,7 +647,9 @@ document.getElementById('c-new-shiki').onclick = async () => {
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(skeleton('式神', name))});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   listErr([]);
+  const seq = selectSeq;
   await loadProjectIds();
+  if (seq !== selectSeq) return;
   await loadCards(stem);
 };
 document.getElementById('c-del-shiki').onclick = () => {
@@ -986,7 +990,12 @@ async function createNewVersion() {
   const res = await resp.json();
   if (seq !== selectSeq) return;
   if (isMech) { mDirty = false; await loadMechs(res.stem); }
-  else { cDirty = false; await loadCards(res.stem); }
+  else {
+    cDirty = false;
+    await loadProjectIds();
+    if (seq !== selectSeq) return;
+    await loadCards(res.stem);
+  }
 }
 async function deleteCurrentVersion() {
   const isMech = !!curMech, seq = selectSeq;
@@ -1219,6 +1228,7 @@ function buildForm() {
     }
     if ((targetForm.id ?? '') === uploadId) formData.id = res.id;
     await loadProjectIds();
+    if (seq !== selectSeq || formData !== targetForm) return;
     buildForm();  // 重建表单：立即出现卡图定位输入框（原先仅表单构建时按旧 path 条件渲染）
     if (cDirty) scheduleCardPreview(); else cPreviewProject();
   };
@@ -1624,6 +1634,7 @@ async function saveCard() {
   cardData = deepCopy(payload);
   if ((formData.id ?? '') === saveId) formData.id = res.id;
   await loadProjectIds();
+  if (seq !== selectSeq) return true;
   if (rev !== contentRev) {  // 保存期间又有编辑：保留新编辑与脏标记，不以旧快照覆盖
     cDirty = true;
     cStatusEl.textContent = '已保存；此后修改仍未保存';

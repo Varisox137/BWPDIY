@@ -3734,17 +3734,21 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_upload_response_preserves_later_edits_but_merges_artwork(tmp_path):
+@pytest.mark.parametrize("change_id", [False, True])
+def test_upload_response_merges_id_by_field_and_preserves_other_edits(tmp_path, change_id):
     script = _script()
     build = _extract_js(script, "function buildForm()")
-    ensure_art = _extract_js(script, "function ensureArtFirst()")
+    ensure_art = _extract_js(script, "function ensureArtFirst(data = formData)")
+    save = _extract_js(script, "async function saveCard()")
     driver = f"""
 const assert = require('node:assert');
+const changeId = {str(change_id).lower()};
+const uploadId = changeId ? '01' : '';
 let activeAsk = null, curProject = 'P', curCard = 'A', curMech = null;
 let selectSeq = 0, contentRev = 0, cDirty = false;
-let formData = {{type: '战斗', name: '斩', id: '01', shikigami: '甲',
+let formData = {{type: '战斗', name: '斩', id: uploadId, shikigami: '甲',
   level: 1, rarity: 'R', description: '', artwork: {{images: [{{offset_x: 7}}]}}}};
-let cardData = {{id: '10510101'}};
+let cardData = {{id: '', artwork: {{images: [{{offset_x: 3}}]}}}};
 const cStatusEl = {{textContent: ''}};
 const extOptions = {{marker: false, layout: false}};
 function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', value: '',
@@ -3768,13 +3772,15 @@ function showFormErrors() {{}}
 function validateCardJS() {{ return []; }}
 function undoAll() {{}}
 function undoLast() {{}}
-function saveCard() {{}}
 function openExport() {{}}
 function askBusy() {{ return false; }}
 function storageBusy() {{ return false; }}
 function guiDebug() {{}}
 async function confirmFallbackNaming() {{ return true; }}
 function enc(value) {{ return value; }}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function resetUndo() {{}}
+async function loadCards() {{}}
 let resolveFetch;
 const requests = [];
 function fetch(url, options) {{
@@ -3789,6 +3795,7 @@ const STATS_BY_TYPE = {{战斗: []}};
 const STAT_MATRIX = {{战斗: {{}}}};
 {ensure_art}
 {build}
+{save}
 function findFileInput(node) {{
   if (node.type === 'file') return node;
   for (const child of node.children) {{ const found = findFileInput(child); if (found) return found; }}
@@ -3800,18 +3807,30 @@ function findFileInput(node) {{
   input.files = [{{name: 'a.png', size: 1, type: 'image/png'}}];
   const pending = input.onchange();
   while (!resolveFetch) await Promise.resolve();
-  formData.id = '02';
-  formData.name = '上传期间的新编辑';
+  if (changeId) formData.id = '02';
+  formData.description = '上传期间仅编辑其他字段';
   contentRev++;
   cDirty = true;
   resolveFetch({{ok: true, json: async () => ({{path: '10510101.png', id: '10510101'}})}});
   await pending;
-  assert.strictEqual(formData.id, '02');
-  assert.strictEqual(formData.name, '上传期间的新编辑');
+  const expectedId = changeId ? '02' : '10510101';
+  assert.strictEqual(formData.id, expectedId);
+  assert.strictEqual(formData.description, '上传期间仅编辑其他字段');
   assert.strictEqual(cDirty, true);
   assert.deepStrictEqual(formData.artwork.images[0],
     {{offset_x: 7, path: '10510101.png'}});
-  assert.ok(requests[0].url.includes('id=01'));
+  assert.deepStrictEqual(cardData, {{id: '10510101',
+    artwork: {{images: [{{offset_x: 3, path: '10510101.png'}}]}}}});
+  assert.ok(requests[0].url.includes(changeId ? 'id=01' : 'id='));
+
+  fetch = async (url, options) => {{
+    requests.push({{url, options}});
+    return {{ok: true, json: async () => ({{stem: 'A', updated: [], id: '10510101'}})}};
+  }};
+  assert.strictEqual(await saveCard(), true);
+  const nextSave = JSON.parse(requests[1].options.body);
+  assert.strictEqual(nextSave.id, expectedId);
+  assert.strictEqual(nextSave.artwork.images[0].path, '10510101.png');
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
@@ -3820,20 +3839,24 @@ function findFileInput(node) {{
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_project_save_response_preserves_later_edits(tmp_path):
-    save = _extract_js(_script(), "async function saveProjectId()")
+    script = _script()
+    save = _extract_js(script, "async function saveProjectId()")
+    discard = _extract_js(script, "async function confirmDiscard()")
     driver = f"""
 const assert = require('node:assert');
 let curProject = 'P', projectData = {{id: '052'}}, savedProjectData = {{id: '051'}};
-let pDirty = true, projectContentRev = 0;
+let pDirty = true, projectContentRev = 0, cDirty = false, mDirty = false;
 const cStatusEl = {{textContent: ''}};
 function askBusy() {{ return false; }}
 function storageBusy() {{ return false; }}
 function enc(value) {{ return value; }}
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 function showFormErrors() {{}}
+async function sessionConfirm() {{ return true; }}
 let resolveFetch;
 function fetch() {{ return new Promise(resolve => {{ resolveFetch = resolve; }}); }}
 {save}
+{discard}
 (async () => {{
   const pending = saveProjectId();
   while (!resolveFetch) await Promise.resolve();
@@ -3843,9 +3866,12 @@ function fetch() {{ return new Promise(resolve => {{ resolveFetch = resolve; }})
   resolveFetch({{ok: true, json: async () => ({{id: '052'}})}});
   await pending;
   assert.strictEqual(projectData.id, '053');
-  assert.deepStrictEqual(savedProjectData, {{id: '051'}});
+  assert.deepStrictEqual(savedProjectData, {{id: '052'}});
   assert.strictEqual(pDirty, true);
   assert.ok(cStatusEl.textContent.includes('仍未保存'));
+  assert.strictEqual(await confirmDiscard(), true);
+  assert.deepStrictEqual(projectData, {{id: '052'}});
+  assert.strictEqual(pDirty, false);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """

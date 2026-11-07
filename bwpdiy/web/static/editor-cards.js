@@ -798,12 +798,12 @@ function afterMouseEdit(channel) {
   }
   scheduleMousePreview(channel);
 }
-function ensureArtFirst() {
+function ensureArtFirst(data = formData) {
   // 物化 artwork.images[0] 编辑条目（path 可缺省 = <id 或卡名>.png，缺省图同样吃变换）
-  if (!formData.artwork || typeof formData.artwork !== 'object') formData.artwork = {};
-  const images = Array.isArray(formData.artwork.images) ? formData.artwork.images : [];
+  if (!data.artwork || typeof data.artwork !== 'object') data.artwork = {};
+  const images = Array.isArray(data.artwork.images) ? data.artwork.images : [];
   const first = (images[0] && typeof images[0] === 'object') ? images[0] : {};
-  formData.artwork.images = [first, ...images.slice(1)];
+  data.artwork.images = [first, ...images.slice(1)];
   return first;
 }
 function artMouseChannel(img) {
@@ -1016,13 +1016,13 @@ async function saveProjectId() {
   const res = await r.json();
   if (curProject !== project) return;
   showFormErrors([]);
+  savedProjectData = {id: res.id};
   if (rev !== projectContentRev) {
     pDirty = true;
     cStatusEl.textContent = '已保存；此后修改仍未保存';
     return;
   }
   projectData.id = res.id;
-  savedProjectData = deepCopy(projectData);
   pDirty = false;
   cStatusEl.textContent = '项目 ID 已保存';
 }
@@ -1132,8 +1132,9 @@ function buildForm() {
     if (!f) return;
     guiDebug('artwork.upload.start', `${f.name} (${f.size} bytes, ${f.type || 'unknown'})`);
     if (!await confirmFallbackNaming()) { fileInput.value = ''; return; }
-    const seq = selectSeq, rev = contentRev, project = curProject, stem = curCard, targetForm = formData;
-    const params = new URLSearchParams({filename: f.name, id: targetForm.id ?? ''});
+    const seq = selectSeq, project = curProject, stem = curCard, targetForm = formData;
+    const uploadId = targetForm.id ?? '';
+    const params = new URLSearchParams({filename: f.name, id: uploadId});
     params.set('token', targetForm.token === true ? '1' : '0');
     if (targetForm.type === '协战') {
       params.set('shikigami1', targetForm.shikigami1 ?? '');
@@ -1158,12 +1159,13 @@ function buildForm() {
     const res = await resp.json();
     guiDebug('artwork.upload.saved', res.path);
     if (seq !== selectSeq || formData !== targetForm) return;  // 旧上传不得污染新卡/已撤回表单
-    // 图片路径必须并入最新表单，避免后续保存丢图；id 只在期间无新编辑时回写
+    // 服务器基准始终记录最终 id/卡图；当前表单的 id 未被用户改动时才回写
     ensureArtFirst().path = res.path;
-    if (rev === contentRev) {
-      formData.id = res.id;
-      if (cardData) cardData.id = res.id;
+    if (cardData) {
+      cardData.id = res.id;
+      ensureArtFirst(cardData).path = res.path;
     }
+    if ((targetForm.id ?? '') === uploadId) formData.id = res.id;
     buildForm();  // 重建表单：立即出现卡图定位输入框（原先仅表单构建时按旧 path 条件渲染）
     if (cDirty) scheduleCardPreview(); else cPreviewProject();
   };

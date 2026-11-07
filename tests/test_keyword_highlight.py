@@ -149,11 +149,14 @@ def test_preview_unknown_icon_code_422(tmp_path):
     """未知图标代码仍在预览端报 422（括号不配对已改为字面显示，不再报错）。"""
     client = TestClient(create_app(ASSETS, library_dir=tmp_path / "library"))
     client.post("/api/projects", json={"name": "测试项目"})
+    assert client.put("/api/projects/测试项目/cards/测试式神", json={
+        "type": "式神", "name": "测试式神", "faction": "红莲", "power": 2, "health": 3,
+    }).status_code == 200
     override = {"type": "战斗", "name": "测试斩", "level": 2, "rarity": "R",
-                "shikigami": "测试项目", "power+": 1, "shield+": 1,
+                "shikigami": "测试式神", "power+": 1, "shield+": 1,
                 "description": "触发#xx图标"}
-    client.put("/api/projects/测试项目/cards/测试斩",
-               json={**override, "description": "正常描述。"})
+    assert client.put("/api/projects/测试项目/cards/测试斩",
+                      json={**override, "description": "正常描述。"}).status_code == 200
     r = client.post("/api/projects/测试项目/cards/测试斩/preview", json={"card": override})
     assert r.status_code == 422 and "图标代码未知" in r.json()["detail"]
     ok = client.post("/api/projects/测试项目/cards/测试斩/preview",

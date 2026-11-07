@@ -58,6 +58,8 @@ from bwpdiy.render import render_card, render_entity
 - 当前渲染只消费 `artwork.images[0]`；多张异画的选择由调用方先完成，再把目标图片放到首项。
 - `artwork` 变换：`offset_x/offset_y` 为图像相对画布的偏移，正值向右/向下；`scale > 0`；`rotate` 为绕图片中心的顺时针角度。
 
+自动编号属于 BWPDIY 的 store/web 层，不是渲染入口的职责。其中立非协战牌从 `19999999` 起全库递减；BWPro 仓库自身的 ID 校验、默认示例与相关测试后续另批同步，本文不表示该配套已经完成。
+
 ## 3. 完整大卡 `render_card`
 
 ```python

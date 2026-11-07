@@ -921,7 +921,7 @@ const assert = require('node:assert');
 let selectSeq = 0, contentRev = 0, pendingStorageWrites = 0;
 let curProject = 'P', curCard = 'A', formData = {{name: 'A'}}, cardData = null, cDirty = true;
 const cStatusEl = {{textContent: ''}};
-let resolveFetch, reloads = 0;
+let resolveFetch, reloads = 0, metadataRefreshes = 0;
 function askBusy() {{ return false; }}
 function storageBusy() {{ return false; }}
 function guiDebug() {{}}
@@ -933,6 +933,7 @@ function fetch() {{ return new Promise(resolve => {{ resolveFetch = resolve; }})
 function showFormErrors() {{}}
 function resetUndo() {{ throw new Error('旧响应不得重置撤回栈'); }}
 async function loadCards() {{ reloads++; }}
+async function loadProjectIds() {{ metadataRefreshes++; }}
 const document = {{getElementById: () => null}};
 {save}
 (async () => {{
@@ -955,9 +956,23 @@ const document = {{getElementById: () => null}};
   resolveFetch({{ok: true, json: async () => ({{stem: 'A', updated: [], id: '10510101'}})}});
   assert.strictEqual(await second, true);
   assert.deepStrictEqual(cardData, {{name: 'A', id: '10510101'}});
+  assert.strictEqual(formData.id, '10510101');  // 仅在途改其他字段也须记录最终 ID
   assert.strictEqual(cDirty, true);
   assert.strictEqual(reloads, 0);
+  assert.strictEqual(metadataRefreshes, 1);
   assert.ok(cStatusEl.textContent.includes('仍未保存'));
+
+  selectSeq = 0; contentRev = 0; curCard = 'A'; formData = {{name: 'A'}};
+  cardData = null; cDirty = true; resolveFetch = null;
+  const third = saveCard();
+  while (!resolveFetch) await Promise.resolve();
+  formData.id = '手动02'; contentRev++;
+  resolveFetch({{ok: true, json: async () => ({{stem: 'A', updated: [], id: '10510101'}})}});
+  assert.strictEqual(await third, true);
+  assert.strictEqual(formData.id, '手动02');  // 用户已改 ID 不被旧保存响应覆盖
+  assert.deepStrictEqual(cardData, {{name: 'A', id: '10510101'}});
+  assert.strictEqual(cDirty, true);
+  assert.strictEqual(metadataRefreshes, 2);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
@@ -3746,9 +3761,9 @@ const changeId = {str(change_id).lower()};
 const uploadId = changeId ? '01' : '';
 let activeAsk = null, curProject = 'P', curCard = 'A', curMech = null;
 let selectSeq = 0, contentRev = 0, cDirty = false;
-let formData = {{type: '战斗', name: '斩', id: uploadId, shikigami: '甲',
+let formData = {{type: '战斗', name: '斩', id: uploadId, shikigami: '甲', token: true,
   level: 1, rarity: 'R', description: '', artwork: {{images: [{{offset_x: 7}}]}}}};
-let cardData = {{id: '', artwork: {{images: [{{offset_x: 3}}]}}}};
+let cardData = {{id: '', shikigami: '旧所属', artwork: {{images: [{{offset_x: 3}}]}}}};
 const cStatusEl = {{textContent: ''}};
 const extOptions = {{marker: false, layout: false}};
 function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', value: '',
@@ -3781,6 +3796,8 @@ function enc(value) {{ return value; }}
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 function resetUndo() {{}}
 async function loadCards() {{}}
+let metadataRefreshes = 0;
+async function loadProjectIds() {{ metadataRefreshes++; }}
 let resolveFetch;
 const requests = [];
 function fetch(url, options) {{
@@ -3809,17 +3826,22 @@ function findFileInput(node) {{
   while (!resolveFetch) await Promise.resolve();
   if (changeId) formData.id = '02';
   formData.description = '上传期间仅编辑其他字段';
+  formData.token = false;
+  formData.shikigami = '在途所属';
   contentRev++;
   cDirty = true;
   resolveFetch({{ok: true, json: async () => ({{path: '10510101.png', id: '10510101'}})}});
   await pending;
+  assert.strictEqual(metadataRefreshes, 1);
   const expectedId = changeId ? '02' : '10510101';
   assert.strictEqual(formData.id, expectedId);
   assert.strictEqual(formData.description, '上传期间仅编辑其他字段');
+  assert.strictEqual(formData.token, false);
+  assert.strictEqual(formData.shikigami, '在途所属');
   assert.strictEqual(cDirty, true);
   assert.deepStrictEqual(formData.artwork.images[0],
     {{offset_x: 7, path: '10510101.png'}});
-  assert.deepStrictEqual(cardData, {{id: '10510101',
+  assert.deepStrictEqual(cardData, {{id: '10510101', token: true, shikigami: '甲',
     artwork: {{images: [{{offset_x: 3, path: '10510101.png'}}]}}}});
   assert.ok(requests[0].url.includes(changeId ? 'id=01' : 'id='));
 
@@ -3830,7 +3852,10 @@ function findFileInput(node) {{
   assert.strictEqual(await saveCard(), true);
   const nextSave = JSON.parse(requests[1].options.body);
   assert.strictEqual(nextSave.id, expectedId);
+  assert.strictEqual(nextSave.token, false);
+  assert.strictEqual(nextSave.shikigami, '在途所属');
   assert.strictEqual(nextSave.artwork.images[0].path, '10510101.png');
+  assert.strictEqual(metadataRefreshes, 2);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """
@@ -3845,7 +3870,7 @@ def test_project_save_response_preserves_later_edits(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 let curProject = 'P', projectData = {{id: '052'}}, savedProjectData = {{id: '051'}};
-let pDirty = true, projectContentRev = 0, cDirty = false, mDirty = false;
+let pDirty = true, projectContentRev = 0, cDirty = false, mDirty = false, metadataRefreshes = 0;
 const cStatusEl = {{textContent: ''}};
 function askBusy() {{ return false; }}
 function storageBusy() {{ return false; }}
@@ -3853,6 +3878,7 @@ function enc(value) {{ return value; }}
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 function showFormErrors() {{}}
 async function sessionConfirm() {{ return true; }}
+async function loadProjectIds() {{ metadataRefreshes++; }}
 let resolveFetch;
 function fetch() {{ return new Promise(resolve => {{ resolveFetch = resolve; }}); }}
 {save}
@@ -3865,6 +3891,7 @@ function fetch() {{ return new Promise(resolve => {{ resolveFetch = resolve; }})
   pDirty = true;
   resolveFetch({{ok: true, json: async () => ({{id: '052'}})}});
   await pending;
+  assert.strictEqual(metadataRefreshes, 1);
   assert.strictEqual(projectData.id, '053');
   assert.deepStrictEqual(savedProjectData, {{id: '052'}});
   assert.strictEqual(pDirty, true);
@@ -3903,6 +3930,103 @@ async function loadProjects() {{}}
   assert.deepStrictEqual(requests, []);
   assert.strictEqual(curProject, 'P');
   assert.strictEqual(pDirty, true);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_reselect_current_project_enters_project_editor(tmp_path):
+    select = _extract_js(_script(), "async function selectProject(p)")
+    driver = f"""
+const assert = require('node:assert');
+let curProject = 'P', curCard = 'A', curMech = null, formData = {{id: '1'}}, cardData = {{}};
+let projectData = {{id: '051'}}, savedProjectData = {{id: '051'}}, pDirty = false;
+let mainShiki = '甲', neutralMode = true;
+let guards = 0, cleared = 0, built = 0;
+const metaLoads = [], cardLoads = [];
+async function confirmDiscard() {{ guards++; return true; }}
+function exitMech() {{ curMech = null; }}
+function clearCard() {{ cleared++; curCard = null; formData = null; cardData = null; }}
+function listErr() {{}}
+function buildProjectList() {{ built++; }}
+async function loadProjectMeta(project) {{ metaLoads.push(project); }}
+async function loadCards(stem, selectFirst) {{ cardLoads.push([stem, selectFirst]); }}
+{select}
+(async () => {{
+  await selectProject('P');
+  assert.strictEqual(guards, 1);
+  assert.strictEqual(cleared, 1);
+  assert.strictEqual(curCard, null);
+  assert.strictEqual(formData, null);
+  assert.deepStrictEqual(metaLoads, ['P']);
+  assert.deepStrictEqual(cardLoads, [[null, false]]);
+  assert.strictEqual(mainShiki, null);
+  assert.strictEqual(neutralMode, false);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_project_list_shows_nonbold_id_and_hides_blank(tmp_path):
+    build = _extract_js(_script(), "function buildProjectList()")
+    driver = f"""
+const assert = require('node:assert');
+let projects = ['甲', '乙'], projectIds = {{甲: '051', 乙: ''}}, curProject = '甲';
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', className: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const list = element('div'), sections = element('div');
+const document = {{getElementById: id => id === 'c-projects' ? list : sections, createElement: element}};
+function fitListHeight() {{}}
+{build}
+buildProjectList();
+assert.strictEqual(list.children.length, 2);
+const withId = list.children[0].children[0];
+assert.strictEqual(withId.textContent, '甲');
+assert.strictEqual(withId.children.length, 1);
+assert.strictEqual(withId.children[0].textContent, '(051)');
+assert.strictEqual(withId.children[0].className, 'meta');
+const blank = list.children[1].children[0];
+assert.strictEqual(blank.textContent, '乙');
+assert.strictEqual(blank.children.length, 0);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_project_id_refresh_does_not_reset_card_selection(tmp_path):
+    script = _script()
+    build = _extract_js(script, "function buildProjectList()")
+    load = _extract_js(script, "async function loadProjectIds()")
+    driver = f"""
+const assert = require('node:assert');
+let projects = ['甲'], projectIds = {{甲: '051'}}, curProject = '甲', projectIdsSeq = 0;
+let curCard = 'A', formData = {{id: '未重置'}}, cardData = {{id: '基准'}};
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', className: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const list = element('div'), sections = element('div');
+const document = {{getElementById: id => id === 'c-projects' ? list : sections, createElement: element}};
+function fitListHeight() {{}}
+function listErr() {{}}
+async function fetch(url) {{
+  assert.strictEqual(url, '/api/projects/meta');
+  return {{ok: true, json: async () => ({{甲: '052'}})}};
+}}
+{build}
+{load}
+(async () => {{
+  await loadProjectIds();
+  assert.deepStrictEqual(projectIds, {{甲: '052'}});
+  assert.strictEqual(curCard, 'A');
+  assert.strictEqual(formData.id, '未重置');
+  assert.strictEqual(cardData.id, '基准');
+  assert.strictEqual(list.children[0].children[0].children[0].textContent, '(052)');
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """

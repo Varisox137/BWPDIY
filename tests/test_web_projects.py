@@ -92,6 +92,15 @@ def test_projects_empty(client):
     assert r.status_code == 200 and r.json() == []
 
 
+def test_projects_metadata_map_and_auto_id(client):
+    client.post("/api/projects", json={"name": "甲"})
+    client.post("/api/projects", json={"name": "乙", "id": "051"})
+    assert client.get("/api/projects").json() == ["乙", "甲"]  # 原名称数组兼容
+    assert client.get("/api/projects/meta").json() == {"乙": "051", "甲": ""}
+    assert client.put("/api/projects/甲/cards/式神", json=_shikigami_card("式神")).status_code == 200
+    assert client.get("/api/projects/meta").json()["甲"] == "052"
+
+
 def test_project_create_empty(client):
     """create_project 创建空项目（无出厂式神卡），cards 列表为两组空表。"""
     r = client.post("/api/projects", json={"name": "测试项目"})

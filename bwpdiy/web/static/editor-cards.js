@@ -1,5 +1,6 @@
 // ================= 卡牌库 tab =================
 let projects = [];
+let projectIds = {};
 let curProject = null;
 let projectData = {id: ''};
 let savedProjectData = {id: ''};
@@ -112,6 +113,7 @@ async function loadProjects(selectStem = null) {
   try { r = await fetch('/api/projects'); } catch (e) { listErr(['项目列表请求失败: ' + e]); return; }
   projects = await r.json();
   if (!projects.includes(curProject)) curProject = null;
+  await loadProjectIds();
   buildProjectList();
   if (curProject) { await loadProjectMeta(curProject); await loadCards(selectStem); }
   else {
@@ -131,12 +133,33 @@ function buildProjectList() {
   div.innerHTML = '';
   for (const p of projects) {
     const d = document.createElement('div');
-    d.textContent = p;
+    const left = document.createElement('span');
+    left.textContent = p;
+    if (projectIds[p]) {
+      const idSpan = document.createElement('span');
+      idSpan.className = 'meta';
+      idSpan.textContent = `(${projectIds[p]})`;
+      left.appendChild(idSpan);
+    }
+    d.appendChild(left);
     d.className = 'item' + (p === curProject ? ' active' : '');
     d.onclick = () => selectProject(p);
     div.appendChild(d);
   }
   fitListHeight(div);
+}
+let projectIdsSeq = 0;
+async function loadProjectIds() {
+  const seq = ++projectIdsSeq;
+  let r;
+  try { r = await fetch('/api/projects/meta'); }
+  catch (e) { if (seq === projectIdsSeq) listErr(['项目 ID 列表请求失败: ' + e]); return false; }
+  if (!r.ok) { if (seq === projectIdsSeq) listErr(await parseErrorDetail(r)); return false; }
+  const data = await r.json();
+  if (seq !== projectIdsSeq) return false;
+  projectIds = data;
+  buildProjectList();
+  return true;
 }
 let projectMetaSeq = 0;
 async function loadProjectMeta(project) {
@@ -153,7 +176,7 @@ async function loadProjectMeta(project) {
   return true;
 }
 async function selectProject(p) {
-  if (p === curProject || !await confirmDiscard()) return;
+  if (!await confirmDiscard()) return;
   if (curMech) exitMech();
   mainShiki = null; neutralMode = false;
   curProject = p;
@@ -601,6 +624,7 @@ document.getElementById('c-new-card').onclick = async () => {
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(newCard)});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   listErr([]);
+  await loadProjectIds();
   await loadCards(stem);
 };
 document.getElementById('c-new-shiki').onclick = async () => {
@@ -614,6 +638,7 @@ document.getElementById('c-new-shiki').onclick = async () => {
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(skeleton('式神', name))});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   listErr([]);
+  await loadProjectIds();
   await loadCards(stem);
 };
 document.getElementById('c-del-shiki').onclick = () => {
@@ -1017,6 +1042,8 @@ async function saveProjectId() {
   if (curProject !== project) return;
   showFormErrors([]);
   savedProjectData = {id: res.id};
+  await loadProjectIds();
+  if (curProject !== project) return;
   if (rev !== projectContentRev) {
     pDirty = true;
     cStatusEl.textContent = '已保存；此后修改仍未保存';
@@ -1134,13 +1161,17 @@ function buildForm() {
     if (!await confirmFallbackNaming()) { fileInput.value = ''; return; }
     const seq = selectSeq, project = curProject, stem = curCard, targetForm = formData;
     const uploadId = targetForm.id ?? '';
+    const uploadFields = {token: targetForm.token === true};
     const params = new URLSearchParams({filename: f.name, id: uploadId});
-    params.set('token', targetForm.token === true ? '1' : '0');
+    params.set('token', uploadFields.token ? '1' : '0');
     if (targetForm.type === '协战') {
-      params.set('shikigami1', targetForm.shikigami1 ?? '');
-      params.set('shikigami2', targetForm.shikigami2 ?? '');
+      uploadFields.shikigami1 = targetForm.shikigami1 ?? '';
+      uploadFields.shikigami2 = targetForm.shikigami2 ?? '';
+      params.set('shikigami1', uploadFields.shikigami1);
+      params.set('shikigami2', uploadFields.shikigami2);
     } else {
-      params.set('shikigami', targetForm.shikigami ?? '');
+      uploadFields.shikigami = targetForm.shikigami ?? '';
+      params.set('shikigami', uploadFields.shikigami);
     }
     let resp;
     try {
@@ -1159,13 +1190,18 @@ function buildForm() {
     const res = await resp.json();
     guiDebug('artwork.upload.saved', res.path);
     if (seq !== selectSeq || formData !== targetForm) return;  // 旧上传不得污染新卡/已撤回表单
-    // 服务器基准始终记录最终 id/卡图；当前表单的 id 未被用户改动时才回写
+    // 服务器基准记录本次实际持久化的编号字段与卡图；当前表单保留在途编辑
     ensureArtFirst().path = res.path;
     if (cardData) {
       cardData.id = res.id;
+      if (uploadFields.token) cardData.token = true; else delete cardData.token;
+      for (const field of ['shikigami', 'shikigami1', 'shikigami2']) {
+        if (field in uploadFields) cardData[field] = uploadFields[field];
+      }
       ensureArtFirst(cardData).path = res.path;
     }
     if ((targetForm.id ?? '') === uploadId) formData.id = res.id;
+    await loadProjectIds();
     buildForm();  // 重建表单：立即出现卡图定位输入框（原先仅表单构建时按旧 path 条件渲染）
     if (cDirty) scheduleCardPreview(); else cPreviewProject();
   };
@@ -1549,6 +1585,7 @@ async function saveCard() {
   if (errs.length) { showFormErrors(errs); return false; }
   if (!await confirmFallbackNaming()) return false;
   const seq = selectSeq, rev = contentRev, project = curProject, stem = curCard;
+  const saveId = formData.id ?? '';
   const payload = deepCopy(formData);
   let r;
   try {
@@ -1568,6 +1605,8 @@ async function saveCard() {
   if (res.stem) curCard = res.stem;
   payload.id = res.id;
   cardData = deepCopy(payload);
+  if ((formData.id ?? '') === saveId) formData.id = res.id;
+  await loadProjectIds();
   if (rev !== contentRev) {  // 保存期间又有编辑：保留新编辑与脏标记，不以旧快照覆盖
     cDirty = true;
     cStatusEl.textContent = '已保存；此后修改仍未保存';

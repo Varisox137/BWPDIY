@@ -373,6 +373,11 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     def get_projects():
         return JSONResponse(list_projects(library_dir))
 
+    @app.get("/api/projects/meta")
+    def get_projects_meta():
+        return JSONResponse({name: load_project(library_dir, name)["id"]
+                             for name in list_projects(library_dir)})
+
     @app.post("/api/projects")
     async def post_project(request: dict):
         create_project(library_dir, request.get("name"), request.get("id", ""))

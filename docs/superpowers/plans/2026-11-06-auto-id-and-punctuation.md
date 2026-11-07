@@ -82,15 +82,15 @@ def test_auto_id_ranges_and_gap_reuse(lib):
     create_project(lib, "项目")
     save_card(lib, "项目", "甲", {**SHIKIGAMI, "name": "甲"})
     save_card(lib, "项目", "乙", {**SHIKIGAMI, "name": "乙"})
-    assert load_card(lib, "项目", "甲")["id"] == "05101"
-    assert load_card(lib, "项目", "乙")["id"] == "05102"
+    assert load_card(lib, "项目", "甲")["id"] == "105101"
+    assert load_card(lib, "项目", "乙")["id"] == "105102"
     save_card(lib, "项目", "斩", {**FIGHT, "shikigami": "甲"})
     save_card(lib, "项目", "衍生", {**FIGHT, "name": "衍生", "shikigami": "甲", "token": True})
     summon = {**SHIKIGAMI, "name": "召唤", "shikigami": "甲"}
     save_card(lib, "项目", "召唤", summon)
-    assert load_card(lib, "项目", "斩")["id"] == "0510101"
-    assert load_card(lib, "项目", "衍生")["id"] == "0510151"
-    assert load_card(lib, "项目", "召唤")["id"] == "0510199"
+    assert load_card(lib, "项目", "斩")["id"] == "10510101"
+    assert load_card(lib, "项目", "衍生")["id"] == "10510151"
+    assert load_card(lib, "项目", "召唤")["id"] == "10510199"
 
 
 def test_auto_id_neutral_and_shared_derivative_range(lib):
@@ -100,7 +100,7 @@ def test_auto_id_neutral_and_shared_derivative_range(lib):
     # 分别在 51 与 99 已占用时，下一张衍生卡取 52、下一只衍生物取 98。
 ```
 
-协战测试须让两位所属式神 ID 为 `05102`/`05101`，断言首张协战为 `0510121`。另建 `05103` 后删除 `05102` 的空文件场景可用 `delete_card`，断言下一主要式神补 `05102`。
+协战测试须让两位所属式神 ID 为 `105102`/`105101`，断言首张协战为 `10510121`。另建 `105103` 后删除 `105102` 的空文件场景可用 `delete_card`，断言下一主要式神补 `105102`。
 
 多版本测试先手工建立同一空白 ID + 同名的 `@20260101`、`@20260201` 两文件，再保存其中一个，断言两个 YAML 都写入相同自动 ID，且 `list_cards` 仍只有一组。
 
@@ -124,7 +124,7 @@ def _all_card_data(library: Path) -> list[dict]:
 
 分配器接收有序候选完整 ID，返回第一个不在 `used_ids` 的值；无候选则抛 `StoreError("该类别自动 ID 号段已耗尽", code="forbidden")`。规则：
 
-- 主要式神：先确保项目 ID（`051..999` 最小空号），候选 `<pid>{seq:02d}`，`seq=1..99`。
+- 主要式神：先确保项目 ID（`051..999` 最小空号），候选 `1<pid>{seq:02d}`（首位异画位自动取 `1`），`seq=1..99`。
 - 普通所属卡：确保 `shikigami` 指向的主要式神有 ID，候选前缀 + `01..20`。
 - 协战：确保两位所属式神均有六位数字 ID，以数值较小者为前缀，候选 `21..50`。
 - `token is True` 的有所属非协战卡：候选前缀 + `51..99`。
@@ -183,7 +183,7 @@ def test_project_metadata_api(client):
 def test_save_returns_assigned_id(client):
     client.post("/api/projects", json={"name": "项目"})
     r = client.put("/api/projects/项目/cards/甲", json=_shikigami_card("甲"))
-    assert r.status_code == 200 and r.json()["id"] == "05101"
+    assert r.status_code == 200 and r.json()["id"] == "105101"
 
 
 def test_upload_uses_current_token_and_returns_id(client, library_dir):
@@ -193,7 +193,7 @@ def test_upload_uses_current_token_and_returns_id(client, library_dir):
     r = client.post("/api/projects/项目/cards/衍生/artwork?filename=a.png&token=1&shikigami=测试式神",
                     content=SAMPLE_ART.read_bytes())
     assert r.status_code == 200
-    assert r.json()["id"] == "0510151"
+    assert r.json()["id"] == "10510151"
 ```
 
 测试中的图片字节复用该文件现有合法 PNG 构造方式，不引入固定无效 payload。上传后再GET，断言 `id`、图片路径和 `token` 与当前表单一致。
@@ -365,7 +365,7 @@ Expected: 全量测试 PASS、所有脚本语法通过、无 whitespace 错误�
 
 - [ ] **Step 4: 实际 GUI 冒烟**
 
-用隔离的临时 `library` 启动开发版，依次验证：新建空白 ID 项目 → 新建主要式神得 `05101` → 新建普通/衍生/协战/衍生物与中立牌 → 上传图片使用最终 ID → 项目 ID 编辑 → 多版本仍归组 → 含标点和 `#ll` 的长描述预览无自动行首标点。停止临时服务，不触碰真实 `library/` 与 `~/.bwpdiy/layout.json`。
+用隔离的临时 `library` 启动开发版，依次验证：新建空白 ID 项目 → 新建主要式神得 `105101` → 新建普通/衍生/协战/衍生物与中立牌 → 上传图片使用最终 ID → 项目 ID 编辑 → 多版本仍归组 → 含标点和 `#ll` 的长描述预览无自动行首标点。停止临时服务，不触碰真实 `library/` 与 `~/.bwpdiy/layout.json`。
 
 - [ ] **Step 5: 提交文档与收尾**
 

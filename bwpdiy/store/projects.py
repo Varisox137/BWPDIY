@@ -350,8 +350,8 @@ def _ensure_shikigami_id(library: Path, project: str, name) -> str:
     if not card_id:
         saved_path, _ = save_card(library, project, path.stem, data)
         card_id = _read_yaml(saved_path).get("id")
-    if not isinstance(card_id, str) or not re.fullmatch(r"\d{5,6}", card_id):
-        raise StoreError(f"所属式神「{name}」的 ID 必须是五位或六位数字字符串", code="invalid_data")
+    if not isinstance(card_id, str) or not re.fullmatch(r"\d{6}", card_id):
+        raise StoreError(f"所属式神「{name}」的 ID 必须是六位数字字符串", code="invalid_data")
     return card_id
 
 
@@ -369,7 +369,7 @@ def ensure_card_id(library: Path, project: str, data: dict) -> str:
     shikigami = data.get("shikigami")
     if ctype == "式神" and not shikigami:
         prefix = _ensure_project_id(library, project)
-        candidates = (f"{prefix}{seq:02d}" for seq in range(1, 100))
+        candidates = (f"1{prefix}{seq:02d}" for seq in range(1, 100))
     elif ctype == "式神":
         prefix = _ensure_shikigami_id(library, project, shikigami)
         candidates = (f"{prefix}{seq:02d}" for seq in range(99, 50, -1))

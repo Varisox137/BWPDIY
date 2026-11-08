@@ -415,7 +415,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
 
 def _candidate_score(lines, font, region, lib, icon_variant, inline_faction_style,
                      semantic_breaks, keyword_first, candidate_index):
-    """同字号/锚点下：少行优先，再取行宽更均衡、语义断行更完整的候选。"""
+    """同字号/锚点下：语义断行完整优先，再取少行与行宽更均衡的候选。"""
     scored = lines[1:] if keyword_first and len(lines) > 1 else lines
     all_items = [item for line, _, _ in scored for item in line]
     icon_scale = region.get("icon_scale", 1.0)
@@ -424,18 +424,19 @@ def _candidate_score(lines, font, region, lib, icon_variant, inline_faction_styl
     widths = [_line_width(line, font, icon_w) for line, _, _ in scored]
     mean = sum(widths) / len(widths) if widths else 0.0
     imbalance = sum((width - mean) ** 2 for width in widths)
-    return len(lines), imbalance, -semantic_breaks, candidate_index
+    return -semantic_breaks, len(lines), imbalance, candidate_index
 
 
 def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
          row_runs: dict | None, icon_variant: str | None = None,
          inline_faction_style: int = 1, text_layout: str = "wrap"):
-    """字号从大到小适配；每个字号先逐 px 上移居中锚点，再比较该位置的语义候选。"""
+    """最大字号优先；同字号先比语义候选。短文本孤行可缩小至多 2px 来减少行数。"""
     candidates = (_smart_candidates(items) if text_layout == "smart"
                   else [(items, 0, False, 0)])
     max_size, min_size = region["font_range"]
     acx = region["center"][0] + region.get("center_offset", [0, 0])[0]
-    for size in range(max_size, min_size - 1, -1):
+
+    def best_at_size(size):
         font = lib.font(region["font"], size)
         max_dy = int(_line_height(font, region.get("_line_gap", _LINE_GAP)) / 2)
         for dy in range(0, max_dy + 1):
@@ -451,6 +452,35 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
                     choices.append((score, lines))
             if choices:
                 return font, min(choices, key=lambda choice: choice[0])[1]
+        return None
+
+    def has_short_last_line(font, lines):
+        if not 2 <= len(lines) <= 3:
+            return False
+        line, _, cy = lines[-1]
+        icon_w = _icon_widths(line, font, lib, icon_variant,
+                              region.get("icon_scale", 1.0), inline_faction_style)
+        cx = region["center"][0]
+        span = (cx - region["width"] / 2, cx + region["width"] / 2)
+        if row_runs:
+            span = clamp_span_by_mask(
+                span, cy, _line_height(font, region.get("_line_gap", _LINE_GAP)) / 2,
+                row_runs, region.get("obstacle_gap", 4))
+        available = span[1] - span[0] if span is not None else 0
+        return (available > 0 and _line_width(line, font, icon_w)
+                < _AUTO_BREAK_MIN_FILL * available)
+
+    for size in range(max_size, min_size - 1, -1):
+        fitted = best_at_size(size)
+        if fitted is None:
+            continue
+        font, lines = fitted
+        if text_layout == "smart" and has_short_last_line(font, lines):
+            for smaller in range(size - 1, max(min_size, size - 2) - 1, -1):
+                compact = best_at_size(smaller)
+                if compact is not None and len(compact[1]) < len(lines):
+                    return compact
+        return fitted
     return None
 
 

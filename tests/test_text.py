@@ -534,6 +534,21 @@ def test_smart_layout_prefers_balanced_conditional_break(assets_dir):
     assert [line[0] for line in fitted[1]] == ["甲乙丙丁。", "条件：造成伤害"]
 
 
+@pytest.mark.parametrize("label", ["条件：", "增强：", "响应：", "觉醒："])
+def test_smart_layout_prefers_semantic_break_over_fewer_lines_at_same_size(assets_dir, label):
+    """同字号下语义标签应另起一行，即使比普通换行多一行。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(0, 0, 260, 300, font_range=[24, 24])
+    text = f"造成2点伤害。[[{label[:-1]}]]：本回合你使用过法术牌。"
+    smart = fit_in_region(text, region, lib, text_layout="smart")
+    wrap = fit_in_region(text, region, lib, text_layout="wrap")
+    assert smart is not None and wrap is not None
+    assert smart[0].size == wrap[0].size == 24
+    assert len(smart[1]) > len(wrap[1])
+    assert smart[1][0][0] == "造成2点伤害。"
+    assert smart[1][1][0].startswith(label)
+
+
 def test_smart_layout_rejects_conditional_break_below_35_percent(assets_dir):
     """阈值过宽会留下仅两字的前行；35% 下限应拒绝该语义断行候选。"""
     lib = AssetLibrary(assets_dir)
@@ -544,6 +559,29 @@ def test_smart_layout_rejects_conditional_break_below_35_percent(assets_dir):
     smart = fit_in_region(text, region, lib, text_layout="smart")
     wrap = fit_in_region(text, region, lib, text_layout="wrap")
     assert smart == wrap
+
+
+def test_short_text_slightly_shrinks_to_remove_orphan_last_line(assets_dir):
+    """智能模式可小一级消除孤行；wrap 保持旧行为，不为减少行数主动缩字号。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(0, 0, 250, 300, font_range=[24, 12])
+    text = "对一个式神造成3点伤害"
+    fitted = fit_in_region(text, region, lib, text_layout="smart")
+    assert fitted is not None
+    assert fitted[0].size == 23
+    assert [line[0] for line in fitted[1]] == [text]
+    wrapped = fit_in_region(text, region, lib, text_layout="wrap")
+    assert wrapped is not None
+    assert wrapped[0].size == 24 and len(wrapped[1]) == 2
+
+
+def test_short_text_keeps_max_size_when_shrinking_cannot_remove_a_line(assets_dir):
+    """缩小字号不能减少行数时仍使用最大字号，避免无收益地缩小文字。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(0, 0, 250, 300, font_range=[24, 12])
+    fitted = fit_in_region("对一个式神造成3点伤害。", region, lib, text_layout="smart")
+    assert fitted is not None
+    assert fitted[0].size == 24
 
 
 def test_text_layout_wrap_disables_only_semantic_layout(assets_dir):

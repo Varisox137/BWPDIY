@@ -448,16 +448,20 @@ def test_entity_stat_color_inheritance_ignores_counter_only_colors(
     (-2, "weak"),
     (0, None),
 ])
-def test_entity_combat_power_picks_icon(assets_dir, sample_art, monkeypatch,
-                                       value, expected):
+def test_entity_combat_power_picks_badge(assets_dir, sample_art, monkeypatch,
+                                        value, expected):
+    """小卡战力/乏力必须读取 stats 大图标，而非描述文本的 icons 小图。"""
     lib = get_library(assets_dir)
     names = []
-    original = lib.icon
-    monkeypatch.setattr(lib, "icon", lambda name: names.append(name) or original(name))
+    original = lib.stat_badge
+    monkeypatch.setattr(lib, "stat_badge",
+                        lambda name: names.append(name) or original(name))
+    monkeypatch.setattr(lib, "icon", lambda name: pytest.fail(
+        f"对局小卡战力/乏力不得使用 icons 小图: {name}"))
     render_entity(make_card(sample_art, type="形态"),
                   {"combat_power": value}, assets_dir)
-    combat_icons = [name for name in names if name in ("combat_power", "weak")]
-    assert combat_icons == ([expected] if expected else [])
+    combat_badges = [name for name in names if name in ("combat_power", "weak")]
+    assert combat_badges == ([expected] if expected else [])
 
 
 @pytest.mark.parametrize("value, expected", [
@@ -482,10 +486,13 @@ def test_entity_signed_modifiers_pick_icons(assets_dir, sample_art, monkeypatch)
     card = make_card(sample_art, type="形态")
     lib = get_library(assets_dir)
     names = []
-    original = lib.icon
-    monkeypatch.setattr(lib, "icon", lambda name: names.append(name) or original(name))
+    original = lib.stat_badge
+    monkeypatch.setattr(lib, "stat_badge",
+                        lambda name: names.append(name) or original(name))
+    monkeypatch.setattr(lib, "icon", lambda name: pytest.fail(
+        f"对局小卡战力/乏力不得使用 icons 小图: {name}"))
     render_entity(card, {"combat_power": -2, "shield": 3}, assets_dir)
-    assert "weak" in names and "shield" not in names
+    assert "weak" in names and "shield" in names
 
 
 @pytest.mark.parametrize("color", [

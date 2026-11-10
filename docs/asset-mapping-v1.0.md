@@ -16,14 +16,14 @@
 | 框品 | `norm` 常规 / `blue` 琉璃 / `black` 墨染 / `red` 百炼 | — |
 | 派系 | `red` 红莲 / `green` 苍叶 / `blue` 青岚 / `purple` 紫岩 | — |
 | 数值 | `power` 力量 / `health` 生命 / `shield` 护甲 / `fragile` 破甲 / `intensity` 幻境耐久 / `energy` 能量 / `combat_power` 战力 / `weak` 乏力 / `bounty` 赏金 | `ll→power` / `sm→health` / `hj→shield` / `pj→fragile` / `nl→energy` / `nj→intensity` / `zl→combat_power` / `fl→weak` / `sj→bounty` |
-| 等级标三层 | `base` 底座 / `evolve` 觉醒图案 / `level_<1,2,3>_yellow` 勾玉层 | — |
+| 等级标四层 | `base` 底座 / `evolve` 新觉醒星 / `evolve_circle` 旧圆盘 / `level_<1,2,3>_yellow` 勾玉层 | — |
 
 现行目标目录结构（2026-11 美术资源更新后）：
 
 ```
 assets/
   frames/    {form,combat,spell,field,reinforce}_{norm,blue,red,black}.png（高 512 居中）
-  levels/    base.png / evolve.png
+  levels/    base.png / evolve.png / evolve_circle.png（旧圆盘保留原画布配准）
              / level_{1,2,3}_{yellow,cyan,purple,red,blue,brown,greyblue,orange}.png（八色）
              （level_4_* / level_3_4_* 仅作备用命名，不接等级枚举、表单或渲染引用）
   rarity/    {R,SR,SSR}.png + {R,SR,SSR}_{blue,red}.png + N.png（仅扩展选项可选）
@@ -31,7 +31,7 @@ assets/
   factions/  {red,green,blue,purple}_{1,2,3}.png（legacy 三变体，式神卡大派系标）
   stats/     power.png / health.png / shield.png / combat_fragile_{1,2}.png
              / intensity.png / energy.png / countdown.png / defeated_countdown.png
-             / combat_power.png / weak.png（小卡战力/乏力仍使用 icons 小图）
+             / combat_power.png / weak.png（大卡与小卡战力/乏力均使用此目录）
   numbers/   {white,red,green,purple,orange}_{0..9,plus,minus}.png + white_inf.png
              （运行时 yellow 映射 orange；plus/minus 中三枚由脚本合成补齐）
   badges/    {加护,蚀印,缘结,诅咒,天晖,梦魇,无始无终,无穷无尽,未使用,多状态,已展示}.png
@@ -108,7 +108,7 @@ assets/
 | `☆符号` 与新增战力乏力小图 | `icons/{power,health,shield,fragile,energy,intensity,combat_power,weak}.png` |
 | 本批赏金小图 | `icons/bounty.png`，已接入描述 `#sj`；赏金大角标仍未实现 |
 
-对局小卡的战力/乏力仍使用 `icons/` 小图，不读取同名 `stats/` 大角标。各数值组 `数值-*` 只作样式参考。
+对局小卡的战力/乏力与大卡统一使用 `stats/` 大图标；仅描述文本 `#zl`/`#fl` 使用 `icons/` 小图。各数值组 `数值-*` 只作样式参考。
 
 ## F. 位图数字、符号与特殊状态
 

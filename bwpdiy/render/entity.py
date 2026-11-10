@@ -219,7 +219,7 @@ def _render_level(canvas: Image.Image, lib: AssetLibrary, elem: dict,
 
 def _stat_icon(lib: AssetLibrary, field: str, value: int) -> Image.Image:
     if field == "combat_power":
-        return lib.icon("combat_power" if value > 0 else "weak")
+        return lib.stat_badge("combat_power" if value > 0 else "weak")
     if field == "shield":
         return lib.stat_badge("shield" if value > 0 else "combat_fragile_2")
     return lib.stat_badge(field)

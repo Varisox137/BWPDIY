@@ -1,6 +1,6 @@
 # 觉醒圆盘层与对局小卡战力图标修正 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 大卡觉醒等级组件增加旧素材中央圆盘层，对局小卡战力/乏力改用 stats 大图标。
 
@@ -34,7 +34,7 @@
 - Produces: `_paste_element(..., trim=True)` 新增可选关键字；仅圆盘传 `trim=False`，既有调用保持逐像素不变。
 - Produces: 导入脚本 `import_levels(out: Path | None = None)`；缺省写 `assets/levels/`，测试可写临时目录。
 
-- [ ] **Step 1: 写资源生成与加载失败测试**
+- [x] **Step 1: 写资源生成与加载失败测试**
 
 在 `tests/test_assets.py` 增加：
 
@@ -59,7 +59,7 @@ def test_evolve_circle_import_is_repeatable_and_preserves_registration(assets_di
 
 文件顶部按需导入 `Image`；既有 `AssetLibrary` 导入直接复用。
 
-- [ ] **Step 2: 写等级组件顺序与偏移失败测试**
+- [x] **Step 2: 写等级组件顺序与偏移失败测试**
 
 在 `tests/test_badges.py` 增加资源调用顺序测试：用 `monkeypatch` 将 `level_base`、`level_star`、`level_evolve_circle`、`level_num` 分别替换为返回带 `info["layer"]` 的 2×2 RGBA 图，再替换 `badges._paste_element` 记录 `(layer, pos, size, trim)` 并原样返回画布。
 
@@ -95,12 +95,12 @@ def test_evolve_circle_layers_between_star_and_level(assets_dir, monkeypatch):
 
 另断言相同调用在 `{"level": 2, "evolve": False}` 与 `{"evolve": True}` 下均不出现 `circle`。
 
-- [ ] **Step 3: 运行测试并确认失败**
+- [x] **Step 3: 运行测试并确认失败**
 
 Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_assets.py tests/test_badges.py -k "evolve_circle" -q`
 Expected: FAIL，原因是圆盘生成函数、资源入口和分层尚不存在。
 
-- [ ] **Step 4: 实现圆盘资产生成**
+- [x] **Step 4: 实现圆盘资产生成**
 
 在导入脚本使用中央圆形遮罩，初始提取框为源图 `(21, 21, 78, 78)`；在 4 倍尺寸绘制椭圆遮罩后以 LANCZOS 降回 99×99，并与原 alpha 相乘。结果写回同尺寸透明画布，以保留与新星叠加时的固有比例：
 
@@ -121,7 +121,7 @@ def extract_evolve_circle(source: Path, target: Path) -> None:
 
 运行一次脚本生成正式资源，并查看圆盘边缘；若星角仍有残留，只调整上述中央提取框，不增加运行时布局项。
 
-- [ ] **Step 5: 实现资源入口与分层绘制**
+- [x] **Step 5: 实现资源入口与分层绘制**
 
 ```python
 # assets.py
@@ -138,14 +138,14 @@ def _paste_element(..., composite: bool = False, trim: bool = True):
 
 觉醒分支先按原逻辑绘制新星，再以相同 `star_pos` 和 `(star_size, star_size)` 绘制 `lib.level_evolve_circle()`，圆盘调用传 `trim=False`；随后由原代码绘制等级勾玉。
 
-- [ ] **Step 6: 验证资源与等级组件**
+- [x] **Step 6: 验证资源与等级组件**
 
 Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_assets.py tests/test_badges.py -q`
 Expected: PASS。
 
 用 `SAMPLE_CARDS["法术"]` 实际渲染觉醒大卡，并用 ReadMediaFile 检查圆盘位于新星中央、勾玉清晰且边缘无星角残留。
 
-- [ ] **Step 7: 提交本任务**
+- [x] **Step 7: 提交本任务**
 
 ```bash
 git add scripts/import_psd_assets.py bwpdiy/render/assets.py bwpdiy/render/badges.py assets/levels/evolve_circle.png tests/test_assets.py tests/test_badges.py
@@ -166,7 +166,7 @@ git push
 - Consumes: 既有 `AssetLibrary.stat_badge(name)` 与 `stats/combat_power.png`、`stats/weak.png`。
 - Produces: `_stat_icon` 对 `combat_power` 正/负值均返回 stats 大图标；其他字段与文本解析接口不变。
 
-- [ ] **Step 1: 改测试以钉死 stats 资源入口**
+- [x] **Step 1: 改测试以钉死 stats 资源入口**
 
 将 `test_entity_combat_power_picks_icon` 与乏力相关测试的监视对象从 `lib.icon` 改为 `lib.stat_badge`，分别断言 `combat_power` / `weak`，并同时 monkeypatch `lib.icon`：若小卡战力分支调用它则 `pytest.fail("对局小卡战力/乏力须使用 stats 大图标")`。保留 0 不绘制断言。
 
@@ -177,12 +177,12 @@ combat_badges = [name for name in names if name in ("combat_power", "weak")]
 assert combat_badges == ([expected] if expected else [])
 ```
 
-- [ ] **Step 2: 运行测试并确认旧实现失败**
+- [x] **Step 2: 运行测试并确认旧实现失败**
 
-Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_entity_render.py -k "combat_power_picks_icon or combat_power_uses" -q`
+Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_entity_render.py -k "combat_power_picks_badge or signed_modifiers" -q`
 Expected: 正/负战力用例 FAIL，因为旧实现只调用 `lib.icon`。
 
-- [ ] **Step 3: 实现最小修复**
+- [x] **Step 3: 实现最小修复**
 
 ```python
 def _stat_icon(lib: AssetLibrary, field: str, value: int) -> Image.Image:
@@ -193,21 +193,21 @@ def _stat_icon(lib: AssetLibrary, field: str, value: int) -> Image.Image:
     return lib.stat_badge(field)
 ```
 
-- [ ] **Step 4: 运行小卡及渲染回归**
+- [x] **Step 4: 运行小卡及渲染回归**
 
 Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_entity_render.py tests/test_pipeline_components.py -q`
 Expected: PASS。
 
 分别渲染 `combat_power=2` 与 `combat_power=-2` 的小卡并用 ReadMediaFile 确认使用清晰大图标，0 不绘制。
 
-- [ ] **Step 5: 同步文档与精简复查**
+- [x] **Step 5: 同步文档与精简复查**
 
 - `AGENTS.md`：等级资源补 `evolve_circle.png` 及四层顺序；对局小卡战力/乏力改用 `stats/`，不再写“仍用 icons 小图”。
 - `docs/terminology.md`：等级标、对局式神和资源归档条目采用同一口径；说明圆盘保留原画布配准、跟随星标。
 - 主设计文档：同步大卡等级组件与小卡资源目录。
 - 检查本轮 diff，仅保留这两项目标所需代码与测试；不改默认布局、版本号或发布资产。
 
-- [ ] **Step 6: 最终验证并提交**
+- [x] **Step 6: 最终验证并提交**
 
 Run: `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest tests/test_assets.py tests/test_badges.py tests/test_entity_render.py tests/test_pipeline_components.py -q`
 Run: `git diff --check`

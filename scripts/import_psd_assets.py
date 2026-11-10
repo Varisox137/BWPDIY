@@ -11,7 +11,7 @@ legacy 归档（assets/legacy/）由本脚本生成的内容只有 rarity/N.png 
 
 牌框预处理统一：裁 alpha bbox → 等比缩放至高 512 → 居中贴到 512×512 透明画布。
 稀有度整带取左半部分 alpha bbox 裁出左端单枚花标。
-levels/stats/icons 原尺寸直拷。
+levels/stats/icons 原尺寸直拷；evolve_circle.png 由旧觉醒 PSD 提取中央圆盘并保留原画布。
 """
 
 import argparse

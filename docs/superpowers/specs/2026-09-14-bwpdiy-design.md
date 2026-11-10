@@ -122,7 +122,7 @@ artwork:
 1. 卡图按 `rotate/scale/offset` 变换（旋转绕中心、画布扩展、加载即缓存；v1.2.1；v1.2.2 起 cover 缩放基准固定为旋转前原图尺寸，旋转不再自带缩放；v1.3.0 起 offset 不钳制、平出画面留透明）→ 叠加牌框（卡图区天然透明）→ 裁掉框外内容（v1.0 起蒙版废弃）
 2. 牌框合成：框品 `frame_variant`（v1.0 开放 norm/blue/black/red，缺省 norm；版型 high/low 概念废弃）
 3. 叠图标层：
-   - 等级标三层叠加（无等级卡牌跳过）：底座 base → 觉醒星（仅觉醒牌）→ 勾玉层（1–3 勾玉，卡面 `level_color` 可选 yellow/cyan/purple/red/blue/brown/greyblue/orange 八色）；`level_4_*` 与 `level_3_4_*` 仅作备用命名，不接等级枚举、表单或渲染引用
+   - 等级标四层叠加（无等级卡牌跳过）：底座 base → 新觉醒星 evolve（仅觉醒牌）→ 旧素材中央圆盘 evolve_circle（仅觉醒牌，保留原画布并跟随星标）→ 勾玉层（1–3 勾玉，卡面 `level_color` 可选 yellow/cyan/purple/red/blue/brown/greyblue/orange 八色）；`level_4_*` 与 `level_3_4_*` 仅作备用命名，不接等级枚举、表单或渲染引用
    - 稀有度标、派系标、数值标（力量/生命/护甲加成/耐久）；协战及墨染等缺失的稀有度变体回退常规版，不再保留协战专用花标
    - 大卡临时 `status`（None/bless/eclipse/bond/curse/radiance/nightmare/eternal/endless/unused/multi_status/shown）读取 `badges/<状态中文名>.png`（由 AssetLibrary.BADGE_FILES 映射），无等级卡也绘制，六类型布局均以等级锚点加 `offset` 定位、以 `icon_size` 控制尺寸；不持久化，均不进入机制 badge
    - 协战双式神框（v1.4.1）：卡面可选布尔 `duo_frame`（缺省不绘制）；双菱形头像槽位（黑底板+头像菱形裁剪+高光+派系小标）+双框线盖顶，素材 `duo/`；头像由 web 预览按 `shikigami1`/`shikigami2` 注入所属式神卡图（内部键 `_duo`，不进 schema/yaml）
@@ -194,5 +194,5 @@ pytest 三层：schema 校验单测、渲染 smoke（各类型各出一张图不
 2. **BWPro 侧美术资产目录安排待定**：`artwork.images[].path` 在 BWPro 调用侧的相对基准目录以后确定。
 3. ~~**式神卡资源核实**~~（已核实）：式神卡外观形状同形态牌，渲染按 `TYPE_FRAME_CODE` 复用 `form` 资源（见 `bwpdiy/render/pipeline.py`），差异化元素为派系标/力量/生命。v1.0 起牌框/蒙版体系已由 PSD 官方素材替换（masks 废弃），legacy 旧资源含 unprocessed 原图封存 `assets/legacy/`。
 4. ~~框品资源映射~~（v1.0 已开放）：常规=norm / 琉璃=blue / 墨染=black / 百炼=red。
-5. **觉醒星美术资源可能需重制**（用户提醒）：`assets/levels/evolve.png`（99×99，legacy 程序化生成）在正式使用前需用户确认/替换。
+5. ~~**觉醒星美术资源可能需重制**~~（20261110）：保留新版 `levels/evolve.png`，并从旧 PSD 提取 `levels/evolve_circle.png` 作为其上层圆盘；等级勾玉最后叠加。
 6. **赏金左上角大角标尚未实现**：描述内嵌 `#sj` 已使用 `icons/bounty.png` 小图标；本批不新增赏金大角标。能量大图标已于 v1.8.0 接入爆能与对局状态组件。

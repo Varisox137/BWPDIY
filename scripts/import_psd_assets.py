@@ -18,7 +18,7 @@ import argparse
 import shutil
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
@@ -39,7 +39,6 @@ FRAME_TYPES = {
 
 LEVELS = {
     "勾玉/勾玉-底框.png": "base.png",
-    "勾玉/底框-觉醒.png": "evolve.png",
     "勾玉/一勾玉.png": "level_1_yellow.png",
     "勾玉/二勾玉.png": "level_2_yellow.png",
     "勾玉/三勾玉.png": "level_3_yellow.png",
@@ -132,12 +131,27 @@ def import_frames() -> list[str]:
     return logs
 
 
-def import_levels() -> list[str]:
-    out = ASSETS / "levels"
+def extract_evolve_circle(source: Path, target: Path) -> None:
+    """提取旧觉醒图中央圆盘，保留原画布以维持与新星叠加的固有比例。"""
+    with Image.open(source) as opened:
+        src = opened.convert("RGBA")
+    scale = 4
+    mask = Image.new("L", (src.width * scale, src.height * scale), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse(tuple(v * scale for v in (21, 21, 78, 78)), fill=255)
+    mask = mask.resize(src.size, Image.LANCZOS)
+    src.putalpha(ImageChops.multiply(src.getchannel("A"), mask))
+    src.save(target)
+
+
+def import_levels(out: Path | None = None) -> list[str]:
+    if out is None:
+        out = ASSETS / "levels"
     out.mkdir(parents=True, exist_ok=True)
     for src_rel, name in LEVELS.items():
         shutil.copy2(PSD / src_rel, out / name)
-    return [f"levels/{name}" for name in LEVELS.values()]
+    extract_evolve_circle(PSD / "勾玉/底框-觉醒.png", out / "evolve_circle.png")
+    return [f"levels/{name}" for name in LEVELS.values()] + ["levels/evolve_circle.png"]
 
 
 def import_rarity() -> list[str]:

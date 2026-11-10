@@ -46,6 +46,40 @@ def test_level_badge_layer_offsets(assets_dir):
     assert list(base.getdata()) == list(explicit.getdata())
 
 
+def test_evolve_circle_layers_between_star_and_level(assets_dir, monkeypatch):
+    """觉醒圆盘漏画、错序或不随星标偏移都会破坏等级组件的既定层级。"""
+    import bwpdiy.render.badges as badges
+    lib = AssetLibrary(assets_dir)
+
+    def layer(name):
+        img = Image.new("RGBA", (2, 2), (255, 255, 255, 255))
+        img.info["layer"] = name
+        return img
+
+    monkeypatch.setattr(lib, "level_base", lambda: layer("base"))
+    monkeypatch.setattr(lib, "level_star", lambda: layer("star"))
+    monkeypatch.setattr(lib, "level_evolve_circle", lambda: layer("circle"))
+    monkeypatch.setattr(lib, "level_num", lambda n, color="yellow": layer("level"))
+    calls = []
+
+    def record(canvas, img, pos, size, composite=False, trim=True):
+        calls.append((img.info["layer"], pos, size, trim))
+        return canvas
+
+    monkeypatch.setattr(badges, "_paste_element", record)
+    elem = {"kind": "level_badge", "pos": [120, 65], "base_size": 72,
+            "star_size": 60, "star_offset": [-3, 5], "num_size": 40}
+    render_element(canvas(), lib, "level", elem, {"level": 2, "evolve": True})
+    assert [call[0] for call in calls] == ["base", "star", "circle", "level"]
+    assert calls[1][1] == calls[2][1] == (117, 70)
+    assert calls[1][2] == calls[2][2] == (60, 60)
+    assert calls[2][3] is False
+    for card in ({"level": 2, "evolve": False}, {"evolve": True}):
+        calls.clear()
+        render_element(canvas(), lib, "level", elem, card)
+        assert "circle" not in [call[0] for call in calls]
+
+
 def _flank_elem():
     return {"kind": "rarity_flank", "pos": [256, 358], "gap": 32, "size": 24, "margin": 8}
 

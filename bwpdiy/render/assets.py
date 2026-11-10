@@ -42,6 +42,9 @@ class AssetLibrary:
     def level_star(self) -> Image.Image:
         return self._img("levels/evolve.png")
 
+    def level_evolve_circle(self) -> Image.Image:
+        return self._img("levels/evolve_circle.png")
+
     def level_num(self, n: int, color: str = "yellow") -> Image.Image:
         return self._img(f"levels/level_{n}_{color}.png")
 

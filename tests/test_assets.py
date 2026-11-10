@@ -24,6 +24,25 @@ def test_load_levels_and_rarity(assets_dir):
     assert lib.rarity("N").mode == "RGBA"
 
 
+def test_evolve_circle_import_is_repeatable_and_preserves_registration(assets_dir, tmp_path):
+    """圆盘重导入须确定且保留原画布；新版觉醒星不得再被旧 PSD 覆盖。"""
+    from scripts.import_psd_assets import import_levels
+    source = assets_dir / "psd_export/勾玉/底框-觉醒.png"
+    with Image.open(source) as img:
+        source_size = img.size
+    import_levels(tmp_path)
+    target = tmp_path / "evolve_circle.png"
+    first = target.read_bytes()
+    import_levels(tmp_path)
+    assert target.read_bytes() == first
+    with Image.open(target) as img:
+        assert img.mode == "RGBA" and img.size == source_size
+        assert img.getpixel((0, 0))[3] == 0
+        assert img.getpixel((img.width // 2, img.height // 2))[3] > 0
+    assert not (tmp_path / "evolve.png").exists()
+    assert AssetLibrary(assets_dir).level_evolve_circle().mode == "RGBA"
+
+
 def test_rarity_variant_fallback(assets_dir):
     """black 框品无专图：rarity(black) 回退 norm 底图；blue/red 用专图。"""
     lib = AssetLibrary(assets_dir)

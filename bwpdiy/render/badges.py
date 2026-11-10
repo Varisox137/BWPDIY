@@ -43,9 +43,9 @@ def _frame_variant(card: dict) -> str:
 def _paste_element(canvas: Image.Image, img: Image.Image,
                    pos: tuple[float, float],
                    size: tuple[int, int],
-                   composite: bool = False) -> Image.Image:
-    """元素贴图统一口径：裁 alpha bbox 后等比 contain 进 size 框（size=内容可见尺寸）。"""
-    bbox = img.getchannel("A").getbbox()
+                   composite: bool = False, trim: bool = True) -> Image.Image:
+    """元素贴图裁 alpha bbox 后等比缩放；trim=False 保留原画布配准。"""
+    bbox = img.getchannel("A").getbbox() if trim else None
     if bbox:
         img = img.crop(bbox)
     scale = min(size[0] / img.width, size[1] / img.height)
@@ -267,8 +267,11 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                              (elem["base_size"], elem["base_size"]))
         if card.get("evolve", False):
             sx, sy = elem.get("star_offset", [0, 0])  # 觉醒星相对底座偏移
-            out = _paste_element(out, lib.level_star(), (pos[0] + sx, pos[1] + sy),
-                                 (elem["star_size"], elem["star_size"]))
+            star_pos = (pos[0] + sx, pos[1] + sy)
+            star_size = (elem["star_size"], elem["star_size"])
+            out = _paste_element(out, lib.level_star(), star_pos, star_size)
+            out = _paste_element(out, lib.level_evolve_circle(), star_pos, star_size,
+                                 trim=False)
         nx, ny = elem.get("num_offset", [0, 0])  # 勾玉相对底座偏移
         return _paste_element(out, lib.level_num(card["level"],
                                                  card.get("level_color", "yellow")),

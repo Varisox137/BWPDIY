@@ -11,10 +11,10 @@
 
 ## 觉醒圆盘层
 
-- 新增运行时资源 `assets/levels/evolve_circle.png`，来源固定为旧 PSD 的 `勾玉/底框-觉醒.png`，不使用协战目录下的重复素材。
-- 在 `scripts/import_psd_assets.py` 集中记录中央圆形的提取参数：保留圆形图案及抗锯齿边缘，去除星角和外围透明区域，输出 RGBA。重复运行导入脚本应得到同一资源，不覆盖当前新版 `levels/evolve.png`。
-- `AssetLibrary` 增加圆盘资源入口；`render_element` 的等级组件只在卡牌同时具有 `level` 且 `evolve=true` 时绘制圆盘。
-- 合成顺序固定为：`base.png` 底座 → `evolve.png` 新觉醒星 → `evolve_circle.png` 旧圆盘 → 当前颜色与等级的勾玉。
+- 运行时资源 `assets/levels/evolve_circle.png` 来源固定为旧 PSD 的 `勾玉/底框-觉醒.png`，不使用协战目录下的重复素材。
+- 在 `scripts/import_psd_assets.py` 集中记录颜色采样与圆形参数：取源图中央 9×9 区域的平均 RGB，按旧图中央色区域采用 `(26, 33, 73, 80)` 圆形范围与 4 倍抗锯齿遮罩，在透明 99×99 画布上生成纯色圆。不得叠加旧圆盘的纹理、星角或明暗。重复运行导入脚本应得到同一资源，不覆盖当前新版 `levels/evolve.png`。
+- `AssetLibrary` 的圆盘资源入口不变；`render_element` 的等级组件只在卡牌同时具有 `level` 且 `evolve=true` 时绘制圆盘。
+- 合成顺序固定为：`base.png` 底座 → `evolve.png` 新觉醒星 → `evolve_circle.png` 纯色圆 → 当前颜色与等级的勾玉。
 - 圆盘以觉醒星中心为锚点，整体随 `star_offset` 移动；显示尺寸按旧素材中圆盘与完整觉醒图案的固有比例乘以 `star_size`。不新增布局字段、GUI 控件或逐类型配置。
 - 无等级、非觉醒牌不绘制圆盘；等级勾玉始终最后叠加，避免被圆盘遮挡。
 
@@ -24,7 +24,7 @@
 
 ## 验证
 
-- 资源测试：圆盘可加载为 RGBA，且导入脚本重复生成结果一致；新版觉醒星保持不变。
+- 资源测试：圆盘可加载为 RGBA，实心区域仅含中央采样色，且导入脚本重复生成结果一致；新版觉醒星保持不变。
 - 等级组件测试：记录资源调用与绘制结果，确认圆盘仅用于觉醒牌，顺序位于新星与勾玉之间，并跟随星标偏移；无等级/非觉醒不绘制。
 - 小卡测试：正战力与乏力分别读取 `stats/combat_power.png`、`stats/weak.png`，不再调用对应 `lib.icon`；0 仍不绘制。
 - 运行相关 assets、badges、entity 与管线定向测试，并实际渲染一张觉醒大卡和带战力/乏力的小卡检查视觉效果。

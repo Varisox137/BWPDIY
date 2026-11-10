@@ -16,14 +16,14 @@
 | 框品 | `norm` 常规 / `blue` 琉璃 / `black` 墨染 / `red` 百炼 | — |
 | 派系 | `red` 红莲 / `green` 苍叶 / `blue` 青岚 / `purple` 紫岩 | — |
 | 数值 | `power` 力量 / `health` 生命 / `shield` 护甲 / `fragile` 破甲 / `intensity` 幻境耐久 / `energy` 能量 / `combat_power` 战力 / `weak` 乏力 / `bounty` 赏金 | `ll→power` / `sm→health` / `hj→shield` / `pj→fragile` / `nl→energy` / `nj→intensity` / `zl→combat_power` / `fl→weak` / `sj→bounty` |
-| 等级标四层 | `base` 底座 / `evolve` 新觉醒星 / `evolve_circle` 旧圆盘 / `level_<1,2,3>_yellow` 勾玉层 | — |
+| 等级标四层 | `base` 底座 / `evolve` 新觉醒星 / `evolve_circle` 中央色纯色圆 / `level_<1,2,3>_yellow` 勾玉层 | — |
 
 现行目标目录结构（2026-11 美术资源更新后）：
 
 ```
 assets/
   frames/    {form,combat,spell,field,reinforce}_{norm,blue,red,black}.png（高 512 居中）
-  levels/    base.png / evolve.png / evolve_circle.png（旧圆盘保留原画布配准）
+  levels/    base.png / evolve.png / evolve_circle.png（中央色纯色圆保留原画布配准）
              / level_{1,2,3}_{yellow,cyan,purple,red,blue,brown,greyblue,orange}.png（八色）
              （level_4_* / level_3_4_* 仅作备用命名，不接等级枚举、表单或渲染引用）
   rarity/    {R,SR,SSR}.png + {R,SR,SSR}_{blue,red}.png + N.png（仅扩展选项可选）

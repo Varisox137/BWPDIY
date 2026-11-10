@@ -1,5 +1,5 @@
 import pytest
-from PIL import Image, ImageFont
+from PIL import Image, ImageFont, ImageStat
 
 from bwpdiy.render.assets import AssetLibrary
 
@@ -25,11 +25,13 @@ def test_load_levels_and_rarity(assets_dir):
 
 
 def test_evolve_circle_import_is_repeatable_and_preserves_registration(assets_dir, tmp_path):
-    """圆盘重导入须确定且保留原画布；新版觉醒星不得再被旧 PSD 覆盖。"""
+    """纯色圆取旧图中央色并保留原画布；重导入不得覆盖新版觉醒星。"""
     from scripts.import_psd_assets import import_levels
     source = assets_dir / "psd_export/勾玉/底框-觉醒.png"
     with Image.open(source) as img:
         source_size = img.size
+        center_color = tuple(round(v) for v in ImageStat.Stat(
+            img.convert("RGB").crop((45, 45, 54, 54))).mean)
     import_levels(tmp_path)
     target = tmp_path / "evolve_circle.png"
     first = target.read_bytes()
@@ -38,7 +40,11 @@ def test_evolve_circle_import_is_repeatable_and_preserves_registration(assets_di
     with Image.open(target) as img:
         assert img.mode == "RGBA" and img.size == source_size
         assert img.getpixel((0, 0))[3] == 0
-        assert img.getpixel((img.width // 2, img.height // 2))[3] > 0
+        assert img.getpixel((img.width // 2, img.height // 2))[:3] == center_color
+        visible = img.getchannel("A").point(lambda value: 255 if value >= 128 else 0)
+        assert visible.getbbox() == (26, 33, 73, 80)
+        assert all(pixel[:3] == center_color
+                   for pixel in img.get_flattened_data() if pixel[3] == 255)
     assert not (tmp_path / "evolve.png").exists()
     assert AssetLibrary(assets_dir).level_evolve_circle().mode == "RGBA"
 

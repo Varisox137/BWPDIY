@@ -11,14 +11,14 @@ legacy 归档（assets/legacy/）由本脚本生成的内容只有 rarity/N.png 
 
 牌框预处理统一：裁 alpha bbox → 等比缩放至高 512 → 居中贴到 512×512 透明画布。
 稀有度整带取左半部分 alpha bbox 裁出左端单枚花标。
-levels/stats/icons 原尺寸直拷；evolve_circle.png 由旧觉醒 PSD 提取中央圆盘并保留原画布。
+levels/stats/icons 原尺寸直拷；evolve_circle.png 取旧觉醒 PSD 中央色生成纯色圆并保留原画布。
 """
 
 import argparse
 import shutil
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageDraw, ImageStat
 
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
@@ -132,16 +132,18 @@ def import_frames() -> list[str]:
 
 
 def extract_evolve_circle(source: Path, target: Path) -> None:
-    """提取旧觉醒图中央圆盘，保留原画布以维持与新星叠加的固有比例。"""
+    """取旧觉醒图中央色生成纯色圆，保留原画布以维持与新星的固有比例。"""
     with Image.open(source) as opened:
-        src = opened.convert("RGBA")
+        src = opened.convert("RGB")
+    color = tuple(round(v) for v in ImageStat.Stat(src.crop((45, 45, 54, 54))).mean)
     scale = 4
     mask = Image.new("L", (src.width * scale, src.height * scale), 0)
     draw = ImageDraw.Draw(mask)
-    draw.ellipse(tuple(v * scale for v in (21, 21, 78, 78)), fill=255)
+    draw.ellipse(tuple(v * scale for v in (26, 33, 73, 80)), fill=255)
     mask = mask.resize(src.size, Image.LANCZOS)
-    src.putalpha(ImageChops.multiply(src.getchannel("A"), mask))
-    src.save(target)
+    circle = Image.new("RGBA", src.size, (0, 0, 0, 0))
+    circle.paste((*color, 255), (0, 0, src.width, src.height), mask)
+    circle.save(target)
 
 
 def import_levels(out: Path | None = None) -> list[str]:

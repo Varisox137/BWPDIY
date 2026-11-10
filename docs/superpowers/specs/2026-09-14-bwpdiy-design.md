@@ -122,7 +122,7 @@ artwork:
 1. 卡图按 `rotate/scale/offset` 变换（旋转绕中心、画布扩展、加载即缓存；v1.2.1；v1.2.2 起 cover 缩放基准固定为旋转前原图尺寸，旋转不再自带缩放；v1.3.0 起 offset 不钳制、平出画面留透明）→ 叠加牌框（卡图区天然透明）→ 裁掉框外内容（v1.0 起蒙版废弃）
 2. 牌框合成：框品 `frame_variant`（v1.0 开放 norm/blue/black/red，缺省 norm；版型 high/low 概念废弃）
 3. 叠图标层：
-   - 等级标四层叠加（无等级卡牌跳过）：底座 base → 新觉醒星 evolve（仅觉醒牌）→ 旧素材中央圆盘 evolve_circle（仅觉醒牌，保留原画布并跟随星标）→ 勾玉层（1–3 勾玉，卡面 `level_color` 可选 yellow/cyan/purple/red/blue/brown/greyblue/orange 八色）；`level_4_*` 与 `level_3_4_*` 仅作备用命名，不接等级枚举、表单或渲染引用
+   - 等级标四层叠加（无等级卡牌跳过）：底座 base → 新觉醒星 evolve（仅觉醒牌）→ 旧素材中央色纯色圆 evolve_circle（仅觉醒牌，取中央 9×9 平均色，保留原画布并跟随星标）→ 勾玉层（1–3 勾玉，卡面 `level_color` 可选 yellow/cyan/purple/red/blue/brown/greyblue/orange 八色）；`level_4_*` 与 `level_3_4_*` 仅作备用命名，不接等级枚举、表单或渲染引用
    - 稀有度标、派系标、数值标（力量/生命/护甲加成/耐久）；协战及墨染等缺失的稀有度变体回退常规版，不再保留协战专用花标
    - 大卡临时 `status`（None/bless/eclipse/bond/curse/radiance/nightmare/eternal/endless/unused/multi_status/shown）读取 `badges/<状态中文名>.png`（由 AssetLibrary.BADGE_FILES 映射），无等级卡也绘制，六类型布局均以等级锚点加 `offset` 定位、以 `icon_size` 控制尺寸；不持久化，均不进入机制 badge
    - 协战双式神框（v1.4.1）：卡面可选布尔 `duo_frame`（缺省不绘制）；双菱形头像槽位（黑底板+头像菱形裁剪+高光+派系小标）+双框线盖顶，素材 `duo/`；头像由 web 预览按 `shikigami1`/`shikigami2` 注入所属式神卡图（内部键 `_duo`，不进 schema/yaml）

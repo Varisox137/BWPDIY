@@ -102,24 +102,26 @@ Expected: FAIL，原因是圆盘生成函数、资源入口和分层尚不存在
 
 - [x] **Step 4: 实现圆盘资产生成**
 
-在导入脚本使用中央圆形遮罩，初始提取框为源图 `(21, 21, 78, 78)`；在 4 倍尺寸绘制椭圆遮罩后以 LANCZOS 降回 99×99，并与原 alpha 相乘。结果写回同尺寸透明画布，以保留与新星叠加时的固有比例：
+在导入脚本取源图中央 `(45, 45, 54, 54)` 的平均 RGB，使用按旧图中央色区域测得的 `(26, 33, 73, 80)` 圆形遮罩；在 4 倍尺寸绘制椭圆后以 LANCZOS 降回 99×99，把纯色贴到同尺寸透明画布，不保留旧圆的纹理或明暗：
 
 ```python
 def extract_evolve_circle(source: Path, target: Path) -> None:
     with Image.open(source) as opened:
-        src = opened.convert("RGBA")
+        src = opened.convert("RGB")
+    color = tuple(round(v) for v in ImageStat.Stat(src.crop((45, 45, 54, 54))).mean)
     scale = 4
     mask = Image.new("L", (src.width * scale, src.height * scale), 0)
     draw = ImageDraw.Draw(mask)
-    draw.ellipse(tuple(v * scale for v in (21, 21, 78, 78)), fill=255)
+    draw.ellipse(tuple(v * scale for v in (26, 33, 73, 80)), fill=255)
     mask = mask.resize(src.size, Image.LANCZOS)
-    src.putalpha(ImageChops.multiply(src.getchannel("A"), mask))
-    src.save(target)
+    circle = Image.new("RGBA", src.size, (0, 0, 0, 0))
+    circle.paste((*color, 255), (0, 0, src.width, src.height), mask)
+    circle.save(target)
 ```
 
-文件顶部集中导入 `ImageChops`、`ImageDraw`。`LEVELS` 删除旧 `底框-觉醒.png → evolve.png` 映射，避免重导入覆盖新版新星；`import_levels(out=None)` 复制其余 LEVELS 后调用 `extract_evolve_circle(PSD / "勾玉/底框-觉醒.png", out / "evolve_circle.png")`，日志追加 `levels/evolve_circle.png`。
+文件顶部集中导入 `ImageStat`、`ImageDraw`。`LEVELS` 删除旧 `底框-觉醒.png → evolve.png` 映射，避免重导入覆盖新版新星；`import_levels(out=None)` 复制其余 LEVELS 后调用 `extract_evolve_circle(PSD / "勾玉/底框-觉醒.png", out / "evolve_circle.png")`，日志追加 `levels/evolve_circle.png`。
 
-运行一次脚本生成正式资源，并查看圆盘边缘；若星角仍有残留，只调整上述中央提取框，不增加运行时布局项。
+运行一次导入生成正式资源，查看纯色圆边缘及新星叠加效果，不增加运行时布局项。
 
 - [x] **Step 5: 实现资源入口与分层绘制**
 

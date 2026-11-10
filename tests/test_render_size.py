@@ -81,6 +81,7 @@ def test_card_native_size_scales_text_badges_and_signed_digits(
     art = sample_art.resolve()
     layout = load_layouts(assets_dir)["战斗"]
     layout["elements"]["power"]["sign_offset"] = [3, 4]
+    layout["elements"]["power"]["stroke_width"] = 2  # 旧卡面配置仍有此键，验证兼容缩放
     layout["elements"]["shield"]["fragile_sign_offset"] = [5, 6]
     card = {"type": "战斗", "name": "尺寸核验", "level": 1, "rarity": "R",
             "power+": 12, "shield+": -34, "description": "[[测试]]文本#ll。",

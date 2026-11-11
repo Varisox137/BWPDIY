@@ -163,8 +163,8 @@ def validate_entity_state(state: dict) -> dict:
         raise ValueError("countdown 必须是非负整数")
     defeated = normalized["defeated_countdown"]
     if defeated is not None and defeated != "infinity":
-        if not _is_int(defeated) or defeated <= 0:
-            raise ValueError("defeated_countdown 必须是正整数或 infinity")
+        if not _is_int(defeated) or defeated < 0:
+            raise ValueError("defeated_countdown 必须是非负整数或 infinity")
     for field in ("energy", "countdown", "defeated_countdown"):
         value = normalized[field]
         if _is_int(value) and value > max_value:

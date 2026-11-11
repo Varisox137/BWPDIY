@@ -308,7 +308,7 @@ function buildBattleForm() {
   battleCheckbox(div, '永久', permanent, setBattlePermanent, !defeated);
   if (defeated) {
     battleNumberRow(div, '气绝倒计时', permanent ? 3 : state.defeated_countdown,
-      value => setBattleEntityField('defeated_countdown', value), 1,
+      value => setBattleEntityField('defeated_countdown', value), 0,
       'b-defeated-value', permanent);
   }
 }

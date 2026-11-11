@@ -133,6 +133,16 @@ def test_entity_native_size_and_level_zero(assets_dir, sample_art):
         render_entity(card, state, assets_dir, width=base.width, height=base.height * 2)
 
 
+def test_entity_defeated_countdown_zero_native_size(assets_dir, sample_art):
+    card = _card(sample_art)
+    state = {"defeated_countdown": 0}
+    base = render_entity(card, state, assets_dir)
+    same = render_entity(card, state, assets_dir, width=base.width, height=base.height)
+    assert same.tobytes() == base.tobytes()
+    doubled = render_entity(card, state, assets_dir, height=base.height * 2)
+    assert doubled.size == (base.width * 2, base.height * 2)
+
+
 def test_entity_native_size_scales_beyond_unscaled_element_limits(assets_dir, sample_art):
     """原生放大后的合法字体/坐标不得再套用未放大的布局上限。"""
     card = _card(sample_art)

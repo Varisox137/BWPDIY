@@ -12,7 +12,7 @@
 
 - 版本统一为 `1.8.0`，本计划不构建 exe、不发布 Release。
 - 设计事实来源：`docs/superpowers/specs/2026-11-01-battle-preview-design.md`。
-- `energy`/`countdown` 至多一个非空；能量允许 0，倒计时为正整数；`defeated_countdown` 为正整数、`"infinity"` 或 `None`。
+- `energy`/`countdown` 至多一个非空；能量与普通倒计时允许 0；`defeated_countdown` 为非负整数、`"infinity"` 或 `None`。
 - 气绝只灰化底框和卡图；保留原色能量、隐藏倒计时，中央气绝组件最后绘制。0 级仍只画底框和卡图。
 - `burst` 为带符号整数，0 不绘制；只属于渲染字典，不加入 store schema，不写 YAML。
 - 黄色只供能量自动使用，普通 `<field>_color` 仍只接受 red/green/purple；倒计时、气绝和爆能固定白色。

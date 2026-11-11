@@ -442,7 +442,7 @@ function buildCardProps() {
       numRowC(div, '气绝倒计时', permanent ? 3 : entityLayoutSample.defeated_countdown, true, v => {
         entityLayoutSample.defeated_countdown = v;
         schedulePreview();
-      }, null, 9999999999, 1);
+      }, null, 9999999999, 0);
       div.children[row].children[0].disabled = permanent;
     }
     return;

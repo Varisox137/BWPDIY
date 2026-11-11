@@ -104,7 +104,7 @@ def test_validate_entity_state_rejects_non_mapping():
 
 @pytest.mark.parametrize("state", [
     {"energy": -1}, {"energy": True},
-    {"countdown": -1}, {"countdown": 1.5}, {"defeated_countdown": 0},
+    {"countdown": -1}, {"countdown": 1.5},
     {"defeated_countdown": -1}, {"defeated_countdown": "inf"},
     {"defeated_countdown": True},
 ])
@@ -118,9 +118,10 @@ def test_entity_permanent_defeat_accepts_infinity():
         {"defeated_countdown": "infinity"})["defeated_countdown"] == "infinity"
 
 
-def test_entity_allows_zero_countdown_with_energy_for_integration():
-    state = validate_entity_state({"energy": 0, "countdown": 0})
+def test_entity_allows_zero_counters_for_integration():
+    state = validate_entity_state({"energy": 0, "countdown": 0, "defeated_countdown": 0})
     assert state["energy"] == 0 and state["countdown"] == 0
+    assert state["defeated_countdown"] == 0
 
 
 @pytest.mark.parametrize("field", ["energy", "countdown", "defeated_countdown"])
@@ -181,6 +182,8 @@ def test_entity_counter_asset_and_digit_selection(assets_dir, sample_art, monkey
 
     assert render({"energy": 0}) == (["energy"], [("0", "yellow")], [])
     assert render({"countdown": 2}) == (["countdown"], [("2", "white")], [])
+    assert render({"defeated_countdown": 0}) == (
+        ["defeated_countdown"], [("0", "white")], [])
     assert render({"energy": 0, "defeated_countdown": 2}) == (
         ["energy", "defeated_countdown"], [("0", "yellow"), ("2", "white")], [])
     assert render({"countdown": 2, "defeated_countdown": 2}) == (

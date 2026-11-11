@@ -18,7 +18,7 @@
 - `energy: int | None`：非负整数，0 也绘制；非空时右上角使用能量图标，数字自动使用黄色。
 - `countdown: int | None`：正整数；非空时右上角使用倒计时图标，数字白色。
 - `energy` 与 `countdown` 至多一个非空，二者同时非空则抛出 `ValueError`。
-- `defeated_countdown: int | "infinity" | None`：非空即气绝；正整数显示普通气绝倒计时，`"infinity"` 表示永久气绝并绘制白色 `∞`。其他字符串、布尔值、0 和负数均拒绝。
+- `defeated_countdown: int | "infinity" | None`：非空即气绝；非负整数显示普通气绝倒计时（含 0，供复活过渡帧），`"infinity"` 表示永久气绝并绘制白色 `∞`。其他字符串、布尔值和负数均拒绝。
 
 气绝时：
 

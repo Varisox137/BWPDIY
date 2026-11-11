@@ -229,7 +229,7 @@ def _line_width(line: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
 
 
 _NO_LINE_START = set("，。！？；：、,.!?;:%）】》〉」』〕〗〙﹚﹜﹞”’)]}…")
-_NO_LINE_END = set("≥≤<>±=+−-×÷（【《〈「『〔〖〘([{")
+_NO_LINE_END = set("≥≤<>±=+−-×÷（【《〈「『〔〖〘([{［｛“‘\"'＂＇")
 
 
 def _carry_last_unit(current, item):

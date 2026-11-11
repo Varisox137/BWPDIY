@@ -114,7 +114,7 @@ large.save("card@2x.png")
 - 通用：`type`、`name`、`description`、`level`、`rarity`、`frame_variant`、`special_type`、`version_date`、`inline_faction_style`、`text_layout`。
 - 类型：式神/战斗/法术/形态/幻境/协战；式神/形态使用 `power/health`，幻境使用 `durability`，战斗使用 `power+/shield+`，觉醒法术使用 `power+/health+`。
 - 可选：`evolve`、`level_color`、各数值的 `<field>_color`、`footer`、`layout`。勾玉支持 `yellow/cyan/purple/red/blue/brown/greyblue/orange` 八色；`level_4_*` 与 `level_3_4_*` 仅为备用命名，当前等级仍为 1–3。
-- `text_layout` 为 `smart/wrap/off`，缺省 `smart`：智能模式独立开头纯关键字短句并比较条件类标签前的断行；同字号且不增加行数时，依次避免高亮短语跨行、比较/运算或开括号符号留在行尾、内嵌图标位于行首。`wrap` 仅自动换行与字号适配；`off` 仅显式换行且固定最大字号。换行与水平居中按整行文字掩膜的最紧边界测宽，段内 advance/字距不变。`text_layout` 属于卡牌描述，不影响机制正文。
+- `text_layout` 为 `smart/wrap/off`，缺省 `smart`：智能模式独立开头纯关键字短句并比较条件类标签前的断行；同字号且不增加行数时，依次避免高亮短语跨行、比较/运算符、前引号或开括号留在行尾、内嵌图标位于行首。`wrap` 仅自动换行与字号适配；`off` 仅显式换行且固定最大字号。换行与水平居中按整行文字掩膜的最紧边界测宽，段内 advance/字距不变。`text_layout` 属于卡牌描述，不影响机制正文。
 - `inline_faction_style` 为整数 1/2/3，缺省 1，控制本条卡牌描述中全部 `#hl/#cy/#ql/#zy` 内嵌派系图标；不再按墨染框自动切换派系文件。
 - 稀有度为 N/R/SR/SSR。R/SR/SSR 按框品读取专图，缺失时回退常规版；协战同样回退常规版，不使用独立 `reinforce_*` 花标，N 始终读取 `N.png`。
 - 临时渲染字段 `burst`：带符号整数，绝对值最多 10 位；非零时在等级布局锚点下方绘制能量图标与 `+N`/`-N`，0 或缺省不绘制。仅战斗/法术/形态/幻境支持，式神/协战直接忽略该字段；WebGUI 输入框仅允许非正整数，但渲染库仍接受带符号整数。`burst` 不属于 store 卡牌 schema，WebGUI 不持久化；BWPro 需要时应在调用 `render_card` 的渲染字典中临时传入。

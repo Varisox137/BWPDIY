@@ -120,8 +120,8 @@ def test_smart_wrap_keeps_highlight_together_when_carrying_punctuation(assets_di
     assert [text for text, _, _ in lines] == ["甲乙", "丙丁，戊"]
 
 
-@pytest.mark.parametrize("symbol", ["≥", "≤"])
-def test_smart_wrap_avoids_comparison_symbol_at_line_end(assets_dir, symbol):
+@pytest.mark.parametrize("symbol", ["≥", "≤", "“", "‘", '"', "'", "［", "｛"])
+def test_smart_wrap_avoids_opening_symbol_at_line_end(assets_dir, symbol):
     from bwpdiy.render.text import _icon_widths, _line_width, parse_items
     lib = AssetLibrary(assets_dir)
     font36 = lib.font("desc", 36)

@@ -44,7 +44,7 @@ wheels = [
 
 [[package]]
 name = "bwpdiy"
-version = "1.8.2"
+version = "1.8.5"
 source = { editable = "." }
 dependencies = [
     { name = "pillow" },

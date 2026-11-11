@@ -1,7 +1,9 @@
 """文本层：矩形文本区排版（自动换行、逐行居中、字号递减适配、掩膜墨迹避让、关键字异色、内嵌图标）。
 
 v1.8.3 卡牌可选 smart/wrap/off：smart 独立开头纯关键字短句并比较条件类候选断行；
-wrap 为旧自动排版；off 仅显式分行、固定最大字号。通用文本与机制缺省 wrap。
+同字号且不增加行数时，另依次避免高亮跨行、符号留行尾、图标作行首；
+wrap 仅自动换行与字号适配；off 仅显式分行、固定最大字号。通用文本与机制缺省 wrap。
+换行与水平居中按整行文字掩膜的最紧边界测宽，段内 advance/字距保持不变。
 
 关键字高亮：描述文本中 [[关键字]] 用双英文方括号标记（v1.2.1 起；单 [ ] 为字面字符），
 括号不绘制、内容按框品异色（FRAME_KEYWORD_FILL）。从左往右匹配（'[[' 配其后
@@ -20,6 +22,7 @@ wrap 为旧自动排版；off 仅显式分行、固定最大字号。通用文�
 """
 
 import re
+from functools import lru_cache
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -176,37 +179,61 @@ def _icon_widths(items: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFon
 _ICON_GAP_EM = 0.125  # 图标与同行相邻文字之间的八分之一宽空格（em 计）
 
 
-def _line_width(line: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
-                icon_w: dict[str, int]) -> float:
-    """行宽：连续字符段 getlength（保字距），图标按缩放宽度计入；
-    同行内文字-图标相邻（任一顺序）自动加一个八分之一宽空格——图标在行首/行尾
-    时该侧无空格（空格只存在于行内相邻处），图标-图标相邻不加。"""
-    w, run, prev = 0.0, "", None
+@lru_cache(maxsize=4096)
+def _text_ink_bbox(font: ImageFont.FreeTypeFont, text: str):
+    return font.getmask(text).getbbox()
+
+
+def _line_metrics(line: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
+                  icon_w: dict[str, int]) -> tuple[float, float]:
+    """整行可见内容的水平紧边界，坐标相对于排版原点。
+
+    字符段仍按 getlength 推进以保留字距与段内位置，但行首/行尾字框空白不计入
+    可见宽度；图标按缩放后的方形占位计入，文字-图标间隙规则不变。
+    """
+    spans = []
+    x, run, prev = 0.0, "", None
     gap = font.size * _ICON_GAP_EM
+
+    def flush():
+        nonlocal x, run
+        if run:
+            bbox = _text_ink_bbox(font, run)
+            if bbox:
+                spans.append((x + bbox[0], x + bbox[2]))
+            x += font.getlength(run)
+            run = ""
+
     for kind, v, _ in line:
         if kind == "icon":
-            if run:
-                w += font.getlength(run)
-                run = ""
+            flush()
             if prev == "char":
-                w += gap
-            w += icon_w[v]
+                x += gap
+            spans.append((x, x + icon_w[v]))
+            x += icon_w[v]
         else:
             if prev == "icon":
-                w += gap
+                x += gap
             run += v
         prev = kind
-    if run:
-        w += font.getlength(run)
-    return w
+    flush()
+    if not spans:
+        return 0.0, 0.0
+    return min(left for left, _ in spans), max(right for _, right in spans)
+
+
+def _line_width(line: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
+                icon_w: dict[str, int]) -> float:
+    left, right = _line_metrics(line, font, icon_w)
+    return right - left
 
 
 _NO_LINE_START = set("，。！？；：、,.!?;:%）】》〉」』〕〗〙﹚﹜﹞”’)]}…")
+_NO_LINE_END = set("≥≤<>±=+−-×÷（【《〈「『〔〖〘([{")
 
 
-def _carry_for_punctuation(current, item):
-    if not (item[0] == "char" and item[1] in _NO_LINE_START):
-        return None
+def _carry_last_unit(current, item):
+    """把行尾最后一个可见单元及其后的闭合标点一起借到下一行。"""
     cut = len(current)
     while cut and current[cut - 1][0] == "char" and current[cut - 1][1] in _NO_LINE_START:
         cut -= 1
@@ -215,6 +242,49 @@ def _carry_for_punctuation(current, item):
     if cut == 0:
         return None
     return current[:cut], current[cut:] + [item]
+
+
+def _carry_for_punctuation(current, item):
+    if not (item[0] == "char" and item[1] in _NO_LINE_START):
+        return None
+    return _carry_last_unit(current, item)
+
+
+def _carry_for_aesthetic(current, item):
+    """按高亮完整、符号不留行尾、图标不作行首的优先级尝试借字。"""
+    closing = item[0] == "char" and item[1] in _NO_LINE_START
+    if current[-1][2] and (item[2] or closing):
+        cut = len(current)
+        while cut and current[cut - 1][2]:
+            cut -= 1
+        if cut:
+            return current[:cut], current[cut:] + [item]
+        return None
+    if current[-1][0] == "char" and current[-1][1] in _NO_LINE_END:
+        if len(current) > 1:
+            return current[:-1], current[-1:] + [item]
+        return None
+    if item[0] == "icon" and current[-1][0] == "char":
+        carried = _carry_last_unit(current, item)
+        if carried is not None:
+            remaining, moved = carried
+            if not (remaining and remaining[-1][2] and moved[0][2]):
+                return remaining, moved
+    return None
+
+
+def _break_penalties(lines):
+    """自动行边界的美观罚项，元组顺序即优先级；lines 为 item 行列表。"""
+    split_highlights = sum(
+        bool(left[-1][2] and right[0][2])
+        for left, right in zip(lines, lines[1:]) if left and right
+    )
+    symbol_ends = sum(
+        bool(line and line[-1][0] == "char" and line[-1][1] in _NO_LINE_END)
+        for line in lines[:-1]
+    )
+    icon_starts = sum(bool(line and line[0][0] == "icon") for line in lines[1:])
+    return split_highlights, symbol_ends, icon_starts
 
 
 def _normalize_newlines(text: str) -> str:
@@ -304,7 +374,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
                     region: dict, wrap: bool,
                     row_runs: dict | None = None, dy: float = 0,
                     lib: AssetLibrary | None = None, icon_variant: str | None = None,
-                    inline_faction_style: int = 1):
+                    inline_faction_style: int = 1, aesthetic: bool = False):
     """按给定字号在矩形区内排版，成功返回 [(行 item 列表, cx, cy)]，失败返回 None。
 
     文本块（行数 × 行高）在区域内水平逐行居中、竖直整体居中：
@@ -348,7 +418,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
 
     paragraphs, separators = _split_paragraphs(items)
 
-    def wrap_from(y: float):
+    def wrap_from(y: float, improve: bool = False):
         """从行中心 y 起贪心换行，返回行 item 列表；排不下（出底界/被封死）返回 None。"""
         lines: list[list] = []
         current: list = []
@@ -360,7 +430,9 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
                 if current and _line_width(trial, font, icon_w) > width:
                     if span is None:  # 障碍封死本行：排版失败，交由字号递减/强排兜底
                         return None
-                    carried = _carry_for_punctuation(current, item)
+                    carried = _carry_for_aesthetic(current, item) if improve else None
+                    if carried is None:
+                        carried = _carry_for_punctuation(current, item)
                     remaining, current = carried if carried is not None else (current, [item])
                     lines.append(remaining)
                     y += lh
@@ -406,6 +478,11 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
         recentered = wrap_from(y0)
         if recentered is None:
             return None
+        if aesthetic and any(_break_penalties(recentered)):
+            improved = wrap_from(y0, improve=True)
+            if (improved is not None and len(improved) <= len(recentered)
+                    and _break_penalties(improved) < _break_penalties(recentered)):
+                recentered = improved
         if len(recentered) == n:
             return [(t, centered_cx(t, y0 + i * lh),
                      y0 + i * lh) for i, t in enumerate(recentered)]
@@ -415,7 +492,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
 
 def _candidate_score(lines, font, region, lib, icon_variant, inline_faction_style,
                      semantic_breaks, keyword_first, candidate_index):
-    """同字号/锚点下：语义断行完整优先，再取少行与行宽更均衡的候选。"""
+    """同字号/锚点下：语义断行完整、少行、断行美观优先，再比较行宽均衡。"""
     scored = lines[1:] if keyword_first and len(lines) > 1 else lines
     all_items = [item for line, _, _ in scored for item in line]
     icon_scale = region.get("icon_scale", 1.0)
@@ -424,7 +501,8 @@ def _candidate_score(lines, font, region, lib, icon_variant, inline_faction_styl
     widths = [_line_width(line, font, icon_w) for line, _, _ in scored]
     mean = sum(widths) / len(widths) if widths else 0.0
     imbalance = sum((width - mean) ** 2 for width in widths)
-    return -semantic_breaks, len(lines), imbalance, candidate_index
+    penalties = _break_penalties([line for line, _, _ in lines])
+    return -semantic_breaks, len(lines), *penalties, imbalance, candidate_index
 
 
 def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
@@ -444,7 +522,8 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
             for candidate, semantic_breaks, keyword_first, index in candidates:
                 lines = _layout_at_size(candidate, font, region, region["wrap"], row_runs,
                                         dy=dy, lib=lib, icon_variant=icon_variant,
-                                        inline_faction_style=inline_faction_style)
+                                        inline_faction_style=inline_faction_style,
+                                        aesthetic=text_layout == "smart")
                 if lines is not None and all(abs(cx - acx) < 1e-6 for _, cx, _ in lines):
                     score = _candidate_score(
                         lines, font, region, lib, icon_variant, inline_faction_style,
@@ -559,19 +638,20 @@ def _draw_styled_line(out: Image.Image, line: list[tuple[str, str, bool]],
                       fill, keyword_fill, lib: AssetLibrary,
                       icon_variant: str | None, icon_scale: float = 1.0,
                       inline_faction_style: int = 1) -> None:
-    """无关键字段且无图标时整行 anchor=mm 一次绘制；否则按段异色、anchor=lm 横向
-    推进，图标项就地缩放粘贴（高=字号×icon_scale，竖直中心对齐行中心）。"""
+    """所有行按可见墨迹的水平紧边界居中，字符段用 anchor=lm 绘制；
+    关键字段分段异色，图标项就地缩放粘贴（高=字号×icon_scale，竖直中心对齐行中心）。"""
     if not line:
         return
     has_kw = keyword_fill is not None and any(kw for _, _, kw in line)
     has_icon = any(k == "icon" for k, _, _ in line)
-    if not has_kw and not has_icon:
-        ImageDraw.Draw(out).text((cx, cy), _plain(line), font=font, anchor="mm",
-                                 fill=fill)
-        return
-    icon_w = _icon_widths(line, font, lib, icon_variant, icon_scale, inline_faction_style)
-    x = cx - _line_width(line, font, icon_w) / 2
+    icon_w = (_icon_widths(line, font, lib, icon_variant, icon_scale, inline_faction_style)
+              if has_icon else {})
+    left, right = _line_metrics(line, font, icon_w)
+    x = cx - (left + right) / 2
     draw = ImageDraw.Draw(out)
+    if not has_kw and not has_icon:
+        draw.text((x, cy), _plain(line), font=font, anchor="lm", fill=fill)
+        return
     run, run_kw = "", line[0][2]
     gap = font.size * _ICON_GAP_EM
     prev = None

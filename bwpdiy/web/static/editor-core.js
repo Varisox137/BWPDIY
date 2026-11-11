@@ -3,13 +3,6 @@ const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
 const FACTIONS = ["红莲", "苍叶", "青岚", "紫岩", "无相"];
 const RARITIES = ["N", "R", "SR", "SSR"];
 const LEVELS = [1, 2, 3], ENTITY_LEVELS = [0, 1, 2, 3];
-// stat 字段口径与 store/schema.py 对齐：式神/形态 power+health、幻境 durability 非负；
-// 战斗 power+/shield+、觉醒法术 power+/health+ 可负；协战无 stat
-const STATS_BY_TYPE = {
-  "式神": ["power", "health"], "战斗": ["power+", "shield+"], "法术": ["power+", "health+"],
-  "形态": ["power", "health"], "幻境": ["durability"], "协战": [],
-};
-const SIGNED_STATS = ["power+", "shield+", "health+"];
 // stat 适用矩阵（与 badges.py _STAT_MATRIX 同口径）：type -> {field: 输入框标签}
 // 表外组合不提供输入框也不绘制；法术仅觉醒（evolve）有 stat；式神/形态/幻境强制非负
 const STAT_MATRIX = {
@@ -19,6 +12,9 @@ const STAT_MATRIX = {
   "形态": {"power": "力量", "health": "生命"},
   "幻境": {"durability": "耐久"},
 };
+const STATS_BY_TYPE = Object.fromEntries(
+  TYPES.map(type => [type, Object.keys(STAT_MATRIX[type] || {})]));
+const SIGNED_STATS = ["power+", "shield+", "health+"];
 const NONNEG_TYPES = new Set(["式神", "形态", "幻境"]);
 // 觉醒（evolve）仅战斗/法术/形态/幻境；式神/协战不提供勾选框（与 store schema 同口径）
 const EVOLVE_TYPES = new Set(["战斗", "法术", "形态", "幻境"]);

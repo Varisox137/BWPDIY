@@ -554,6 +554,12 @@ function askNewCard(target) {
       typeSel.appendChild(op);
     }
     box.appendChild(typeSel);
+    const derivativeLabel = document.createElement('label');
+    derivativeLabel.textContent = '衍生牌 ';
+    const derivativeInput = document.createElement('input');
+    derivativeInput.type = 'checkbox';
+    derivativeLabel.appendChild(derivativeInput);
+    box.appendChild(derivativeLabel);
     const shikiBox = document.createElement('div');
     box.appendChild(shikiBox);
     const names = shikigamiNames();
@@ -575,9 +581,12 @@ function askNewCard(target) {
       return () => s.value === MANUAL ? i.value.trim() : s.value;
     };
     let getters = [];
-    const rebuildShiki = () => {
+    const rebuildTypeFields = () => {
       shikiBox.innerHTML = '';
       const tp = typeSel.value;
+      const derivatable = tp !== '式神' && tp !== '协战';
+      derivativeLabel.style.display = derivatable ? '' : 'none';
+      if (!derivatable) derivativeInput.checked = false;
       if (tp === '协战') getters = [['shikigami1', combo('所属式神1')], ['shikigami2', combo('所属式神2')]];
       else if (mainShiki) {
         // 已选主要式神：免填所属式神，自动适配（协战除外）
@@ -587,8 +596,8 @@ function askNewCard(target) {
         getters = [['shikigami', () => mainShiki]];
       } else getters = [['shikigami', combo('所属式神')]];
     };
-    typeSel.onchange = rebuildShiki;
-    rebuildShiki();
+    typeSel.onchange = rebuildTypeFields;
+    rebuildTypeFields();
     const row = document.createElement('div');
     const ok = document.createElement('button'); ok.textContent = '确定';
     const cancel = document.createElement('button'); cancel.textContent = '取消';
@@ -606,7 +615,9 @@ function askNewCard(target) {
     ok.onclick = () => {
       const shiki = {};
       for (const [k, get] of getters) { const v = get(); if (v) shiki[k] = v; }
-      done({name: nameInput.value.trim(), type: typeSel.value, shiki});
+      const result = {name: nameInput.value.trim(), type: typeSel.value, shiki};
+      if (typeSel.value !== '式神' && typeSel.value !== '协战') result.token = derivativeInput.checked;
+      done(result);
     };
     cancel.onclick = () => done(null);
     nameInput.onkeydown = ev => {
@@ -621,6 +632,7 @@ document.getElementById('c-new-card').onclick = async () => {
   if (!r || !r.name) return;
   const stem = uniqueStem(sanitizeStem(r.name));
   const newCard = skeleton(r.type, r.name, r.shiki);
+  if (r.token) { newCard.token = true; delete newCard.rarity; }
   if (mainShiki) {
     // 版本日期优先复制当前主要式神的最早版本日期（无则留空=保存时取当天）
     const g = shikiGroupByName(mainShiki);
@@ -1138,10 +1150,6 @@ function buildForm() {
       });
     } else {
       shikigamiRow(div, '所属式神', 'shikigami');
-      checkRowC(div, '衍生牌', !!formData.token, v => {
-        if (v) formData.token = true; else delete formData.token;
-        afterEdit(true);
-      });
     }
     textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
   }

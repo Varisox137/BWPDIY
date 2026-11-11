@@ -1,40 +1,72 @@
 # BWPDIY 项目级约定
 
-《阴阳师百闻牌》DIY 卡牌工具。设计文档：`docs/superpowers/specs/2026-09-14-bwpdiy-design.md`；BWPro 集成契约：`docs/integration.md`；术语表：`docs/terminology.md`。用户级总纲见 `C:/Users/Varis/.kimi-code/AGENTS.md`，冲突时本文件优先。
+《阴阳师百闻牌》DIY 卡牌工具。现行设计见 `docs/superpowers/specs/2026-09-14-bwpdiy-design.md`，BWPro 集成契约见 `docs/integration.md`，术语见 `docs/terminology.md`。用户级总纲见 `C:/Users/Varis/.kimi-code/AGENTS.md`，冲突时本文件优先。
 
 ## 架构红线
 
-- 单包分层：`bwpdiy/render`（纯 PIL 渲染库）← `bwpdiy/store`（卡牌库+校验）← `bwpdiy/web`（FastAPI 编辑器）。**render 不得 import store/web**（BWPro 只 import `bwpdiy.render`，不能拖入 FastAPI）。基础包依赖仅 Pillow；PyYAML/FastAPI/Uvicorn 归 `web` 可选依赖，开发组仍默认装齐。`bwpdiy/updater.py`（exe 自动更新：GitHub latest release 检查 + 一键下载替换重启；GUI 加载即查一次、此后每 1min 复查）仅 web 层引用。
-- 前端无构建：`editor.html` 只保留页面结构，`editor.css` 与 `editor-{core,cards,battle,mech,layout,main}.js` 按共享/卡牌/对局/机制/布局/入口顺序以经典脚本加载；共享全局词法依赖不变，禁止擅自改成 ES Module 或引入框架。Node 测试按 HTML 引用顺序拼接真实脚本，拆分不得改变语句顺序和现有行为。
-- 启动端口（v1.7.1）：正式版默认 8630、源码开发版默认 8631，`--port` 可覆盖；回环端口占用时显示服务/PID，只有交互 TTY 空回车确认才 taskkill 对应进程并等待释放，非 TTY/取消不得杀进程。正式版首行同时打印版本与包内 UTC 秒级打包时间（ISO 8601），开发版仅打印版本。
-- 原生尺寸渲染（v1.7.1）：`render_card`/`render_entity`/`render_portrait` 均可选 `width`/`height`，单参数按默认紧致输出比例推算，双参数允许取整 1px 误差、不一致抛 ValueError；正整数、边长 ≤8192、总像素 ≤6400 万。布局/字体/图标/卡图/间距按目标原生重绘，最终只透明裁齐或补边，禁止先渲染默认成品再 resize；无参数路径须保持逐像素一致。`render_mechanism` 另支持 `chars_per_line`（每行汉字数，缺省按布局文本宽，出厂 12）与 `font_scale`（字号倍率，默认 1），不要求保持比例：字数决定文本区并居中裁除/拼接框体中段；倍率同步缩放机制名/正文/内嵌图标、文本区/框宽/横向偏移与框行高，保持每行字数，不改角标。
-- 预览性能（v1.7.0）：普通卡牌框后的静态绘制命令/层序列按原顺序重放，LRU 最多 8 条，不合并成单一覆盖层，须与旧管线逐像素一致；缩放卡图中间图 LRU 总像素不超过 64,000,000。卡牌库鼠标预览按 art/portrait 独立 `requestAnimationFrame` 调度，每通道每帧最多一次、取最新值、互不取消，且每通道最多一个在途请求与一个最新待办（在途时合并后续操作，完成后补发，禁止排队回放轨迹），mouseup 强制最终预览；响应按已处理序号防逆序覆盖，连续编辑时允许显示最新已完成画面，切卡/清空仍使旧响应失效；普通输入仍用 300ms 防抖。v1.8.0 对局预览另有独立会话与响应序号，离开页面使旧预览/导出失效，同会话慢响应不得逆序覆盖。
-- 空闲自动终止（防占用）：web 层活动统计中间件 + 看门狗线程，连续 2h 无 HTTP 操作则进程退出（`/api/update/check` 与 `/api/update/progress` 自动轮询不计入活动；`create_app(idle_timeout=, on_idle=)` 可注入，≤0 关闭）；GUI 包装 fetch，连接级失败弹「连接已断开」说明窗。顶栏常驻「退出DIY工具」：统一检查所有编辑区未保存状态，`POST /api/shutdown` 记录 INFO「手动按钮关闭」并调用 `create_app(on_shutdown=)` 注入回调；主程序延迟清理未引用卡图后退出，前端抑制普通断连/二次未保存提示并关闭标签页（浏览器阻止时显示手动关窗提示）。
-- 运行日志（v1.5.2，`bwpdiy/runlog.py`）：每次启动写 `<运行目录>/logs/bwpdiy-<日期时间>-<PID>.log`（exe 取 exe 目录、开发取 cwd，不可写回退临时目录 `bwpdiy-logs/`；保留最近 10 次，启动时自动删除超过 7 天的旧日志），root=文件+控制台双 handler（文件 DEBUG 及以上但 PIL 字节流 DEBUG 屏蔽、PIL INFO 及以上保留，控制台 INFO 及以上；控制台仅交互 TTY 给级别标签着色，文件与重定向输出保持纯文本），uvicorn `log_config=None` 接入 root（access 降级 WARNING）；启动参数/更新全过程/未捕获异常及 GUI 按钮/字段变更、上传/保存和本地写操作落盘（文本正文不记录，只记长度），启动时打印日志路径提示用户反馈附日志。自动更新下载带进度回报（模块级 `_PROGRESS` + `/api/update/progress`，GUI 1s 轮询显示 MB/百分比）与总时长预算 `DOWNLOAD_MAX_SECONDS=600`（低速涓流整体兜底），失败删半截文件、前端给「前往下载」手动入口。
-- `legacy/` 只读封存参考（旧版半成品源码与资源，无版本控制），任何情况下不修改、不删除。
-- `library/` 是用户创作数据，gitignore，不提交。
-- `assets/` 美术资源来自 legacy `basics/`、PSD 导出与本批位图资源（`scripts/import_psd_assets.py` 只再生成其管理的 PSD 基础资源，不重建已退役兼容路径）：命名约定牌框 `frames/{form,combat,spell,field,reinforce}_{框品}.png`（全类型四框品）、等级 `levels/{base,evolve,evolve_circle,level_{1,2,3}_{yellow,cyan,purple,red,blue,brown,greyblue,orange}}.png`（觉醒时底座→新星→纯色圆→勾玉，圆盘取旧星中央色、保留原画布并跟随星标；八色；`level_4_*` 与 `level_3_4_*` 仅作备用命名，不接等级枚举、表单或渲染引用）、稀有度 `rarity/{R,SR,SSR}{,_blue,_red}.png`+`N.png`（含 reinforce 在内的缺失变体回退常规版，不再保留 `reinforce_*` 专图）、数值标 `stats/{power,health,shield,combat_fragile_{1,2},intensity,energy,countdown,defeated_countdown,combat_power,weak}.png`（力量/生命全类型共用，无类型前缀；对局小卡战力/乏力使用 `stats/` 大图标，文本内嵌 `#zl`/`#fl` 仍用 `icons/` 小图）、位图数字与符号 `numbers/<color>_<name>.png`（颜色 white/red/green/purple/orange，name 为 0–9/plus/minus，另有 white_inf；运行时 yellow 映射 orange；`sign(name)` 暂转调 `number("white", name)`）、内嵌派系小标 `icons/faction_{red,green,blue,purple}_{1,2,3}.png` 与赏金小标 `icons/bounty.png`、协战双式神框 `duo/{frame_{1,2},back,highlight_1}.png`（v1.4.1，frame 为双框拆半；槽位2 高光由 highlight_1 旋转 180° 派生不单存；派系小标复用 `factions/`，不在 duo 目录单存；底板带半透明光晕需按 alpha≥128 可见 bbox 裁边居中，高光/框线只做 alpha>0 裁边保持层间配准）、机制描述框 `mech/{frame_invocation_{3,4,5},frame_skill_{3,4,5},frame_seal}.png` 与独立角标 `badges/{加护,蚀印,缘结,诅咒,天晖,梦魇,无始无终,无穷无尽,未使用,多状态,已展示}.png（中文文件名，由 AssetLibrary.BADGE_FILES 映射英文状态代码）`；masks 与旧 signs 目录已废弃；旧位图资产封存 `assets/legacy/`。改动须同步 `docs/terminology.md`。
+- 分层方向：`render`（纯 PIL）← `store`（卡牌库与校验）← `web`（FastAPI 编辑器）。`render` 不得 import `store/web`；基础包只依赖 Pillow，PyYAML/FastAPI/Uvicorn 属 `web` 可选依赖。
+- 前端无构建：`editor.html` 只保留结构，`editor.css` 与 `editor-{core,cards,battle,mech,layout,main}.js` 按固定顺序以经典脚本加载。共享全局词法依赖不变，禁止擅自改为 ES Module 或引入框架；Node 测试按 HTML 顺序拼接真实脚本。
+- `legacy/` 只读封存；`library/` 是用户创作数据，gitignore，不提交。
+- 资源命名与目录以 `docs/asset-mapping-v1.0.md` 和 `docs/terminology.md` 为准；改动资源引用须同步文档。`assets/legacy/`、`assets/psd_export/` 不进 exe。
 
-## 数据纪律
+## 启动、日志与更新
 
-- 卡牌库结构（v1.2.2）：`library/<项目>/project.yaml`（可选 `id`（全库唯一的三位项目 ID）与 `release_date`（可留空 YYYYMMDD 发布日期））+ `shikigami/*.yaml`（无所属式神的主要式神）+ `cards/*.yaml`（其他卡牌与有所属式神的衍生物式神）+ `images/`；文件名与卡名脱钩（卡名=文件内 name），主要式神改名由 store 层联动更新同项目引用。旧空白 id 卡补号时把原缺省 <旧卡名>.png 显式写入首图 path（保留变换），补号并改名仍引用旧图而不复制；已有显式 path 的改名复制仍保留变换并在目标冲突时加后缀，共享原图及其他卡引用不受影响。id 支持两位简写（非协战卡有所属式神且其 id 为 6 位数字时，保存展开为 式神id+两位，协战/中立卡不展开）。
-- 自动编号：保存或上传卡图时空白 ID 由 store 统一分配，前端不自行编号，已有手动 ID 原样保留；项目 ID 可编辑，留空时首次编号从 `051–999` 取全库最小空号，改项目 ID 不迁移旧卡。主要式神六位 ID = `1<三位项目ID><两位式神序号>`（首位异画位自动取 1），序号 `01–99` 递增；普通所属卡 `<所属式神六位ID><01–20>`，协战取两位所属式神中较小的六位 ID 作前缀并用 `21–50`。非式神、非协战卡的布尔 `token: true` 表示衍生牌，从 `51` 递增；衍生物式神按类型与 `shikigami` 识别，从 `99` 递减；二者共用 `51–99`、跳过完整 ID 占用且无固定分界。中立非协战牌使用八位 ID，从 `19999999` 起全库递减。自动编号跳过全库占用；保存与上传响应均返回最终 `id`，旧响应不得覆盖新选择或后续编辑。
-- **多版本（v1.6.0）**：卡牌/机制均有 `version_date`（YYYYMMDD，保存校验合法日期；新建主要式神留空优先取项目 `release_date`，其余留空填当天；已有式神不回溯）；「新版本」创建的文件名 `基础stem@日期`，旧无 @ 文件不强制迁移；卡牌按 id+name 归组、机制按 name 归组，数量限制（主要式神 49/卡牌衍生物 299）按组数计；同组共享 `layout` 与 `artwork`（同图同设置），保存任一版本同步到组内其他版本；旧空白 ID 版本组补号时同步全部版本，不拆组；带 @ 文件改日期会重命名。卡牌类型创建后固定；上传卡图仅按当前表单覆盖 id/token/所属字段，类型沿用已保存卡牌，空白 ID 先补齐，再按最终 `<id><ext>` 命名；目标图已被其他卡组引用时自动分配 `_2`/`_3` 等后缀，同组多版本换图仍允许覆盖并同步。主要式神/卡牌衍生物列表按 id 升序（无 id 在后按名称），卡牌栏按当前主要式神筛选、可切中立牌，版本下拉常驻且可删当前版本。退出时 `cleanup_unused_images` 删除各项目 images/ 下无引用图片（缺省 <id 或卡名>.png 也算引用；路径先 resolve 比较，任一 YAML 不可读或 images/ 为外链时跳过该项目）：正常退出 atexit、闲置终止 on_idle、手动按钮 on_shutdown、一键更新 update_apply 显式调用（os._exit 绕过 atexit）。卡牌保存以项目级 YAML 快照保护自动补号、式神改名/引用与共享段同步，失败回滚。上传图片用同目录临时文件原子写入；图片写入后若卡牌保存失败，恢复旧图或删除本次新图，但此前自动补写的项目/所属式神 YAML 不属于图片回滚范围，不构成上传跨资源全事务；web 本地写操作串行，GUI 写盘在途与内联输入未完成时锁定其他交互。
-- 全局布局（v1.7.5）：开发版与正式版统一读写 `$HOME/.bwpdiy/layout.json`（缺失回退包内 `bwpdiy/render/default_layout.json`，GUI 保存持久写入），`assets/layout.json` 已删除；旧对局 `right_top` 配置加载时复制迁移到独立的 `energy/countdown` 元素；六类型现有布局段为常规框，六类型均可用 `frame_variants.{blue,black,red}` 保存非常规框的稀疏 `elements/text_regions` 覆盖，加载时补成完整工作布局，渲染按卡牌实际框品选取。全部元素与文本区均按卡牌类型 × 框品解耦，不做跨类型归一、编辑广播或保存传播。单卡 `layout` 叠加到该卡实际框品的全局布局；卡牌库与布局页均由中央四按钮切换框品。v1.8.0 战斗/法术/形态/幻境新增 burst 元素（相对等级 pos 的 offset 锚定；式神/协战无爆能，不提供布局/输入并忽略意外传入），对局式神新增 energy/countdown/defeated counter，均开放布局调参与原生缩放；六类型另有 status 元素（等级锚点 + offset、icon_size），大卡数字使用位图，遗留 stroke_width 不再参与绘制。
-- 侧栏项目/主要式神/卡牌衍生物/机制列表均最多完整展开 8 项，第 9 项起栏目内滚动。`list_cards` 的逐版本条目附类型/稀有度/所属式神；主要式神按每个历史日期快照校验：协战牌与衍生物式神不参与计数，其余卡牌至少 4R/3SR/1SSR（允许额外普通卡），任一日期不合格则其版本数红色加粗。
-- 卡牌 yaml 分引擎段（与 BWPro 口径对齐，按类型分字段；协战所属式神为 `shikigami1`/`shikigami2`，衍生物式神用 `shikigami`）与渲染段（`artwork.images` 列表，全可缺省）。卡牌与机制均可选 `inline_faction_style`（整数 1/2/3，缺省 1），由扩展功能控制控件显隐，关闭不回退已保存值。schema 字段只增不改；stat 数值最多 10 位，artwork/portrait 数值必须有限，布局数值必须有限且绝对值 ≤8192。衍生物式神支持 `special_type` 子类型输入与脚注，不使用头像预览/头像参数/导出头像（仅主要式神保留）。
-- 描述文本（description）支持 `[[关键字]]` 高亮标记（双英文方括号、括号不绘制、按框品异色；从左往右匹配、未匹配括号按字面文本显示（v1.3.0 起不再报错）；单 [ ] 为字面字符；解析见 `render/text.py` parse_keyword_segments）与 `#xx` 内嵌图标（v1.3.0，两位拼音首字母代码见 `render/text.py` ICON_CODES，未知代码报错；派系图标按条目 `inline_faction_style` 使用 `_1/_2/_3`，缺省 1，含墨染框与机制黑框；大小=字号×desc 区 `icon_scale`，与相邻文字间自动加八分之一宽空格（0.125em，v1.7.2 由此前 0.25em 减半），宽度计入换行与居中）。赏金 `#sj` 已有 `icons/bounty.png` 小图标，赏金大角标仍未实现。
-- 行首标点避让：卡牌 `description` 与机制 `text` 的自动换行不让闭合/句读标点单独落在行首；超宽时把前一个可见文字或图标连同连续闭合标点一起移到下一行，并重算行宽、居中与角标避让。显式 `\n` 后用户主动写的行首标点保持不变；极窄行沿用字号递减与最小字号兜底，优先保证内容可渲染。
-- 三态描述排版（v1.8.3）：卡牌可选 `text_layout=smart/wrap/off`，缺省及 BWPro 调用为 `smart`；`wrap` 保持旧自动换行/缩字号，`off` 仅显式换行、固定最大字号且不做角标避让。智能模式仅把开头完整纯关键字短句独立首行并隐藏末尾 `。`（突袭/坚守/鼓舞/爆能/运势等带后续效果能力排除），对段内条件/增强/响应/觉醒标签生成换行候选；同字号与居中点先语义断行完整、再少行与行宽均衡，自动断行上一行须占可用宽至少 35%。2–3 行文本末行不足可用宽 35% 时，可试缩小至多 2px，只有确实减少行数才采用。右栏选择器仅扩展功能显示，隐藏不清值；机制不支持此字段。
-- 机制（v1.5.0）：全局共享池 `library/mechanisms/*.yaml`（跨项目复用，不属任何项目；项目名保留字 `mechanisms`）；字段 name/frame（invocation 灵咒框/skill 关键字框/seal 加护蚀印框）/text/badge（bless/eclipse，仅 seal；shown 仅大卡 status，不是机制 badge）/inline_faction_style（可选 1/2/3，缺省 1）/chars_per_line（可选正整数，缺省 12，右栏逐机制调整）；内容行数（关键字名+空行+描述行，下限 2 行）× 行距（=正文字号）决定框高、非原生行数/行距按行高横带拼接/裁除，关键字名左上角左对齐金色（字号略大于正文、不加粗）、描述逐行左对齐、badge 存在时名称右移避让、正文色按框体（render/mech.py）；内置回退文本宽 288px（24px 字号约 12 汉字）、默认 text_x=12；v1.7.7 出厂布局文本宽 256px，框宽=max(素材原宽, 2×text_x+文本宽)；`chars_per_line` 可按每行汉字数覆盖布局文本宽（缺省按布局值，条目预览/导出缺省 12），文本区不得越出框体；`font_scale` 同步缩放文字、文本区/框宽/横向偏移与行高并保持每行字数；过长关键字名自动缩字号（最小 8px，仍无法容纳则报错）；渲染参数入布局配置「机制」段（字号/小图标三类共用，文本区域 frames.<框> 各框独立 text_x/text_dy/width——关键字名与描述同左缘不单独偏移；无高度：框高随内容行动态变化，GUI 绿框按 render_mechanism info 出参的实际文本块画出；角标 badge_size/badge_pos 在 frames.seal 下），GUI 布局设置第八类「机制」页三画布同屏调参（浅绿框标示文本区域）。原版游戏无「技能」概念——机制相关术语一律用「关键字」，禁用「技能」（psd_export 归档素材文件名除外）。
-- 对局预览（v1.8.0；v1.8.1 起整页默认隐藏，由「扩展功能」开启并控制 hash 直达）：顶栏独立「对局预览」页读取卡牌库当前选择与未保存编辑；式神仅小卡，形态/觉醒可切换大卡与小卡，其他卡仅大卡。大卡可临时调整带符号 `burst` 爆能与 `status` 特殊状态（None/bless/eclipse/bond/curse/radiance/nightmare/eternal/endless/unused/multi_status/shown；无等级也绘制；越出 512 基础画布时扩展工作边界再紧致裁剪；仅渲染字典字段，不进 store schema/不持久化，前端单选）；小卡 state 另有 `energy`（非负，含 0）/`countdown`（非负整数，含 0，供倒计时触发动画）/`defeated_countdown`（非负整数，含 0，或 `infinity`），前端 energy/countdown 互斥；渲染库允许二者同时非空并按能量→倒计时叠放，气绝保留能量、隐藏普通倒计时、仅灰化底框和卡图，永久画 ∞，气绝组件最后绘制。全部调参与导出不写盘、不置脏，返回保留原卡与未保存内容，离开使旧响应/导出失效；卡牌库不再常驻对局小卡；主要式神头像参数与预览仅在「扩展功能」和「头像框」同时开启时显示，裸头像导出不依赖预览显隐。
-- 对局式神渲染（v1.7.0）：`render/entity.py` 的 `render_entity` 独立渲染 96×144 小卡，等级 0–3（0 仅绘制底框与卡图，不绘制等级标及任何数值/状态角标）；默认力量/生命：式神与普通形态取自身基础值，觉醒取所属式神基础值（式神列表条目附最新 power/health），法术觉醒再叠 `power+/health+`，结果钳为非负；`art_scale` 仅控制对局卡图缩放，按来源牌框最大封闭透明窗修正 y 偏移，并默认上移窗口高度的 4%（v1.7.2）。四个数值均支持 `power_color`/`health_color`/`combat_power_color`/`shield_color`（red/green/purple，缺省白，复用大卡五色位图数字；state 未传时可继承卡牌同名字段，显式 state 优先，white/yellow 不继承），战力/乏力使用 `stats/` 大图标，文本内嵌 `#zl`/`#fl` 仍用 `icons/` 小图。布局配置另含「对局式神」独立段（version 2，level、power/health/combat_power/shield、energy/countdown/defeated 元素及 art_window 内窗，无文本区），旧 64×96 配置一次性迁移；GUI「对局式神」页独立编辑，可拖拽内窗与 counter、调整状态样例，不加入普通六类型、不做跨类型传播、不显示觉醒星参数；布局小卡 CSS 3 倍显示，元素可越出 96×144 框体并按联合可见边界裁剪，鼠标按显示比例反算，PNG 保持原生尺寸。
-- 机制未实现不进数据；字段/枚举变更须同步设计文档与术语表。
+- 正式版默认端口 8630，源码开发版 8631，`--port` 可覆盖。回环端口占用时显示服务/PID，只有交互 TTY 空回车确认才 taskkill 对应进程；非 TTY 或取消不得杀进程。
+- 正式版首行打印版本和包内 UTC 秒级打包时间（ISO 8601），开发版只打印版本。
+- 每次启动写 `<运行目录>/logs/bwpdiy-<日期时间>-<PID>.log`；exe 取 exe 目录，开发取 cwd，不可写时回退临时目录 `bwpdiy-logs/`。保留最近 10 次并删除超过 7 天的旧日志。
+- root 同时写文件和控制台：文件 DEBUG+，控制台 INFO+；屏蔽 PIL 字节流 DEBUG，uvicorn access 降为 WARNING。控制台仅交互 TTY 给级别标签着色。启动、更新、异常、GUI 操作与本地写入须落日志；正文只记长度。
+- 连续 2h 无 HTTP 操作自动退出；更新检查/进度轮询不计活动。`create_app(idle_timeout=, on_idle=, on_shutdown=)` 支持注入，≤0 关闭空闲终止。
+- 顶栏「退出DIY工具」统一检查未保存状态，`POST /api/shutdown` 记录「手动按钮关闭」并调用回调；退出前清理未引用卡图。
+- 自动更新使用 GitHub latest release，GUI 加载即查一次、此后每 1min 复查；下载显示进度、总时限 600s、强制 SHA256 校验，失败删除半截文件并保留手动下载入口。更新任务进程内互斥。
+
+## 数据与存储
+
+- 项目结构：`library/<项目>/project.yaml + shikigami/*.yaml + cards/*.yaml + images/`。主要式神存 `shikigami/`，其他卡牌及有所属式神的衍生物式神存 `cards/`；机制为跨项目共享池 `library/mechanisms/*.yaml`，项目名保留字 `mechanisms`。
+- `project.yaml` 可含全库唯一三位 `id` 与合法 `release_date`（YYYYMMDD）。文件名与卡名脱钩；主要式神改名由 store 联动更新同项目引用。
+- 数量上限按版本组计：主要式神 49、卡牌/衍生物 299。侧栏各栏目最多完整展开 8 项，第 9 项起内部滚动。主要式神按各历史日期校验至少 4R/3SR/1SSR；协战牌与衍生物式神不参与。
+- 自动编号由 store 在保存/上传时完成，前端不计算，已有手动 ID 保留：
+  - 项目 ID 从 `051–999` 取全库最小空号；改项目 ID 不迁移旧卡。
+  - 主要式神为 `1<项目ID><01–99>`；普通所属卡为 `<式神六位ID><01–20>`；协战取较小式神 ID 前缀与 `21–50`。
+  - 衍生牌与衍生物式神共用 `51–99`，分别递增/递减，无固定分界；中立非协战牌从 `19999999` 起全库递减。完整 ID 跳过全库占用。
+  - 非协战所属卡可用两位简写，所属式神 ID 为六位时保存展开；协战/中立卡不展开。
+- 卡牌按 `id+name`、机制按 `name` 归组版本。`version_date` 为合法 YYYYMMDD；新版本文件名为 `基础stem@日期`。同组共享 `layout/artwork`，保存任一版本同步；带 @ 文件改日期会重命名。
+- 新建主要式神日期优先项目 `release_date`，其余留空取当天；其他新卡优先所属主要式神最早日期。已有条目不因项目日期变化回溯。
+- 卡牌类型创建后固定。上传卡图按最终 `<id><ext>` 落盘，目标被其他组引用时自动加后缀；改 ID 不主动重命名旧图。无 ID 历史数据补号时保留原回退图引用与变换。
+- 项目级 YAML 快照保护保存联动，失败回滚；web 本地写操作串行。图片原子写入，写图后保存失败只恢复图片，不回滚此前已写入的项目/所属式神 YAML。
+- 正常退出、闲置终止、手动退出和更新替换前调用 `cleanup_unused_images`；任一 YAML 不可读或 images/ 为外链时跳过该项目，路径先 resolve 比较。
+- schema 字段只增不改，机制未实现不进数据。stat 数值最多 10 位；artwork/portrait 数值有限；布局数值有限且绝对值 ≤8192。
+- GUI 在新建非式神、非协战卡时选择 `token: true` 作为衍生牌，创建后不在右栏切换；衍生牌默认无稀有度。衍生物式神用类型与 `shikigami`，支持 `special_type`，不提供头像预览/参数/导出。
+- `burst/status` 仅临时渲染字段，不进 store schema 或持久化。`inline_faction_style` 为 1/2/3，缺省 1；扩展控件隐藏时不清空已保存值。
+
+## 布局与渲染
+
+- 开发版与正式版统一读写 `$HOME/.bwpdiy/layout.json`，缺失回退包内 `bwpdiy/render/default_layout.json`。包内默认布局变更的版本必须在「最近更新」首条加粗提示用户重新调整本地布局。
+- 六卡牌类型均按「类型 × 框品」完全解耦保存 `elements/text_regions`；`frame_variants.{blue,black,red}` 为稀疏覆盖，加载补全、保存剔同。单卡 `layout` 再覆盖实际框品全局布局，不跨类型传播。
+- 旧对局 `right_top` 加载时复制迁移到 `energy/countdown`；旧 64×96 对局布局只按 1.5 倍迁移一次。保留这些兼容迁移与校验，精简时不得删除。
+- 大卡默认在 512×512 工作画布合成，最终按全部可见元素的 tightest alpha bbox 原尺寸返回；布局绝对 x 以实际牌框左缘为原点，y 以画布顶为原点。`crop=False` 仅用于内部/测试。
+- `render_card/render_entity/render_portrait` 支持可选 `width/height`：单参数按默认紧致比例推算，双参数允许取整 1px 误差；必须为正整数，边长 ≤8192、总像素 ≤6400 万。按目标原生重绘所有元素，禁止先渲染默认成品再 resize；无参数路径逐像素不变。
+- `render_mechanism` 支持 `chars_per_line` 与 `font_scale`，不要求保持比例：字数决定文本宽与框宽；倍率同步缩放文字、文本区、框宽/横向偏移和框行高，不缩放角标。
+- 普通大卡静态绘制命令/层序列按原顺序重放，LRU 最多 8 条，不合并成单一覆盖层；缩放卡图中间图 LRU 总像素 ≤6400 万。
+- 小卡等级 0–3；0 仅绘制底框和卡图。普通 `countdown` 与 `defeated_countdown` 均允许 0，后者另接受精确字符串 `infinity`；能量允许 0。渲染库允许能量与倒计时共存，倒计时后绘制；气绝保留能量、隐藏普通倒计时，仅灰化底框和卡图，气绝组件最后绘制。
+- 小卡战力/乏力读 `stats/combat_power.png`、`stats/weak.png`；只有文本内嵌 `#zl/#fl` 使用 `icons/` 小图。
+- 描述支持 `[[关键字]]` 高亮与 `#xx` 内嵌图标。双括号从左往右匹配，未匹配按字面文本；高亮内不嵌套解析双括号，# 图标仍解析。未知图标代码报错。
+- 图标高为字号 × desc `icon_scale`，相邻文字间加八分之一宽空格；图标宽度参与换行和居中。自动换行与水平居中按整行文字掩膜的最紧边界测宽，保留段内 advance/字距，仅排除最外侧字框空白。卡牌与机制自动换行须避免闭合/句读标点落在行首，显式换行后的用户标点保留。
+- 卡牌 `text_layout=smart/wrap/off`，缺省 `smart`；`wrap` 仅自动换行/缩字号，`off` 仅显式换行、固定最大字号且不避让角标。smart 在同字号且不增加行数时，依次避免高亮短语跨行、比较/运算或开括号符号留在行尾、内嵌图标位于行首；会增加行数则回退。其余规则与阈值见术语表，机制不支持此字段。
+- 文本、数字、描边/位图、轮廓裁剪等校验与安全逻辑不属于可精简的冗余。
+
+## WebGUI 行为
+
+- 三个主 tab：卡牌库、对局预览、全局布局设置。布局与对局页分别由「手动调整布局」「扩展功能」控制显隐；`/layout` 仅保留到 `/#layout` 的重定向。
+- 卡牌鼠标预览按 art/portrait 独立 `requestAnimationFrame` 调度：每通道每帧最多一次、取最新值，最多一个在途请求与一个最新待办，禁止排队回放轨迹；mouseup 强制最终预览，响应序号防逆序覆盖，切卡/清空使旧响应失效。普通输入 300ms 防抖。
+- 对局预览使用独立会话和响应序号；离开页面使旧预览/导出失效。所有临时调参与导出不写盘、不置脏。
+- 主要式神头像预览/参数需「扩展功能」与「头像框」同时开启；裸头像导出不依赖预览显隐，后端不得为衍生物式神返回头像。
+- 前端 energy/countdown 互斥；协战无爆能，式神也无爆能。对局页等级、颜色、数值与状态均不写回卡牌。
+- GUI 写盘在途或内联输入未完成时锁定其他交互；未保存切换须提示。保留 Host 校验、跨站写保护、卡图路径限制与图片像素上限，不要把本地服务暴露到公网。
 
 ## 工程纪律
 
-- 测试命令（Windows Git Bash）：`PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest -q`
+- 测试：`PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest -q`；优先跑受影响测试，发布前全量验证。
 - 依赖用 uv（`uv add` / `uv sync`），不用 pip 直装。
 - 中文 conventional commit；每次 commit 后 `git push`（失败不阻塞，汇报即可）；rebase/reset/分支操作先问。
-- 大改动先 plan mode；批量新功能委托子代理，收尾全量测试由主上下文亲跑。
-- 发布：pyinstaller 打包 `releases/BWPDIY-v<版本>.exe`（`scripts/build_exe.py`，同时生成 `<exe>.sha256` 校验文件，并向包内写入 UTC 秒级 `build_time_utc.txt`）+ `gh release create`（exe 与 .sha256 两个资产都要上传，客户端下载后强制校验）；本地 `releases/` 保留规则：**只留最近 5 个二级版本，且每个二级版本（前两位）只留最新 exe**，构建脚本自动清理；三级小更新发布时删去该二级版本下的过往 GitHub release，**sha256 上传后本地一律不留**。包内默认布局（`bwpdiy/render/default_layout.json`）有变更的版本，`bwpdiy/changelog.py` 该版本首条必须加粗提示「本次更新更改了全局布局配置，用户可能需要重新手动调整本地配置」（条目按 innerHTML 渲染，支持 <b> 标签）。
+- 大改动先 plan mode；批量新功能委托子代理，收尾验证由主上下文亲跑。
+- 发布：`scripts/build_exe.py` 生成 `releases/BWPDIY-v<版本>.exe` 与 SHA256，并写入 UTC 秒级打包时间；GitHub Release 同时上传两项资产。三级小更新删除同二级版本旧 Release。本地 releases 只留最近 5 个二级版本、每个二级版本只留最新 exe；SHA256 上传后本地一律删除。

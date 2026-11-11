@@ -16,6 +16,29 @@ def _wrapped_plain(lib, text, width_text="甲乙"):
     return [_plain(line) for line, _, _ in lines]
 
 
+def test_line_width_uses_tight_text_mask_and_avoids_unneeded_wrap(assets_dir):
+    from bwpdiy.render.text import _line_width, parse_items
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    text = "甲乙，"
+    ink = font36.getmask(text).getbbox()
+    tight_width = ink[2] - ink[0]
+    assert tight_width < font36.getlength(text)
+    assert _line_width(parse_items(text), font36, {}) == tight_width
+    region = rect_region(0, 0, math.ceil(tight_width) + 1, 200, font_range=[36, 36])
+    font, lines = fit_in_region(text, region, lib)
+    assert font.size == 36
+    assert [line for line, _, _ in lines] == [text]
+
+
+def test_draw_region_centers_tight_ink_instead_of_advance(assets_dir):
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(56, 100, 456, 300, font_range=[36, 36])
+    img = draw_region(canvas(), lib, "甲乙，", region)
+    ink = img.getchannel("A").getbbox()
+    assert abs((ink[0] + ink[2]) / 2 - region["center"][0]) <= 1
+
+
 def test_wrap_moves_previous_char_with_punctuation(assets_dir):
     lib = AssetLibrary(assets_dir)
     assert _wrapped_plain(lib, "甲乙，丙") == ["甲", "乙，", "丙"]
@@ -68,12 +91,69 @@ def test_fit_preserves_font_size_when_carrying_punctuation(assets_dir):
 
 
 def test_wrap_rejects_carried_group_too_wide_for_new_line(assets_dir):
-    from bwpdiy.render.text import _layout_at_size, parse_items
+    from bwpdiy.render.text import _layout_at_size, _line_width, parse_items
     lib = AssetLibrary(assets_dir)
     font = lib.font("desc", 36)
-    region = rect_region(0, 0, 46, 200)
-    assert font.getlength("i甲") <= 46 < font.getlength("甲，")
+    region = rect_region(0, 0, 40, 200)
+    assert (_line_width(parse_items("i甲"), font, {}) <= 40
+            < _line_width(parse_items("甲，"), font, {}))
     assert _layout_at_size(parse_items("i甲，"), font, region, True, lib=lib) is None
+
+
+def test_smart_wrap_keeps_highlight_on_one_line_without_extra_line(assets_dir):
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    region = rect_region(0, 0, math.ceil(font36.getlength("甲乙丙")) + 1, 200,
+                         font_range=[36, 36])
+    font, lines = fit_in_region("甲乙[[丙丁]]戊", region, lib, text_layout="smart")
+    assert font.size == 36
+    assert [text for text, _, _ in lines] == ["甲乙", "丙丁戊"]
+
+
+def test_smart_wrap_keeps_highlight_together_when_carrying_punctuation(assets_dir):
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    region = rect_region(0, 0, math.ceil(font36.getlength("甲乙丙丁")) + 1, 200,
+                         font_range=[36, 36])
+    font, lines = fit_in_region("甲乙[[丙丁]]，戊", region, lib, text_layout="smart")
+    assert font.size == 36
+    assert [text for text, _, _ in lines] == ["甲乙", "丙丁，戊"]
+
+
+@pytest.mark.parametrize("symbol", ["≥", "≤"])
+def test_smart_wrap_avoids_comparison_symbol_at_line_end(assets_dir, symbol):
+    from bwpdiy.render.text import _icon_widths, _line_width, parse_items
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    items = parse_items(f"甲乙{symbol}丙")
+    width = math.ceil(_line_width(items[:-1], font36, _icon_widths(items, font36, lib, None))) + 1
+    region = rect_region(0, 0, width, 200, font_range=[36, 36])
+    font, lines = fit_in_region(f"甲乙{symbol}丙", region, lib, text_layout="smart")
+    assert font.size == 36
+    assert [text for text, _, _ in lines] == ["甲乙", f"{symbol}丙"]
+
+
+def test_smart_wrap_avoids_icon_at_line_start_without_extra_line(assets_dir):
+    from bwpdiy.render.text import _icon_widths, _layout_at_size, _line_width, parse_items
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    items = parse_items("甲乙#ll")
+    icon_w = _icon_widths(items, font36, lib, None)
+    width = math.ceil(_line_width(items[1:], font36, icon_w)) + 1
+    region = rect_region(0, 0, width, 200)
+    lines = _layout_at_size(items, font36, region, True, lib=lib, aesthetic=True)
+    assert [[(kind, value) for kind, value, _ in line] for line, _, _ in lines] == [
+        [("char", "甲")], [("char", "乙"), ("icon", "ll")]]
+
+
+def test_smart_wrap_allows_split_highlight_when_avoidance_adds_a_line(assets_dir):
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    region = rect_region(0, 0, math.ceil(font36.getlength("甲乙")) + 1, 200,
+                         font_range=[36, 36])
+    font, lines = fit_in_region("甲[[乙丙]]丁", region, lib, text_layout="smart")
+    assert font.size == 36
+    assert [text for text, _, _ in lines] == ["甲乙", "丙丁"]
 
 
 def canvas():
@@ -221,12 +301,12 @@ def test_obstacle_gap_field(assets_dir):
         text += "测"
     text += "测"
     assert 242 < font36.getlength(text) <= 265, "字体度量变化导致窗口失效，需重选窗口"
-    half = font36.getlength(text) / 2
     # 触界平移是排版层（_layout_at_size）口径；fit 层会先尝试锚点上移/缩字号避免触界
     from bwpdiy.render.geometry import mask_row_runs
-    from bwpdiy.render.text import _layout_at_size, parse_items
+    from bwpdiy.render.text import _layout_at_size, _line_width, parse_items
     runs = mask_row_runs(mask)
     chars = parse_items(text)
+    half = _line_width(chars, font36, {}) / 2
     lines = _layout_at_size(chars, font36, dict(base), False, runs)
     assert abs(lines[0][1] - (129 + half)) < 1e-6  # 左界 125+4
     lines = _layout_at_size(chars, font36, dict(base, obstacle_gap=10), False, runs)
@@ -450,8 +530,9 @@ def test_icon_counts_toward_line_width(assets_dir):
     font36 = lib.font("desc", 36)
     items = parse_items("甲乙#ll")
     iw = _icon_widths(items, font36, lib, None)
-    # 行宽 = 字符宽度 + 图标缩放宽度 + 文字-图标八分之一宽空格（居中/换行均按此口径）
-    assert _line_width(items, font36, iw) == font36.getlength("甲乙") + 4.5 + iw["ll"]
+    # 保留段内 advance 与图标间距，仅去掉整行最外侧的字框空白。
+    left = font36.getmask("甲乙").getbbox()[0]
+    assert _line_width(items, font36, iw) == font36.getlength("甲乙") + 4.5 + iw["ll"] - left
     text = "甲乙丙丁"
     w = font36.getlength(text)
     region = rect_region(0, 0, round(w) + 2, 100, wrap=False)  # 恰好排下纯文本
@@ -470,9 +551,12 @@ def test_icon_text_gap_eighth_em(assets_dir):
         items = parse_items(s)
         return _line_width(items, font36, _icon_widths(items, font36, lib, None))
     iw = lw("#ll")
-    assert lw("甲#ll乙") == font36.getlength("甲") + gap + iw + gap + font36.getlength("乙")
-    assert lw("#ll甲乙") == iw + gap + font36.getlength("甲乙")   # 行首：左侧无空格
-    assert lw("甲乙#ll") == font36.getlength("甲乙") + gap + iw   # 行尾：右侧无空格
+    first = font36.getmask("甲").getbbox()
+    second = font36.getmask("乙").getbbox()
+    pair = font36.getmask("甲乙").getbbox()
+    assert lw("甲#ll乙") == font36.getlength("甲") + gap + iw + gap + second[2] - first[0]
+    assert lw("#ll甲乙") == iw + gap + pair[2]                   # 行首：左侧无空格
+    assert lw("甲乙#ll") == font36.getlength("甲乙") + gap + iw - pair[0]
     assert lw("#ll#ll") == 2 * iw                                 # 图标-图标：不加
 
 
@@ -578,7 +662,7 @@ def test_short_text_slightly_shrinks_to_remove_orphan_last_line(assets_dir):
 def test_short_text_keeps_max_size_when_shrinking_cannot_remove_a_line(assets_dir):
     """缩小字号不能减少行数时仍使用最大字号，避免无收益地缩小文字。"""
     lib = AssetLibrary(assets_dir)
-    region = rect_region(0, 0, 250, 300, font_range=[24, 12])
+    region = rect_region(0, 0, 230, 300, font_range=[24, 12])
     fitted = fit_in_region("对一个式神造成3点伤害。", region, lib, text_layout="smart")
     assert fitted is not None
     assert fitted[0].size == 24

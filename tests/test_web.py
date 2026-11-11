@@ -951,6 +951,89 @@ function endAsk() {{}}
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_new_card_dialog_chooses_derivative_for_regular_cards(tmp_path):
+    """非式神、非协战卡在新建时确定衍生标记，其他类型不返回隐藏值。"""
+    ask_new_card = _extract_js(_script(), "function askNewCard(")
+    driver = f"""
+const assert = require('node:assert');
+function element(tag) {{
+  return {{tag, style: {{}}, children: [], value: '', textContent: '', checked: false,
+    set innerHTML(value) {{ if (value === '') this.children = []; }},
+    appendChild(child) {{ this.children.push(child); child.parent = this; return child; }},
+    focus() {{}}, select() {{}}}};
+}}
+const box = element('div'), slot = element('div'), home = element('div');
+const document = {{createElement: element,
+  getElementById(id) {{ return id === 'c-ask' ? box : id === 'c-ask-home' ? home : slot; }}}};
+const TYPES = ['式神', '战斗', '法术', '形态', '幻境', '协战'];
+const mainShiki = '基础式神';
+function shikigamiNames() {{ return [mainShiki]; }}
+function beginAsk() {{ return true; }}
+function endAsk() {{}}
+{ask_new_card}
+async function create(type, derivative = false) {{
+  const pending = askNewCard('c-ask-card');
+  box.children[1].value = '测试卡';
+  box.children[2].value = type;
+  box.children[2].onchange();
+  const row = box.children[3];
+  assert.strictEqual(row.textContent.trim(), '衍生牌');
+  assert.strictEqual(row.style.display, ['式神', '协战'].includes(type) ? 'none' : '');
+  row.children[0].checked = derivative;
+  box.children.at(-1).children[0].onclick();
+  return await pending;
+}}
+(async () => {{
+  assert.deepStrictEqual(await create('战斗', true),
+    {{name: '测试卡', type: '战斗', shiki: {{shikigami: '基础式神'}}, token: true}});
+  assert.deepStrictEqual(await create('法术'),
+    {{name: '测试卡', type: '法术', shiki: {{shikigami: '基础式神'}}, token: false}});
+  assert.deepStrictEqual(await create('式神', true),
+    {{name: '测试卡', type: '式神', shiki: {{shikigami: '基础式神'}}}});
+  assert.deepStrictEqual(await create('协战', true),
+    {{name: '测试卡', type: '协战', shiki: {{}}}});
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_new_derivative_card_omits_default_rarity(tmp_path):
+    handler = _extract_js(
+        _script(), "document.getElementById('c-new-card').onclick = async () =>")
+    driver = f"""
+const assert = require('node:assert');
+const buttons = {{}};
+const document = {{getElementById: id => buttons[id] = {{}}}};
+let curProject = 'P', mainShiki = null, selectSeq = 0, derivative = false;
+const bodies = [];
+async function askNewCard() {{ return {{name: '卡', type: '战斗',
+  shiki: {{shikigami: '甲'}}, token: derivative}}; }}
+function sanitizeStem(value) {{ return value; }}
+function uniqueStem(value) {{ return value; }}
+function skeleton(type, name, shiki) {{ return {{type, name, ...shiki, level: 1, rarity: 'R'}}; }}
+function enc(value) {{ return value; }}
+function listErr() {{}}
+async function fetch(url, options) {{ bodies.push(JSON.parse(options.body)); return {{ok: true}}; }}
+async function loadProjectIds() {{}}
+async function loadCards() {{}}
+{handler}
+(async () => {{
+  await buttons['c-new-card'].onclick();
+  derivative = true;
+  await buttons['c-new-card'].onclick();
+  assert.strictEqual(bodies[0].rarity, 'R');
+  assert.strictEqual('token' in bodies[0], false);
+  assert.strictEqual(bodies[1].token, true);
+  assert.strictEqual('rarity' in bodies[1], false);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_inline_ask_locks_save_and_recovers(tmp_path):
     """新版本等内联输入未结束时禁止保存/重开；取消后输入框与按钮流程恢复。"""
     script = _script()
@@ -3814,7 +3897,7 @@ console.log('OK');
 def test_auto_id_editor_static_contract():
     cards = (EDITOR_HTML.parent / "editor-cards.js").read_text(encoding="utf-8")
     main = (EDITOR_HTML.parent / "editor-main.js").read_text(encoding="utf-8")
-    assert "checkRowC(div, '衍生牌'" in cards
+    assert "checkRowC(div, '衍生牌'" not in cards
     assert "payload.id = res.id" in cards
     assert "formData.id = res.id" in cards and "cardData.id = res.id" in cards
     assert "params.set('token'" in cards

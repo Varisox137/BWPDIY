@@ -1,7 +1,7 @@
 """文本层：矩形文本区排版（自动换行、逐行居中、字号递减适配、掩膜墨迹避让、关键字异色、内嵌图标）。
 
 v1.8.3 卡牌可选 smart/wrap/off：smart 独立开头纯关键字短句并比较条件类候选断行；
-同字号且不增加行数时，另依次避免高亮跨行、符号留行尾、图标作行首；
+同字号且不增加行数时，先避免闭标点作行首、开标点/符号留行尾，再避免高亮跨行、图标作行首；
 wrap 仅自动换行与字号适配；off 仅显式分行、固定最大字号。通用文本与机制缺省 wrap。
 换行与水平居中按整行文字掩膜的最紧边界测宽，段内 advance/字距保持不变。
 
@@ -251,18 +251,20 @@ def _carry_for_punctuation(current, item):
 
 
 def _carry_for_aesthetic(current, item):
-    """按高亮完整、符号不留行尾、图标不作行首的优先级尝试借字。"""
-    closing = item[0] == "char" and item[1] in _NO_LINE_START
-    if current[-1][2] and (item[2] or closing):
+    """先避让行首/行尾标点，再保持高亮完整，最后避免图标作行首。"""
+    carried = _carry_for_punctuation(current, item)
+    if carried is not None:
+        return carried
+    if current[-1][0] == "char" and current[-1][1] in _NO_LINE_END:
+        if len(current) > 1:
+            return current[:-1], current[-1:] + [item]
+        return None
+    if current[-1][2] and item[2]:
         cut = len(current)
         while cut and current[cut - 1][2]:
             cut -= 1
         if cut:
             return current[:cut], current[cut:] + [item]
-        return None
-    if current[-1][0] == "char" and current[-1][1] in _NO_LINE_END:
-        if len(current) > 1:
-            return current[:-1], current[-1:] + [item]
         return None
     if item[0] == "icon" and current[-1][0] == "char":
         carried = _carry_last_unit(current, item)
@@ -275,16 +277,20 @@ def _carry_for_aesthetic(current, item):
 
 def _break_penalties(lines):
     """自动行边界的美观罚项，元组顺序即优先级；lines 为 item 行列表。"""
-    split_highlights = sum(
-        bool(left[-1][2] and right[0][2])
-        for left, right in zip(lines, lines[1:]) if left and right
+    closing_starts = sum(
+        bool(line and line[0][0] == "char" and line[0][1] in _NO_LINE_START)
+        for line in lines[1:]
     )
     symbol_ends = sum(
         bool(line and line[-1][0] == "char" and line[-1][1] in _NO_LINE_END)
         for line in lines[:-1]
     )
+    split_highlights = sum(
+        bool(left[-1][2] and right[0][2])
+        for left, right in zip(lines, lines[1:]) if left and right
+    )
     icon_starts = sum(bool(line and line[0][0] == "icon") for line in lines[1:])
-    return split_highlights, symbol_ends, icon_starts
+    return closing_starts, symbol_ends, split_highlights, icon_starts
 
 
 def _normalize_newlines(text: str) -> str:

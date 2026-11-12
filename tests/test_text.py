@@ -110,14 +110,29 @@ def test_smart_wrap_keeps_highlight_on_one_line_without_extra_line(assets_dir):
     assert [text for text, _, _ in lines] == ["甲乙", "丙丁戊"]
 
 
-def test_smart_wrap_keeps_highlight_together_when_carrying_punctuation(assets_dir):
+def test_smart_wrap_closing_punctuation_precedes_highlight(assets_dir):
     lib = AssetLibrary(assets_dir)
     font36 = lib.font("desc", 36)
     region = rect_region(0, 0, math.ceil(font36.getlength("甲乙丙丁")) + 1, 200,
                          font_range=[36, 36])
     font, lines = fit_in_region("甲乙[[丙丁]]，戊", region, lib, text_layout="smart")
     assert font.size == 36
-    assert [text for text, _, _ in lines] == ["甲乙", "丙丁，戊"]
+    assert [text for text, _, _ in lines] == ["甲乙丙", "丁，戊"]
+
+
+def test_smart_wrap_opening_punctuation_precedes_highlight(assets_dir):
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    region = rect_region(0, 0, math.ceil(font36.getlength("甲乙丙")) + 1, 200,
+                         font_range=[36, 36])
+    font, lines = fit_in_region("甲[[乙“丙]]", region, lib, text_layout="smart")
+    assert font.size == 36
+    assert [text for text, _, _ in lines] == ["甲乙", "“丙"]
+
+
+def test_line_punctuation_sets_do_not_overlap():
+    from bwpdiy.render.text import _NO_LINE_END, _NO_LINE_START
+    assert _NO_LINE_START.isdisjoint(_NO_LINE_END)
 
 
 @pytest.mark.parametrize("symbol", ["≥", "≤", "“", "‘", '"', "'", "［", "｛"])

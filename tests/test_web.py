@@ -488,8 +488,10 @@ def test_help_button_and_modal():
     html = EDITOR_HTML.read_text(encoding="utf-8")
     assert html.index('id="c-btn-help"') < html.index('id="c-btn-refresh"')
     modal = html.split('id="help-modal"', 1)[1]
-    for needle in ("[[关键字]]", "#ll", "八分之一宽空格", "扩展选项", "自适应"):
+    for needle in ("[[关键字]]", "#ll", "八分之一宽空格", "扩展选项", "自适应",
+                   "项目、主要式神与卡牌/衍生物均按 ID 升序排列"):
         assert needle in modal
+    assert "协战仅常规" not in modal
 
 
 # --- 编辑器静态 JS 纯函数测试（node 驱动：抽取函数源码 + 桩驱动运行） ---
@@ -4158,11 +4160,12 @@ async function loadCards(stem, selectFirst) {{ cardLoads.push([stem, selectFirst
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_project_list_shows_nonbold_id_and_hides_blank(tmp_path):
+def test_project_list_sorts_and_shows_ids(tmp_path):
     build = _extract_js(_script(), "function buildProjectList()")
     driver = f"""
 const assert = require('node:assert');
-let projects = ['甲', '乙'], projectIds = {{甲: '051', 乙: ''}}, curProject = '甲';
+let projects = ['无编号', '乙', '甲'], projectIds = {{甲: '051', 乙: '052', 无编号: ''}};
+let curProject = '甲';
 function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', className: '',
   set innerHTML(value) {{ if (value === '') this.children = []; }},
   appendChild(child) {{ this.children.push(child); return child; }} }}; }}
@@ -4171,37 +4174,13 @@ const document = {{getElementById: id => id === 'c-projects' ? list : sections, 
 function fitListHeight() {{}}
 {build}
 buildProjectList();
-assert.strictEqual(list.children.length, 2);
+assert.deepStrictEqual(list.children.map(item => item.children[0].textContent), ['甲', '乙', '无编号']);
 const withId = list.children[0].children[0];
-assert.strictEqual(withId.textContent, '甲');
 assert.strictEqual(withId.children.length, 1);
 assert.strictEqual(withId.children[0].textContent, '(051)');
 assert.strictEqual(withId.children[0].className, 'meta');
-const blank = list.children[1].children[0];
-assert.strictEqual(blank.textContent, '乙');
-assert.strictEqual(blank.children.length, 0);
-console.log('OK');
-"""
-    _run_node(tmp_path, driver)
-
-
-@pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_project_list_sorted_by_id_then_name(tmp_path):
-    build = _extract_js(_script(), "function buildProjectList()")
-    driver = f"""
-const assert = require('node:assert');
-let projects = ['无编号乙', '乙', '无编号甲', '甲'];
-let projectIds = {{甲: '051', 乙: '052'}}, curProject = null;
-function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', className: '',
-  set innerHTML(value) {{ if (value === '') this.children = []; }},
-  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
-const list = element('div'), sections = element('div');
-const document = {{getElementById: id => id === 'c-projects' ? list : sections, createElement: element}};
-function fitListHeight() {{}}
-{build}
-buildProjectList();
-assert.deepStrictEqual(list.children.map(item => item.children[0].textContent),
-  ['甲', '乙', '无编号甲', '无编号乙']);
+assert.strictEqual(list.children[1].children[0].children[0].textContent, '(052)');
+assert.strictEqual(list.children[2].children[0].children.length, 0);
 console.log('OK');
 """
     _run_node(tmp_path, driver)

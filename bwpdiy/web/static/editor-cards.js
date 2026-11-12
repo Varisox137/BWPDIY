@@ -131,7 +131,13 @@ function buildProjectList() {
   document.getElementById('c-proj-secs').style.display = curProject ? '' : 'none';  // 未选中项目时不显示式神/卡牌栏
   const div = document.getElementById('c-projects');
   div.innerHTML = '';
-  for (const p of projects) {
+  const ordered = [...projects].sort((a, b) => {
+    const aId = projectIds[a], bId = projectIds[b];
+    if (aId && bId) return aId.localeCompare(bId);
+    if (aId || bId) return aId ? -1 : 1;
+    return a.localeCompare(b, 'zh-CN');
+  });
+  for (const p of ordered) {
     const d = document.createElement('div');
     const left = document.createElement('span');
     left.textContent = p;

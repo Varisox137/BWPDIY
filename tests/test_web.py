@@ -4186,6 +4186,28 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_project_list_sorted_by_id_then_name(tmp_path):
+    build = _extract_js(_script(), "function buildProjectList()")
+    driver = f"""
+const assert = require('node:assert');
+let projects = ['无编号乙', '乙', '无编号甲', '甲'];
+let projectIds = {{甲: '051', 乙: '052'}}, curProject = null;
+function element(tag) {{ return {{tag, children: [], style: {{}}, textContent: '', className: '',
+  set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); return child; }} }}; }}
+const list = element('div'), sections = element('div');
+const document = {{getElementById: id => id === 'c-projects' ? list : sections, createElement: element}};
+function fitListHeight() {{}}
+{build}
+buildProjectList();
+assert.deepStrictEqual(list.children.map(item => item.children[0].textContent),
+  ['甲', '乙', '无编号甲', '无编号乙']);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_project_id_refresh_does_not_reset_card_selection(tmp_path):
     script = _script()
     build = _extract_js(script, "function buildProjectList()")

@@ -31,6 +31,7 @@ function buildMechList() {
   div.innerHTML = '';
   for (const m of mechs.filter(mechVisible)) {
     const d = entryItem(m, curMech);  // 机制无 id：仅名称 + 右侧 (版本数)
+    if (m.global === false) d.classList.add('non-global');
     d.onclick = () => selectMech(m.stem);
     div.appendChild(d);
   }

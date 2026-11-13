@@ -24,7 +24,7 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
   .item .meta { font-weight: normal; opacity: .7; }
   .item .meta.deck-invalid { color: #c0392b; font-weight: bold; opacity: 1; }
   .item.active { background: #d9b96a; }
-  .item.shiki { font-weight: bold; }
+  .item.shiki, .item.non-global { font-weight: bold; }
   .item.broken { color: #c0392b; }
   .btnrow { margin: 4px 0 10px; }
   .btnrow button { margin: 2px 4px 2px 0; font-size: 12px; }

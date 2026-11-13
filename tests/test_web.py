@@ -4298,6 +4298,44 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_visible_non_global_mechanism_names_are_bold(tmp_path):
+    build = _extract_js(_script(), "function buildMechList()")
+    driver = f"""
+const assert = require('node:assert');
+let curProject = 'P', mainShiki = '甲', curMech = null;
+const mechs = [
+  {{stem: 'g', name: '全局'}},
+  {{stem: 'p', name: '项目', global: false, project: 'P'}},
+  {{stem: 's', name: '式神', global: false, project: 'P', shikigami: '甲'}},
+  {{stem: 'x', name: '其他', global: false, project: 'X'}},
+];
+const list = {{children: [], set innerHTML(value) {{ if (value === '') this.children = []; }},
+  appendChild(child) {{ this.children.push(child); }} }};
+const document = {{getElementById: () => list}};
+function mechVisible(m) {{
+  if (m.global !== false) return true;
+  return !!curProject && m.project === curProject && (!m.shikigami || m.shikigami === mainShiki);
+}}
+function entryItem(m) {{
+  const classes = new Set(['item']);
+  return {{mech: m, classes, classList: {{add: name => classes.add(name)}}}};
+}}
+function fitListHeight() {{}}
+function syncDeleteButtons() {{}}
+{build}
+buildMechList();
+assert.deepStrictEqual(list.children.map(d => d.mech.name), ['全局', '项目', '式神']);
+assert.strictEqual(list.children[0].classes.has('non-global'), false);
+assert.strictEqual(list.children[1].classes.has('non-global'), true);
+assert.strictEqual(list.children[2].classes.has('non-global'), true);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+    css = (EDITOR_HTML.parent / "editor.css").read_text(encoding="utf-8")
+    assert ".item.shiki, .item.non-global { font-weight: bold; }" in css
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_project_list_sorts_and_shows_ids(tmp_path):
     build = _extract_js(_script(), "function buildProjectList()")
     driver = f"""

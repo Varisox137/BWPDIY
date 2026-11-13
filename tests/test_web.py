@@ -2835,6 +2835,8 @@ function syncSubpreviews() {{ subpreviewSyncs++; }}
 const URL = {{revokeObjectURL() {{}}}};
 function confirmDiscard() {{ return true; }}
 function buildCardList() {{}}
+function buildMechList() {{}}
+function rememberMechContext() {{}}
 function listErr() {{}}
 function enc(value) {{ return value; }}
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
@@ -2901,6 +2903,8 @@ const document = {{getElementById: () => ({{textContent: ''}})}};
 const URL = {{revokeObjectURL() {{}}}};
 function confirmDiscard() {{ return true; }}
 function buildCardList() {{}}
+function buildMechList() {{}}
+function rememberMechContext() {{}}
 function listErr() {{}}
 function enc(value) {{ return value; }}
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
@@ -3082,6 +3086,8 @@ const document = {{getElementById: id => elements[id] || (elements[id] = {{textC
 function confirmDiscard() {{ return true; }}
 function enc(value) {{ return value; }}
 function buildCardList() {{}}
+function buildMechList() {{}}
+function rememberMechContext() {{}}
 function listErr() {{}}
 function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
 function resetUndo() {{}}
@@ -4126,11 +4132,11 @@ async function loadProjects() {{}}
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
-def test_reselect_current_project_enters_project_editor(tmp_path):
+def test_select_project_enters_project_editor(tmp_path):
     select = _extract_js(_script(), "async function selectProject(p)")
     driver = f"""
 const assert = require('node:assert');
-let curProject = 'P', curCard = 'A', curMech = null, formData = {{id: '1'}}, cardData = {{}};
+let curProject = '旧', curCard = 'A', curMech = null, formData = {{id: '1'}}, cardData = {{}};
 let projectData = {{id: '051'}}, savedProjectData = {{id: '051'}}, pDirty = false;
 let mainShiki = '甲', neutralMode = true;
 let guards = 0, cleared = 0, built = 0;
@@ -4140,6 +4146,8 @@ function exitMech() {{ curMech = null; }}
 function clearCard() {{ cleared++; curCard = null; formData = null; cardData = null; }}
 function listErr() {{}}
 function buildProjectList() {{ built++; }}
+function buildMechList() {{}}
+function rememberMechContext() {{}}
 async function loadProjectMeta(project) {{ metaLoads.push(project); }}
 async function loadCards(stem, selectFirst) {{ cardLoads.push([stem, selectFirst]); }}
 {select}
@@ -4155,6 +4163,136 @@ async function loadCards(stem, selectFirst) {{ cardLoads.push([stem, selectFirst
   assert.strictEqual(neutralMode, false);
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_reselect_card_falls_back_to_owner_or_project(tmp_path):
+    deselect = _extract_js(_script(), "async function deselectCard()")
+    driver = f"""
+const assert = require('node:assert');
+const cards = {{
+  shikigami: [{{stem: 's', name: '甲', versions: [{{stem: 's'}}]}}],
+  cards: [{{stem: 'c', shikigami: '甲', versions: [{{stem: 'c'}}]}}],
+}};
+let curCard = 'c', mainShiki = null, neutralMode = true;
+async function confirmDiscard() {{ return true; }}
+function clearCard() {{ curCard = null; }}
+function buildCardList() {{}}
+function buildMechList() {{}}
+function buildForm() {{}}
+function rememberMechContext() {{}}
+{deselect}
+(async () => {{
+  await deselectCard();
+  assert.strictEqual(curCard, null);
+  assert.strictEqual(mainShiki, '甲');
+  assert.strictEqual(neutralMode, false);
+  curCard = 's'; mainShiki = '甲';
+  await deselectCard();
+  assert.strictEqual(mainShiki, null);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_deselect_to_global_mechs_clears_all_project_context(tmp_path):
+    deselect = _extract_js(_script(), "async function deselectToGlobalMechs()")
+    driver = f"""
+const assert = require('node:assert');
+let curProject = 'P', mainShiki = '甲', neutralMode = true, curMech = 'm';
+let projectData = {{id: '051'}}, savedProjectData = {{id: '051'}}, pDirty = true;
+let cards = {{shikigami: [{{}}], cards: [{{}}]}};
+async function confirmDiscard() {{ return true; }}
+function exitMech() {{ curMech = null; }}
+function clearCard() {{}}
+function buildProjectList() {{}}
+function buildCardList() {{}}
+function buildMechList() {{}}
+{deselect}
+(async () => {{
+  await deselectToGlobalMechs();
+  assert.strictEqual(curProject, null);
+  assert.strictEqual(mainShiki, null);
+  assert.strictEqual(neutralMode, false);
+  assert.strictEqual(curMech, null);
+  assert.strictEqual(pDirty, false);
+  assert.deepStrictEqual(cards, {{shikigami: [], cards: []}});
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_select_global_mechanism_clears_project_context_and_reselect_toggles(tmp_path):
+    select = _extract_js(_script(), "async function selectMech(name, force = false)")
+    driver = f"""
+const assert = require('node:assert');
+const mechs = [{{stem: 'g', name: '全局', versions: [{{stem: 'g'}}]}}];
+let curProject = 'P', mainShiki = '甲', neutralMode = true, curMech = null, curCard = 'c';
+let cards = {{shikigami: [], cards: []}}, projectData = {{}}, savedProjectData = {{}}, pDirty = false;
+let selectSeq = 0, toggles = 0;
+const cStatusEl = {{textContent: ''}};
+async function confirmDiscard() {{ return true; }}
+function rememberMechContext() {{}}
+function buildProjectList() {{}}
+function clearCard() {{ curCard = null; }}
+function buildCardList() {{}}
+function buildMechList() {{}}
+function listErr() {{}}
+function enc(value) {{ return value; }}
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function buildMechForm() {{}}
+function mechPreview() {{}}
+function exitMech() {{ curMech = null; }}
+async function deselectToGlobalMechs() {{ toggles++; }}
+async function fetch() {{ return {{ok: true, json: async () => ({{name: '全局', frame: 'skill', text: ''}})}}; }}
+{select}
+(async () => {{
+  await selectMech('g');
+  assert.strictEqual(curProject, null);
+  assert.strictEqual(mainShiki, null);
+  assert.strictEqual(neutralMode, false);
+  assert.strictEqual(curCard, null);
+  assert.strictEqual(curMech, 'g');
+  await selectMech('g');
+  assert.strictEqual(toggles, 1);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_mechanism_scope_filter_and_owner_payload(tmp_path):
+    script = _script()
+    visible = _extract_js(script, "function mechVisible(m)")
+    owner = _extract_js(script, "function mechOwnerPayload(isGlobal)")
+    driver = f"""
+const assert = require('node:assert');
+let curProject = 'P', mainShiki = '甲';
+let lastMechOwner = {{project: '旧项目', shikigami: '旧式神'}};
+{visible}
+{owner}
+assert.strictEqual(mechVisible({{name: '全局'}}), true);
+assert.strictEqual(mechVisible({{global: false, project: 'P'}}), true);
+assert.strictEqual(mechVisible({{global: false, project: '其他'}}), false);
+assert.strictEqual(mechVisible({{global: false, project: 'P', shikigami: '甲'}}), true);
+assert.strictEqual(mechVisible({{global: false, project: 'P', shikigami: '乙'}}), false);
+mainShiki = null;
+assert.strictEqual(mechVisible({{global: false, project: 'P'}}), true);
+assert.strictEqual(mechVisible({{global: false, project: 'P', shikigami: '甲'}}), false);
+assert.deepStrictEqual(mechOwnerPayload(true), {{global: true}});
+curProject = null;
+assert.deepStrictEqual(mechOwnerPayload(false),
+  {{global: false, project: '旧项目', shikigami: '旧式神'}});
+lastMechOwner = {{project: null, shikigami: null}};
+assert.strictEqual(mechOwnerPayload(false), null);
+console.log('OK');
 """
     _run_node(tmp_path, driver)
 

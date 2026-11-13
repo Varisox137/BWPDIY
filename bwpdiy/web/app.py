@@ -593,7 +593,7 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
             raise
         return {"ok": True, "path": filename, "id": card_data["id"]}
 
-    # ---------- 机制 REST（全局共享池 library/mechanisms/，不属任何项目） ----------
+    # ---------- 机制 REST（统一存 library/mechanisms/，前端按项目/式神归属筛选） ----------
 
     def _saved_mech_layout() -> dict | None:
         """已保存布局的「机制」段（缺段时 load_layouts 已从包内默认补齐）。"""

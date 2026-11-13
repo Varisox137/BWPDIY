@@ -1071,6 +1071,47 @@ def test_mechanism_round_trip(lib):
     assert list_mechanisms(lib) == [entry("蛊蚀", "蛊蚀")]
 
 
+def test_mechanism_scope_round_trip_and_list_metadata(lib):
+    create_project(lib, "山风")
+    save_card(lib, "山风", "山风", SHIKIGAMI)
+    save_mechanism(lib, "全局机制", {**MECH, "name": "全局机制"})
+    save_mechanism(lib, "项目机制", {**MECH, "name": "项目机制",
+                                   "global": False, "project": "山风"})
+    save_mechanism(lib, "式神机制", {**MECH, "name": "式神机制", "global": False,
+                                   "project": "山风", "shikigami": "山风"})
+    listed = {item["name"]: item for item in list_mechanisms(lib)}
+    assert "global" not in listed["全局机制"]
+    assert listed["项目机制"]["global"] is False
+    assert listed["项目机制"]["project"] == "山风"
+    assert listed["项目机制"]["shikigami"] is None
+    assert listed["式神机制"]["shikigami"] == "山风"
+
+
+def test_mechanism_scope_validation(lib):
+    create_project(lib, "山风")
+    save_card(lib, "山风", "山风", SHIKIGAMI)
+    for data, needle in [
+        ({**MECH, "global": False}, "project"),
+        ({**MECH, "global": True, "project": "山风"}, "全局"),
+        ({**MECH, "global": "yes"}, "global"),
+        ({**MECH, "global": False, "project": "不存在"}, "不存在"),
+        ({**MECH, "global": False, "project": "山风", "shikigami": "不存在"}, "不存在"),
+    ]:
+        with pytest.raises((SchemaError, StoreError), match=needle):
+            save_mechanism(lib, "非法", data)
+
+
+def test_mechanism_scope_follows_project_and_shikigami_renames(lib):
+    create_project(lib, "山风")
+    save_card(lib, "山风", "山风", SHIKIGAMI)
+    save_mechanism(lib, "式神机制", {**MECH, "name": "式神机制", "global": False,
+                                   "project": "山风", "shikigami": "山风"})
+    rename_project(lib, "山风", "森林")
+    assert load_mechanism(lib, "式神机制")["project"] == "森林"
+    save_card(lib, "森林", "山风", {**SHIKIGAMI, "name": "岚"})
+    assert load_mechanism(lib, "式神机制")["shikigami"] == "岚"
+
+
 def test_mechanisms_global_not_project(lib):
     """机制是全局共享池：不占项目列表，list_projects 不返回 mechanisms 目录。"""
     create_project(lib, "山风")
@@ -1302,6 +1343,17 @@ def test_mechanism_versions(lib):
     assert path.name == "魔蛊@20260301.yaml"
     with pytest.raises(StoreError, match="已存在"):
         new_mechanism_version(lib, "魔蛊@20260301", "20260301")
+
+
+def test_mechanism_scope_is_shared_across_versions(lib):
+    create_project(lib, "山风")
+    save_mechanism(lib, "蛊蚀", {**MECH, "version_date": "20260101",
+                               "global": False, "project": "山风"})
+    new_mechanism_version(lib, "蛊蚀", "20260201")
+    save_mechanism(lib, "蛊蚀@20260201",
+                   {**MECH, "version_date": "20260201", "global": True})
+    old = load_mechanism(lib, "蛊蚀")
+    assert old["global"] is True and "project" not in old
 
 
 def test_blank_mechanism_date_is_saved_as_compact_yyyymmdd(lib):

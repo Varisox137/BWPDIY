@@ -93,12 +93,12 @@ class SchemaError(Exception):
         super().__init__("\n".join(self.errors))
 
 
-# ---------- 机制描述框（全局共享池 library/mechanisms/，渲染见 render/mech.py） ----------
+# ---------- 机制描述框（统一存 library/mechanisms/，可全局或归属项目/式神） ----------
 
 MECH_FRAMES = ("invocation", "skill", "seal")  # 灵咒框 / 关键字框 / 加护蚀印框
 MECH_BADGES = ("bless", "eclipse")             # 圆形角标（加护/蚀印），仅 seal 框可携带
 _MECH_FIELDS = ("name", "frame", "text", "badge", "version_date", "chars_per_line",
-                "inline_faction_style")
+                "inline_faction_style", "global", "project", "shikigami")
 
 
 def validate_mechanism(data) -> list[str]:
@@ -117,6 +117,17 @@ def validate_mechanism(data) -> list[str]:
     for key in data:
         if key not in _MECH_FIELDS:
             errors.append(f"字段 {key}：机制白名单之外的字段")
+    is_global = data.get("global", True)
+    if not isinstance(is_global, bool):
+        errors.append("字段 global：必须是布尔值")
+    for key in ("project", "shikigami"):
+        if key in data and data[key] is not None and (
+                not isinstance(data[key], str) or not data[key].strip()):
+            errors.append(f"字段 {key}：必须是非空字符串")
+    if is_global is True and ("project" in data or "shikigami" in data):
+        errors.append("全局机制不得携带 project/shikigami 归属字段")
+    elif is_global is False and not data.get("project"):
+        errors.append("字段 project：非全局机制必须填写所属项目")
     if "text" in data and not isinstance(data["text"], str):
         errors.append("字段 text：必须是字符串")
     if "inline_faction_style" in data and (

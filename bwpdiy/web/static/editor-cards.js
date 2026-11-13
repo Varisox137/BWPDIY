@@ -181,17 +181,30 @@ async function loadProjectMeta(project) {
   if (!formData && !curMech) buildForm();
   return true;
 }
+async function deselectToGlobalMechs() {
+  if (!await confirmDiscard()) return;
+  curProject = null; mainShiki = null; neutralMode = false;
+  projectData = savedProjectData = {id: '', release_date: ''}; pDirty = false;
+  cards = {shikigami: [], cards: []};
+  if (curMech) exitMech();
+  clearCard();
+  buildProjectList();
+  buildCardList();
+  buildMechList();
+}
 async function selectProject(p) {
+  if (p === curProject) return deselectToGlobalMechs();
   if (!await confirmDiscard()) return;
   if (curMech) exitMech();
   mainShiki = null; neutralMode = false;
-  curProject = p;
+  curProject = p; rememberMechContext();
   projectData = savedProjectData = {id: '', release_date: ''}; pDirty = false;
   clearCard();
   listErr([]);
   buildProjectList();
   await loadProjectMeta(p);
   await loadCards(null, false);
+  buildMechList();
 }
 
 // ---- 卡牌列表 ----
@@ -315,8 +328,22 @@ function cardItem(c, isShiki) {
   d.onclick = () => selectCard(c.stem);
   return d;
 }
+async function deselectCard() {
+  if (!await confirmDiscard()) return;
+  const isShiki = cards.shikigami.some(e => (e.versions || []).some(v => v.stem === curCard));
+  const group = cards.cards.find(e => (e.versions || []).some(v => v.stem === curCard));
+  const owner = isShiki ? null
+    : (mainShiki || group?.shikigami || group?.shikigami1 || group?.shikigami2 || null);
+  clearCard();
+  mainShiki = owner; neutralMode = false;
+  rememberMechContext();
+  buildCardList();
+  buildMechList();
+  buildForm();
+}
 async function selectCard(stem, force = false) {
-  if (!force && (stem === curCard || !await confirmDiscard())) return;
+  if (!force && stem === curCard) return deselectCard();
+  if (!force && !await confirmDiscard()) return;
   if (curMech) exitMech();  // 选中卡牌与选中机制互斥（mDirty 守卫已在 confirmDiscard 完成）
   cPreviewSeq++; cPreviewAppliedSeq = cPreviewSeq;
   cPortraitSeq++; cPortraitAppliedSeq = cPortraitSeq;
@@ -324,7 +351,9 @@ async function selectCard(stem, force = false) {
   const sg = cards.shikigami.find(e => (e.versions || []).some(v => v.stem === stem));
   if (sg) mainShiki = sg.name;
   neutralMode = false;
+  rememberMechContext();
   buildCardList();
+  buildMechList();
   listErr([]);
   cStatusEl.textContent = '';
   const seq = ++selectSeq;
@@ -404,7 +433,8 @@ document.addEventListener('click', ev => {
   }
 }, true);
 // 通用内联输入条：标题 + 文本框 + 可选下拉/项目 ID，确定/取消
-function ask({title, value = '', options = null, selDefault = null, target, withId = false}) {
+function ask({title, value = '', options = null, selDefault = null, target, withId = false,
+              withGlobal = false}) {
   return new Promise(resolve => {
     if (!beginAsk(title)) { resolve(null); return; }
     const box = document.getElementById('c-ask');
@@ -437,6 +467,14 @@ function ask({title, value = '', options = null, selDefault = null, target, with
       if (selDefault) sel.value = selDefault;
       box.appendChild(sel);
     }
+    let globalInput = null;
+    if (withGlobal) {
+      const label = document.createElement('label');
+      label.textContent = '全局 ';
+      globalInput = document.createElement('input');
+      globalInput.type = 'checkbox'; globalInput.checked = true;
+      label.appendChild(globalInput); box.appendChild(label);
+    }
     const row = document.createElement('div');
     const ok = document.createElement('button'); ok.textContent = '确定';
     const cancel = document.createElement('button'); cancel.textContent = '取消';
@@ -457,6 +495,7 @@ function ask({title, value = '', options = null, selDefault = null, target, with
         result.id = idInput.value.trim();
         result.release_date = releaseInput.value.trim();
       }
+      if (withGlobal) result.global = globalInput.checked;
       done(result);
     };
     cancel.onclick = () => done(null);
@@ -501,6 +540,7 @@ document.getElementById('c-ren-proj').onclick = async () => {
   curProject = r.text; cDirty = false;
   listErr([]);
   await loadProjects(keep);
+  await loadMechs();
 };
 document.getElementById('c-del-proj').onclick = async () => {
   if (!curProject) { listErr(['请先选择项目']); return; }
@@ -676,12 +716,16 @@ document.getElementById('c-del-shiki').onclick = () => {
   }
   document.getElementById('c-del-card').onclick();
 };
-document.getElementById('c-neutral').onclick = () => {
-  if (neutralMode) { neutralMode = false; buildCardList(); return; }
+document.getElementById('c-neutral').onclick = async () => {
+  if (!await confirmDiscard()) return;
+  if (curMech) exitMech();
+  if (neutralMode) { neutralMode = false; buildCardList(); buildMechList(); return; }
   neutralMode = true;
   mainShiki = null;  // 取消主要式神选择（同步隐藏其专属牌），转为显示全部中立牌
+  rememberMechContext();
   clearCard();
   buildCardList();
+  buildMechList();
 };
 document.getElementById('c-del-card').onclick = async () => {
   if (!curCard) { listErr(['请先选择卡牌']); return; }
@@ -1672,6 +1716,7 @@ async function saveCard() {
   if (res.updated && res.updated.length) {
     // 式神卡改名：服务端已联动同项目卡的所属式神引用，列表显示名随之刷新
     cStatusEl.textContent = `已保存；已同步更新 ${res.updated.length} 张卡的所属式神引用：${res.updated.join('、')}`;
+    await loadMechs();
   }
   // 无 id 卡改名时服务端已重命名配置文件（res.stem 为新文件名）；
   // 总是刷新左侧栏（卡名/文件名变化即时体现）并重新选中当前卡（表单/预览随刷新）

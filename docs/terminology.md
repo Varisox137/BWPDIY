@@ -63,7 +63,9 @@
 
 ## 机制
 
-机制是跨项目共享池 `library/mechanisms/*.yaml` 中的条目，字段为 `name/frame/text/version_date`，可选 `badge/inline_faction_style/chars_per_line`。
+机制统一保存在 `library/mechanisms/*.yaml`，字段为 `name/frame/text/version_date`，可选 `badge/inline_faction_style/chars_per_line/global/project/shikigami`。缺省 `global=true`；非全局机制必须有所属项目，可进一步归属主要式神，同组版本共享归属，项目/式神改名同步引用。
+
+- 列表逐级显示全局机制、当前项目机制与当前式神机制；新建或取消全局时按最近选择确定归属（式神优先），无项目上下文则拒绝。选中全局机制会清空项目/式神/卡牌选择。
 
 - frame：invocation 灵咒框 / skill 关键字框 / seal 加护蚀印框。原版游戏无「技能」概念，界面与文档统一使用「关键字」；归档素材文件名除外。
 - 名称金色、左对齐、字号略大于正文且不加粗；名称与描述之间空一行，描述逐行左对齐，正文色按框体。seal 的 bless/eclipse 角标使名称自动右移。

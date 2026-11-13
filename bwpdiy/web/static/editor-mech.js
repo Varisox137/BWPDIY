@@ -1,13 +1,35 @@
 // ================= 机制（灵咒/关键字/加护蚀印描述框） =================
-// 全局共享池（/api/mechanisms，不随项目切换）；选中机制与选中卡牌互斥，
+// 机制统一存 /api/mechanisms；旧数据缺省全局，非全局按项目/式神归属逐级筛选。
 // 右栏表单/中央预览/脏标记守卫复用卡牌同套设施（c-form / c-preview / cPreviewSeq / c-dirty 栏位）
 const MECH_FRAMES = [["invocation", "灵咒"], ["skill", "关键字"], ["seal", "加护蚀印"]];
 const MECH_BADGES = [["", "无"], ["bless", "加护"], ["eclipse", "蚀印"]];
-
+let lastMechOwner = {project: null, shikigami: null};
+function rememberMechContext() {
+  if (curProject) lastMechOwner = {project: curProject, shikigami: mainShiki};
+}
+function mechOwnerPayload(isGlobal) {
+  if (isGlobal) return {global: true};
+  const owner = curProject ? {project: curProject, shikigami: mainShiki} : lastMechOwner;
+  if (!owner.project) return null;
+  return {global: false, project: owner.project,
+    ...(owner.shikigami ? {shikigami: owner.shikigami} : {})};
+}
+async function restoreMechOwnerContext(payload) {
+  if (payload.global === false) {
+    curProject = payload.project; mainShiki = payload.shikigami || null; neutralMode = false;
+    rememberMechContext();
+    await loadProjectMeta(curProject);
+    await loadCards(null, false);
+  }
+}
+function mechVisible(m) {
+  if (m.global !== false) return true;
+  return !!curProject && m.project === curProject && (!m.shikigami || m.shikigami === mainShiki);
+}
 function buildMechList() {
   const div = document.getElementById('c-mechs');
   div.innerHTML = '';
-  for (const m of mechs) {
+  for (const m of mechs.filter(mechVisible)) {
     const d = entryItem(m, curMech);  // 机制无 id：仅名称 + 右侧 (版本数)
     d.onclick = () => selectMech(m.stem);
     div.appendChild(d);
@@ -39,10 +61,19 @@ function exitMech() {  // 离开机制编辑态（脏守卫由调用方先行，
   buildMechList();
 }
 async function selectMech(name, force = false) {
-  if (!force && (name === curMech || !await confirmDiscard())) return;
-  clearCard();      // 互斥：清卡牌选中与预览/头像
-  buildCardList();
+  if (!force && name === curMech) return deselectToGlobalMechs();
+  if (!force && !await confirmDiscard()) return;
+  const group = mechs.find(m => (m.versions || []).some(v => v.stem === name));
+  if (group?.global !== false) {
+    rememberMechContext();
+    curProject = null; mainShiki = null; neutralMode = false;
+    projectData = savedProjectData = {id: '', release_date: ''}; pDirty = false;
+    cards = {shikigami: [], cards: []};
+    buildProjectList();
+  }
+  clearCard();      // 机制与卡牌互斥；全局机制同时清空项目/式神上下文
   curMech = name;
+  buildCardList();
   buildMechList();
   listErr([]);
   cStatusEl.textContent = '';
@@ -82,6 +113,13 @@ function buildMechForm() {
   selRowC(div, '框类型', MECH_FRAMES.map(([v]) => v), mechForm.frame ?? 'invocation',
     v => { mechForm.frame = v; if (v !== 'seal') mechForm.badge = null; afterMechEdit(true); },
     v => MECH_FRAMES.find(([val]) => val === v)[1]);
+  checkRowC(div, '全局', mechForm.global !== false, checked => {
+    const owner = mechOwnerPayload(checked);
+    if (!owner) { alert('请先选择所属项目或主要式神，再取消「全局」。'); buildMechForm(); return; }
+    delete mechForm.project; delete mechForm.shikigami;
+    Object.assign(mechForm, owner);
+    afterMechEdit();
+  });
   numRowC(div, '每行字数', mechForm.chars_per_line ?? 12, true,
     v => setMechField('chars_per_line', v), null, null, 1);
   if ((mechForm.frame ?? 'invocation') === 'seal') {  // 加护/蚀印角标仅 seal 框可用
@@ -135,6 +173,11 @@ function validateMechJS(d) {
     errors.push(`字段 badge：非法角标「${d.badge}」`);
   }
   if (d.badge && d.frame !== 'seal') errors.push('字段 badge：仅加护蚀印框可携带角标');
+  if ('global' in d && typeof d.global !== 'boolean') errors.push('字段 global：必须是布尔值');
+  if (d.global === false && !d.project) errors.push('字段 project：非全局机制必须有所属项目');
+  if (d.global !== false && ('project' in d || 'shikigami' in d)) {
+    errors.push('全局机制不得携带项目/式神归属');
+  }
   if (typeof d.text !== 'string') errors.push('字段 text：必须是字符串');
   if ('chars_per_line' in d && (!Number.isInteger(d.chars_per_line) || d.chars_per_line <= 0)) {
     errors.push('字段 chars_per_line：必须是正整数');
@@ -203,6 +246,7 @@ async function saveMech() {
   }
   mDirty = false;
   cStatusEl.textContent = '已保存';
+  await restoreMechOwnerContext(payload);
   await loadMechs(res.stem || oldName);  // 按最终文件名重选（改名/改日期会重命名文件）
 }
 
@@ -229,17 +273,21 @@ async function exportMech() {
 // ---- 机制操作（新建/删除；重命名=右侧名称输入框修改后保存） ----
 const MECH_FRAME_BY_LABEL = Object.fromEntries(MECH_FRAMES.map(([v, l]) => [l, v]));
 document.getElementById('c-new-mech').onclick = async () => {
+  rememberMechContext();
   const r = await ask({title: '新机制（名称 + 框体）',
     options: MECH_FRAMES.map(([, l]) => l), selDefault: '关键字',
-    target: 'c-ask-mech'});  // 框类型默认关键字框
+    target: 'c-ask-mech', withGlobal: true});  // 框类型默认关键字框，默认全局
   if (!r || !r.text) return;
+  const owner = mechOwnerPayload(r.global);
+  if (!owner) { alert('请先选择所属项目或主要式神，再新建非全局机制。'); return; }
   if (!await confirmDiscard()) return;
+  const payload = {name: r.text, frame: MECH_FRAME_BY_LABEL[r.sel] || 'skill',
+    text: '', badge: null, chars_per_line: 12, ...owner};
   const resp = await fetch('/api/mechanisms', {method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name: r.text,
-      frame: MECH_FRAME_BY_LABEL[r.sel] || 'skill', text: '', badge: null, chars_per_line: 12})});
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   listErr([]);
+  await restoreMechOwnerContext(payload);
   await loadMechs(r.text);
 };
 document.getElementById('c-del-mech').onclick = async () => {

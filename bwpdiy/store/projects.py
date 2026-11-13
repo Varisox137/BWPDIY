@@ -5,7 +5,7 @@
     library/<项目名>/shikigami/<任意文件名>.yaml   式神卡（主要式神上限 MAX_SHIKIGAMI 组）
     library/<项目名>/cards/<任意文件名>.yaml       非式神卡，单项目上限 MAX_CARDS 组
     library/<项目名>/images/                       卡图原图
-    library/mechanisms/<机制名>[@<版本日期>].yaml  机制描述框（全局共享池，不属任何项目）
+    library/mechanisms/<机制名>[@<版本日期>].yaml  机制描述框（统一存储，可全局或归属项目/式神）
 
 多版本（v1.6.0）：每版本一个 yaml 文件，「新版本」创建的文件名为 基础stem@YYYYMMDD
 （无 @ 的旧文件=单版本，不强制迁移命名）。version_date 保存时校验合法日期、留空填当天。
@@ -157,7 +157,8 @@ def _card_group(pdir: Path, sub: str, key: tuple[str, str]) -> list[tuple[Path, 
 
 
 def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = False,
-                   include_stats: bool = False, version_meta: bool = False) -> list[dict]:
+                   include_stats: bool = False, version_meta: bool = False,
+                   mechanism_meta: bool = False) -> list[dict]:
     """(路径, 数据|None) → 分组条目：stem=最新版本（date 最大、并列取 stem 大者；
     缺日期视为最旧），versions 按日期降序，count=版本数；损坏文件单列不合并。
     include_stats 时附最新基础力量/生命，供觉醒小卡查找所属式神默认值。
@@ -188,10 +189,13 @@ def _group_entries(items: list[tuple[Path, dict | None]], sort_by_id: bool = Fal
         latest_data = next(d for p, d in versions if p.stem == vs[-1]["stem"])
         entry = {"stem": vs[-1]["stem"], "name": name or None, "id": cid or None,
                  "versions": list(reversed(vs)), "count": len(vs),
-                 # 最新版本的所属式神引用：GUI 按主要式神筛选/中立牌过滤用（机制恒 None）
+                 # 最新版本的所属式神引用：GUI 按主要式神筛选/中立牌/机制归属过滤用
                  "shikigami": latest_data.get("shikigami"),
                  "shikigami1": latest_data.get("shikigami1"),
                  "shikigami2": latest_data.get("shikigami2")}
+        if mechanism_meta and latest_data.get("global") is False:
+            entry["global"] = False
+            entry["project"] = latest_data.get("project")
         if include_stats:
             entry["power"] = latest_data.get("power")
             entry["health"] = latest_data.get("health")
@@ -301,6 +305,20 @@ def rename_project(library: Path, old: str, new: str) -> Path:
     if dst.exists():
         raise StoreError(f"项目已存在：{new}", code="already_exists")
     src.rename(dst)
+    backups = {}
+    try:
+        mdir = _mech_dir(library)
+        for path in mdir.glob("*.yaml") if mdir.is_dir() else []:
+            data = _read_yaml(path)
+            if data and data.get("global") is False and data.get("project") == old:
+                backups[path] = path.read_bytes()
+                data["project"] = new
+                _dump_yaml(path, data)
+    except BaseException:
+        dst.rename(src)
+        for path, content in backups.items():
+            path.write_bytes(content)
+        raise
     return dst
 
 
@@ -486,6 +504,9 @@ def save_card(library: Path, project: str, card_name: str, data: dict) -> tuple[
         raise SchemaError(errors)
     backups = {path: path.read_bytes() if path.is_file() else None
                for path in _project_yaml_paths(pdir)}
+    mdir = _mech_dir(library)
+    backups.update({path: path.read_bytes()
+                    for path in mdir.glob("*.yaml")} if mdir.is_dir() else {})
     try:
         return _save_card(library, project, card_name, data)
     except BaseException:
@@ -574,7 +595,7 @@ def _save_card(library: Path, project: str, card_name: str, data: dict) -> tuple
         if renaming_card_name and not preserved_legacy_artwork:
             copied_artwork = _copy_renamed_artwork(library, project, data, data["name"])
         if renaming_shiki:
-            updated = _rewrite_references(pdir, exclude=path, old=old_name, new=data["name"])
+            updated = _rewrite_references(library, pdir, exclude=path, old=old_name, new=data["name"])
         _dump_yaml(path, data)
         if rename_to is not None and rename_to != path:
             os.replace(path, rename_to)
@@ -596,8 +617,8 @@ def _save_card(library: Path, project: str, card_name: str, data: dict) -> tuple
     return path, updated
 
 
-def _rewrite_references(pdir: Path, exclude: Path, old: str, new: str) -> list[str]:
-    """式神改名联动：遍历项目全部其他卡，shikigami/shikigami1/shikigami2 == 旧名的改为新名。"""
+def _rewrite_references(library: Path, pdir: Path, exclude: Path, old: str, new: str) -> list[str]:
+    """式神改名联动：更新项目卡牌引用与同项目非全局机制的式神归属。"""
     updated = []
     for sub in ("shikigami", "cards"):
         cdir = pdir / sub
@@ -618,6 +639,13 @@ def _rewrite_references(pdir: Path, exclude: Path, old: str, new: str) -> list[s
                 _dump_yaml(path, card)
                 name = card.get("name")
                 updated.append(name if isinstance(name, str) else path.stem)
+    mdir = _mech_dir(library)
+    for path in mdir.glob("*.yaml") if mdir.is_dir() else []:
+        data = _read_yaml(path)
+        if (data and data.get("global") is False and data.get("project") == pdir.name
+                and data.get("shikigami") == old):
+            data["shikigami"] = new
+            _dump_yaml(path, data)
     return updated
 
 
@@ -835,7 +863,8 @@ def list_mechanisms(library: Path) -> list[dict]:
     mdir = _mech_dir(library)
     if not mdir.is_dir():
         return []
-    return _group_entries([(p, _read_yaml(p)) for p in mdir.glob("*.yaml")])
+    return _group_entries([(p, _read_yaml(p)) for p in mdir.glob("*.yaml")],
+                          mechanism_meta=True)
 
 
 def load_mechanism(library: Path, name: str) -> dict:
@@ -860,9 +889,7 @@ def load_mechanism(library: Path, name: str) -> dict:
 
 
 def save_mechanism(library: Path, name: str, data: dict) -> Path:
-    """schema 校验通过才落盘；version_date 留空填当天。文件名=机制名[@版本日期]：
-    无 @ 的旧文件保持仅机制名（不强制加日期）；带 @ 的文件名随机制名/日期同步
-    重命名（目标已存在则拒绝）。返回落盘路径。"""
+    """校验并保存机制；非全局机制校验项目/式神归属，且同组版本共享归属。"""
     _check_name(name, "机制名")
     data = dict(data)
     if "version_date" in data:
@@ -870,6 +897,15 @@ def save_mechanism(library: Path, name: str, data: dict) -> Path:
     errors = validate_mechanism(data)
     if errors:
         raise SchemaError(errors)
+    if data.get("global") is False:
+        pdir = _require_project(library, data["project"])
+        shikigami = data.get("shikigami")
+        if shikigami:
+            shiki_dir = pdir / "shikigami"
+            if not any((card or {}).get("name") == shikigami
+                       for path in shiki_dir.glob("*.yaml")
+                       for card in [_read_yaml(path)]):
+                raise SchemaError([f"所属式神不存在：{data['project']}/{shikigami}"])
     if not data.get("version_date"):
         data["version_date"] = date.today().strftime("%Y%m%d")
     mdir = _mech_dir(library)
@@ -885,10 +921,36 @@ def save_mechanism(library: Path, name: str, data: dict) -> Path:
         if target != path and target.is_file():
             raise SchemaError([f"「{expected}」对应的文件 {expected}.yaml 已存在，无法重命名"])
         rename_to = target
-    _dump_yaml(path, data)
-    if rename_to is not None and rename_to != path:
-        os.replace(path, rename_to)
-        path = rename_to
+    backups = {p: p.read_bytes() for p in mdir.glob("*.yaml")}
+    try:
+        _dump_yaml(path, data)
+        if rename_to is not None and rename_to != path:
+            os.replace(path, rename_to)
+            path = rename_to
+        for sibling_path in mdir.glob("*.yaml"):
+            if sibling_path == path:
+                continue
+            sibling = _read_yaml(sibling_path)
+            if not sibling or sibling.get("name") != data["name"]:
+                continue
+            changed = False
+            for key in ("global", "project", "shikigami"):
+                if key in data:
+                    if sibling.get(key) != data[key]:
+                        sibling[key] = data[key]
+                        changed = True
+                elif key in sibling:
+                    del sibling[key]
+                    changed = True
+            if changed:
+                _dump_yaml(sibling_path, sibling)
+    except BaseException:
+        for written in mdir.glob("*.yaml"):
+            if written not in backups:
+                written.unlink(missing_ok=True)
+        for original, content in backups.items():
+            original.write_bytes(content)
+        raise
     return path
 
 

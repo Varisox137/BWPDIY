@@ -12,7 +12,7 @@ from bwpdiy.render.artwork import (
 from bwpdiy.render.assets import AssetLibrary, get_library
 from bwpdiy.render.badges import (
     _DIGIT_GAP, STAT_VALUE_COLORS, TYPE_FRAME_CODE, _paste_element, _render_digits,
-    _render_infinity)
+    _render_infinity, _render_sign)
 from bwpdiy.render.pipeline import _normalize_frame
 from bwpdiy.render.size import (
     MAX_RENDER_PIXELS, MAX_RENDER_SIDE,
@@ -225,6 +225,23 @@ def _stat_icon(lib: AssetLibrary, field: str, value: int) -> Image.Image:
     return lib.stat_badge(field)
 
 
+def _stat_digits(lib: AssetLibrary, elem: dict, field: str, value: int,
+                 color: str | None) -> Image.Image | None:
+    color = color or "white"
+    digits = _render_digits(str(abs(value)), lib, elem["font_size"], color,
+                            elem.get("_digit_gap", _DIGIT_GAP))
+    if digits is None or value >= 0 or field not in ("combat_power", "shield"):
+        return digits
+    sign_size = elem.get("sign_size_minus", max(1, round(elem["font_size"] * 0.5)))
+    sign = _render_sign(lib, "minus", sign_size, color)
+    gap = max(0, round(elem.get("_sign_gap", 2)))
+    out = Image.new("RGBA", (sign.width + gap + digits.width,
+                             max(sign.height, digits.height)), (0, 0, 0, 0))
+    out.alpha_composite(sign, (0, (out.height - sign.height) // 2))
+    out.alpha_composite(digits, (sign.width + gap, (out.height - digits.height) // 2))
+    return out
+
+
 def _right_top_counters(state: dict) -> tuple[tuple[str, int, str], ...]:
     counters = []
     if state["energy"] is not None:
@@ -284,6 +301,11 @@ def _validate_entity_elements(elements: dict, state: dict, factor: float = 1.0,
         if (not _is_int(font_size)
                 or not 0 < font_size <= ENTITY_MAX_FONT_SIZE * limit_factor):
             raise ValueError(f"{field} font_size 必须是有限且限幅的正整数")
+        if field in ("combat_power", "shield"):
+            sign_size = elem.get("sign_size_minus", max(1, round(font_size * 0.5)))
+            if not _bounded_number(
+                    sign_size, ENTITY_MAX_ELEMENT_SIZE * limit_factor, True):
+                raise ValueError(f"{field} sign_size_minus 必须是有限且限幅的正数")
         stroke_width = elem.get("stroke_width", 1)
         if (not _bounded_number(stroke_width, ENTITY_MAX_STROKE_WIDTH * limit_factor)
                 or stroke_width < 0):
@@ -409,8 +431,7 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
         value = state[field]
         if field in ("combat_power", "shield") and value == 0:
             continue
-        digits = _render_digits(str(abs(value)), lib, elem["font_size"],
-                                state[f"{field}_color"], elem.get("_digit_gap", _DIGIT_GAP))
+        digits = _stat_digits(lib, elem, field, value, state[f"{field}_color"])
         add_prepared(field, elem, digits)
     for field in ("energy", "countdown", "defeated"):
         elem = elements.get(field)
@@ -490,6 +511,7 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
         for elem in (entity_layout.get("elements") or {}).values():
             if elem.get("kind") in ("stat", "counter"):
                 elem["_digit_gap"] = _DIGIT_GAP * factor
+                elem["_sign_gap"] = 2 * factor
         window = entity_layout.get("art_window", _DEFAULT_LAYOUT["art_window"])
         validate_entity_art_window(window)
         elements = entity_layout.get("elements")

@@ -729,13 +729,20 @@ document.getElementById('c-neutral').onclick = async () => {
 };
 document.getElementById('c-del-card').onclick = async () => {
   if (!curCard) { listErr(['请先选择卡牌']); return; }
+  const isShiki = cards.shikigami.some(e => (e.versions || []).some(v => v.stem === curCard));
+  const group = cards.cards.find(e => (e.versions || []).some(v => v.stem === curCard));
+  const owner = isShiki ? null
+    : (mainShiki || group?.shikigami || group?.shikigami1 || group?.shikigami2 || null);
   const shown = formData && formData.name ? formData.name : curCard;
   if (!confirm(`删除卡牌「${shown}」？`)) return;
   const resp = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}`, {method: 'DELETE'});
   if (!resp.ok) { listErr(await parseErrorDetail(resp)); return; }
   cDirty = false; curCard = null;
+  mainShiki = owner; neutralMode = false;
+  rememberMechContext();
   listErr([]);
-  await loadCards();
+  await loadCards(null, false);
+  buildMechList();
 };
 
 // ---- 中栏预览：主卡/头像各有独立序号与 objectURL ----

@@ -833,6 +833,76 @@ function fetch() {{ throw new Error('衍生物不得请求头像预览'); }}
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_delete_card_keeps_parent_context_without_selecting_sibling(tmp_path):
+    handler = _extract_js(_script(), "document.getElementById('c-del-card').onclick = async () =>")
+    driver = f"""
+const assert = require('node:assert');
+let curProject = 'P', curCard = 'c', mainShiki = '甲', neutralMode = false, cDirty = true;
+let formData = {{name: '专属牌'}};
+const cards = {{
+  shikigami: [{{stem: 's', name: '甲', versions: [{{stem: 's'}}]}}],
+  cards: [{{stem: 'c', shikigami: '甲', versions: [{{stem: 'c'}}]}}],
+}};
+const button = {{}};
+const document = {{getElementById: id => button}};
+function confirm() {{ return true; }}
+function enc(value) {{ return value; }}
+function listErr() {{}}
+async function fetch() {{ return {{ok: true}}; }}
+const calls = [];
+async function loadCards(...args) {{ calls.push(args); }}
+function rememberMechContext() {{}}
+function buildMechList() {{}}
+{handler}
+(async () => {{
+  await button.onclick();
+  assert.strictEqual(curCard, null);
+  assert.strictEqual(mainShiki, '甲');
+  assert.strictEqual(neutralMode, false);
+  assert.deepStrictEqual(calls, [[null, false]]);
+  curCard = 's'; mainShiki = '甲'; formData = {{name: '甲'}};
+  await button.onclick();
+  assert.strictEqual(curCard, null);
+  assert.strictEqual(mainShiki, null);
+  assert.deepStrictEqual(calls, [[null, false], [null, false]]);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_delete_non_global_mechanism_restores_parent_form(tmp_path):
+    handler = _extract_js(_script(), "document.getElementById('c-del-mech').onclick = async () =>")
+    driver = f"""
+const assert = require('node:assert');
+let curMech = 'm', curProject = 'P', mainShiki = '甲';
+const button = {{}};
+const document = {{getElementById: id => button}};
+function confirm() {{ return true; }}
+function enc(value) {{ return value; }}
+function listErr() {{}}
+async function fetch() {{ return {{ok: true}}; }}
+function exitMech() {{ curMech = null; }}
+function clearCard() {{}}
+async function loadMechs() {{}}
+function buildCardList() {{}}
+let built = 0;
+function buildForm() {{ built++; }}
+{handler}
+(async () => {{
+  await button.onclick();
+  assert.strictEqual(curMech, null);
+  assert.strictEqual(curProject, 'P');
+  assert.strictEqual(mainShiki, '甲');
+  assert.strictEqual(built, 1);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_sidebar_list_height_caps_at_eight_items(tmp_path):
     """各栏目八项内不限制高度，第九项起只显示前八项并内部滚动。"""
     fit = _extract_js(_script(), "function fitListHeight(div)")
@@ -1915,12 +1985,15 @@ const layouts = {{
   '对局式神': {{version: 2, elements: {{
     defeated: {{kind: 'counter', pos: [48, 66], icon_size: 44, num_offset: [0, 0],
       font_size: 40, stroke_width: 2}},
-    shield: {{kind: 'stat', pos: [0, 100]}},
+    shield: {{kind: 'stat', field: 'shield', pos: [0, 100], icon_size: 12,
+      num_offset: [0, 0], font_size: 22, stroke_width: 2, sign_size_minus: 11}},
     energy: {{kind: 'counter', pos: [82, 18], icon_size: 28, num_offset: [0, 0],
       font_size: 24, stroke_width: 2}},
     countdown: {{kind: 'counter', pos: [70, 30], icon_size: 24, num_offset: [2, -1],
       font_size: 22, stroke_width: 1}},
-    health: {{kind: 'stat', pos: [40, 100]}}, combat_power: {{kind: 'stat', pos: [10, 100]}},
+    health: {{kind: 'stat', pos: [40, 100]}},
+    combat_power: {{kind: 'stat', field: 'combat_power', pos: [10, 100], icon_size: 12,
+      num_offset: [0, 0], font_size: 22, stroke_width: 2}},
     power: {{kind: 'stat', pos: [30, 100]}}, level: {{kind: 'level_badge', pos: [48, 137]}},
   }}, art_window: {{center: [48, 72], width: 84, height: 132}}}},
 }};
@@ -1984,6 +2057,7 @@ statusControls['图标尺寸'].value = '26'; statusControls['图标尺寸'].onch
 assert.strictEqual(layouts['战斗'].elements.status.icon_size, 26);
 sel = {{kind: 'element', name: 'power'}};
 buildProps();
+assert.strictEqual(props.children[0].textContent, '力量');
 const statControls = {{}};
 collect(props, statControls);
 assert(statControls['字号']);
@@ -2008,6 +2082,20 @@ sel = {{kind: 'element', name: 'countdown'}};
 buildProps(); collectCounter(props);
 assert.strictEqual(counterControls['数字偏移 x'].value, 2);
 assert.strictEqual(layouts['对局式神'].elements.energy.num_offset[0], 7);
+for (const [name, label, initial, changed] of [
+  ['combat_power', '战力', 11, 8], ['shield', '护甲', 11, 14]]) {{
+  sel = {{kind: 'element', name}};
+  buildProps();
+  assert.strictEqual(props.children[0].textContent, label);
+  assert(!props.children[0].textContent.includes('（'));
+  const statControls = {{}};
+  collect(props, statControls);
+  assert.strictEqual(statControls['减号尺寸'].value, initial);
+  assert(!statControls['加号尺寸']);
+  assert(!Object.keys(statControls).some(label => label.includes('符号偏移')));
+  statControls['减号尺寸'].value = String(changed); statControls['减号尺寸'].onchange();
+  assert.strictEqual(layouts['对局式神'].elements[name].sign_size_minus, changed);
+}}
 buildLists();
 assert.deepStrictEqual(elems.children.map(x => x.textContent),
   ['等级', '卡图内窗', '力量', '生命', '战力', '护甲', '能量', '倒计时', '气绝倒计时']);

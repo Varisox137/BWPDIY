@@ -410,5 +410,7 @@ def test_default_entity_layouts_are_synchronized():
     assert packaged == shipped == _DEFAULT_LAYOUT
     assert packaged["version"] == 2
     assert packaged["elements"]["power"]["num_offset"] == [-1, 1]
-    assert packaged["elements"]["combat_power"]["num_offset"] == [1, -1]
+    assert packaged["elements"]["combat_power"]["num_offset"] == [0, -1]
     assert packaged["elements"]["shield"]["num_offset"] == [1, 0]
+    assert packaged["elements"]["combat_power"]["sign_size_minus"] == 8
+    assert packaged["elements"]["shield"]["sign_size_minus"] == 8

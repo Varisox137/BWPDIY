@@ -614,7 +614,8 @@ def _render_card_reference(card, assets_dir, crop, layout=None):
         kw_fill = FRAME_KEYWORD_FILL.get(variant, FRAME_KEYWORD_FILL["norm"])
         canvas = draw_region(canvas, lib, card["description"], regions["desc"],
                              obstacle_mask=obstacle_mask, fill=desc_fill,
-                             keyword_fill=kw_fill, icon_variant=variant)
+                             keyword_fill=kw_fill, icon_variant=variant,
+                             text_layout=card.get("text_layout", "smart"))
     for elem_name, elem in stat_elems:
         canvas = render_element(canvas, lib, elem_name, elem, card, ctx,
                                 stat_part="number")

@@ -1087,6 +1087,25 @@ def test_mechanism_scope_round_trip_and_list_metadata(lib):
     assert listed["式神机制"]["shikigami"] == "山风"
 
 
+def test_non_global_mechanism_inherits_owner_release_date(lib):
+    create_project(lib, "项目", "051", "20260101")
+    for version_date in ("20260202", "20260103"):
+        write_card_yaml(lib, "项目", f"甲@{version_date}",
+                        {**SHIKIGAMI, "name": "甲", "version_date": version_date},
+                        sub="shikigami")
+    save_mechanism(lib, "式神机制", {**MECH, "name": "式神机制", "global": False,
+                                   "project": "项目", "shikigami": "甲"})
+    save_mechanism(lib, "项目机制", {**MECH, "name": "项目机制",
+                                   "global": False, "project": "项目"})
+    save_mechanism(lib, "显式日期", {**MECH, "name": "显式日期", "global": False,
+                                   "project": "项目", "version_date": "20251212"})
+    save_mechanism(lib, "全局机制", {**MECH, "name": "全局机制"})
+    assert load_mechanism(lib, "式神机制")["version_date"] == "20260103"
+    assert load_mechanism(lib, "项目机制")["version_date"] == "20260101"
+    assert load_mechanism(lib, "显式日期")["version_date"] == "20251212"
+    assert load_mechanism(lib, "全局机制")["version_date"] == TODAY
+
+
 def test_mechanism_scope_validation(lib):
     create_project(lib, "山风")
     save_card(lib, "山风", "山风", SHIKIGAMI)

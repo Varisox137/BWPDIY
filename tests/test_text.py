@@ -100,6 +100,20 @@ def test_wrap_rejects_carried_group_too_wide_for_new_line(assets_dir):
     assert _layout_at_size(parse_items("i甲，"), font, region, True, lib=lib) is None
 
 
+def test_smart_balances_line_lengths_by_narrowing_temporary_region(assets_dir):
+    lib = AssetLibrary(assets_dir)
+    font36 = lib.font("desc", 36)
+    region = rect_region(100, 100, 100 + math.ceil(font36.getlength("甲乙丙丁戊己")) + 1,
+                         300, font_range=[36, 36])
+    original_width = region["width"]
+    font, lines = fit_in_region("甲乙丙丁戊己庚辛壬癸", region, lib, text_layout="smart")
+    assert font.size == 36
+    assert [line for line, _, _ in lines] == ["甲乙丙丁戊", "己庚辛壬癸"]
+    assert region["width"] == original_width
+    _, wrapped = fit_in_region("甲乙丙丁戊己庚辛壬癸", region, lib, text_layout="wrap")
+    assert [line for line, _, _ in wrapped] == ["甲乙丙丁戊己", "庚辛壬癸"]
+
+
 def test_smart_wrap_keeps_highlight_on_one_line_without_extra_line(assets_dir):
     lib = AssetLibrary(assets_dir)
     font36 = lib.font("desc", 36)
@@ -648,8 +662,8 @@ def test_smart_layout_prefers_semantic_break_over_fewer_lines_at_same_size(asset
     assert smart[1][1][0].startswith(label)
 
 
-def test_smart_layout_rejects_conditional_break_below_35_percent(assets_dir):
-    """阈值过宽会留下仅两字的前行；35% 下限应拒绝该语义断行候选。"""
+def test_smart_balancing_does_not_force_conditional_break(assets_dir):
+    """缩窄只均衡普通换行，不把低于默认宽度 35% 阈值的语义断行候选强加进来。"""
     lib = AssetLibrary(assets_dir)
     font36 = lib.font("desc", 36)
     width = math.ceil(font36.getlength("甲乙丙丁。条件：")) + 1
@@ -657,7 +671,8 @@ def test_smart_layout_rejects_conditional_break_below_35_percent(assets_dir):
     text = "甲。条件：造成伤害"
     smart = fit_in_region(text, region, lib, text_layout="smart")
     wrap = fit_in_region(text, region, lib, text_layout="wrap")
-    assert smart == wrap
+    assert [line[0] for line in smart[1]] == ["甲。条件：", "造成伤害"]
+    assert [line[0] for line in wrap[1]] == ["甲。条件：造成伤", "害"]
 
 
 def test_short_text_slightly_shrinks_to_remove_orphan_last_line(assets_dir):

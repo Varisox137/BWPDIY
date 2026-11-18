@@ -2,6 +2,7 @@
 
 v1.8.3 卡牌可选 smart/wrap/off：smart 独立开头纯关键字短句并比较条件类候选断行；
 同字号且不增加行数时，先避免闭标点作行首、开标点/符号留行尾，再避免高亮跨行、图标作行首；
+最终字号/行数确定后，smart 缩窄临时文本区均衡行长，不增加断行罚项或修改布局；
 wrap 仅自动换行与字号适配；off 仅显式分行、固定最大字号。通用文本与机制缺省 wrap。
 换行与水平居中按整行文字掩膜的最紧边界测宽，段内 advance/字距保持不变。
 
@@ -520,19 +521,19 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
     max_size, min_size = region["font_range"]
     acx = region["center"][0] + region.get("center_offset", [0, 0])[0]
 
-    def best_at_size(size):
-        font = lib.font(region["font"], size)
-        max_dy = int(_line_height(font, region.get("_line_gap", _LINE_GAP)) / 2)
+    def best_at_size(size, target_region=region):
+        font = lib.font(target_region["font"], size)
+        max_dy = int(_line_height(font, target_region.get("_line_gap", _LINE_GAP)) / 2)
         for dy in range(0, max_dy + 1):
             choices = []
             for candidate, semantic_breaks, keyword_first, index in candidates:
-                lines = _layout_at_size(candidate, font, region, region["wrap"], row_runs,
+                lines = _layout_at_size(candidate, font, target_region, target_region["wrap"], row_runs,
                                         dy=dy, lib=lib, icon_variant=icon_variant,
                                         inline_faction_style=inline_faction_style,
                                         aesthetic=text_layout == "smart")
                 if lines is not None and all(abs(cx - acx) < 1e-6 for _, cx, _ in lines):
                     score = _candidate_score(
-                        lines, font, region, lib, icon_variant, inline_faction_style,
+                        lines, font, target_region, lib, icon_variant, inline_faction_style,
                         semantic_breaks, keyword_first, index)
                     choices.append((score, lines))
             if choices:
@@ -555,6 +556,29 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
         return (available > 0 and _line_width(line, font, icon_w)
                 < _AUTO_BREAK_MIN_FILL * available)
 
+    def balanced(fitted):
+        """smart 最终字号不变，缩窄临时文本区至行数即将增加的上一档，均衡各行长度。"""
+        font, lines = fitted
+        if text_layout != "smart" or len(lines) < 2:
+            return fitted
+        low, high = 1, int(region["width"])
+        best = fitted
+        base_penalties = _break_penalties([line for line, _, _ in lines])
+        while low < high:
+            width = (low + high) // 2
+            trial = best_at_size(font.size, dict(region, width=width))
+            if (trial is not None and len(trial[1]) == len(lines)
+                    and _break_penalties([line for line, _, _ in trial[1]]) <= base_penalties):
+                best = trial
+                high = width
+            else:
+                low = width + 1
+        final = best_at_size(font.size, dict(region, width=low))
+        if (final is not None and len(final[1]) == len(lines)
+                and _break_penalties([line for line, _, _ in final[1]]) <= base_penalties):
+            return final
+        return best
+
     for size in range(max_size, min_size - 1, -1):
         fitted = best_at_size(size)
         if fitted is None:
@@ -564,8 +588,8 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
             for smaller in range(size - 1, max(min_size, size - 2) - 1, -1):
                 compact = best_at_size(smaller)
                 if compact is not None and len(compact[1]) < len(lines):
-                    return compact
-        return fitted
+                    return balanced(compact)
+        return balanced(fitted)
     return None
 
 

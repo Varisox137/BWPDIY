@@ -23,7 +23,7 @@
 | 描述文本 | desc_text | 方正北魏楷书；自动换行、逐行居中、文本块竖直居中、字号递减。换行与水平居中按整行文字掩膜的最紧边界测宽，保留段内 advance/字距，仅排除整行最外侧字框空白。正文与高亮色按框品，资源映射见 `render/text.py` |
 | 关键字高亮 | `[[...]]` | 双英文方括号，括号不绘制，内容按框品异色；从左往右配最近闭合，未匹配或空标记按字面文本；高亮内不嵌套双括号，# 图标仍解析但不变色 |
 | 内嵌图标 | `#xx` | 两位拼音首字母映射见 `render/text.py ICON_CODES`；未知代码报错。图标裁最紧方形 box，高为字号 × `icon_scale`，与相邻文字加八分之一宽空格，行首/行尾不加该侧空格；宽度参与换行与居中 |
-| 三态描述排版 | text_layout | `smart`（缺省）/`wrap`/`off`。smart 独立开头完整纯关键字短句并去末尾句号，排除突袭/坚守/鼓舞/爆能/运势等带后续效果能力；条件/增强/响应/觉醒前生成断行候选，自动断行上一行至少占可用宽 35%；同字号且不增加行数时，优先避免闭标点/句读位于行首及比较/运算符、前引号或开括号留在行尾，再避免高亮短语跨行、内嵌图标位于行首，会增加行数则回退；2–3 行末行不足 35% 时可缩小至多 2px，只有减少行数才采用。wrap 仅换行适配；off 仅显式换行、固定最大字号、不避让角标；原始输入不改写 |
+| 三态描述排版 | text_layout | `smart`（缺省）/`wrap`/`off`。smart 独立开头完整纯关键字短句并去末尾句号，排除突袭/坚守/鼓舞/爆能/运势等带后续效果能力；条件/增强/响应/觉醒前生成断行候选，自动断行上一行至少占可用宽 35%；同字号且不增加行数时，优先避免闭标点/句读位于行首及比较/运算符、前引号或开括号留在行尾，再避免高亮短语跨行、内嵌图标位于行首，会增加行数则回退；2–3 行末行不足 35% 时可缩小至多 2px，只有减少行数才采用。最终字号与行数确定后，smart 还会缩窄临时文本区至同版式可容纳的最小整数宽度以均衡行长，不增加断行罚项、不改保存的布局。wrap 仅换行适配；off 仅显式换行、固定最大字号、不避让角标；原始输入不改写 |
 | 行首标点避让 | — | 超宽时把前一个可见文字或图标连同连续闭合标点移至下一行，重算行宽、居中与障碍避让；显式 `\n` 后用户主动写的行首标点不变 |
 | 文本区 | text_regions.desc | `center/width/height`，可选 `center_offset/obstacle_gap/icon_scale`。当前字号排不下或任一行被障碍挤偏时，先逐 1px 上移居中锚点（至多半行高），再减小字号。stat 碰撞轮廓取 alpha≥128，y 带仅外扩 1px |
 | 成品导出 | tightest bbox | 大卡默认按全部可见元素透明边界裁齐，原尺寸返回；`crop=False` 返回工作画布。大卡、小卡、头像支持 `width/height` 原生重绘，规则见集成文档 |
@@ -32,7 +32,7 @@
 | 头像 | portrait | 主要式神可选 `{offset_x,offset_y,scale,rotate,frame}`，与卡图变换独立；`frame=false` 只导出菱形裁剪头像。衍生物式神不使用头像 |
 | 爆能 | burst | 大卡临时带符号整数，绝对值最多 10 位；0/缺省不绘制。仅战斗/法术/形态/幻境支持，式神/协战忽略；WebGUI 输入仅非正整数。以等级 pos + offset 定位，白字能量大图标，不持久化 |
 | 特殊状态 | status | 大卡临时字段：None/bless/eclipse/bond/curse/radiance/nightmare/eternal/endless/unused/multi_status/shown，对应 badges 中文资源；以等级锚点 + offset 定位，icon_size 控制大小。可越出基础画布并纳入紧致边界，不持久化 |
-| 对局式神 | entity / render_entity | 96×144 小卡，来源限式神/形态/觉醒；等级 0–3，0 仅底框与卡图。power/health 非负，combat_power/shield 可负；四色字段缺省白，可 red/green/purple。`art_scale` 独立控制小卡原画缩放，偏移沿用大卡并按框内透明窗修正，默认再上移窗高 4% |
+| 对局式神 | entity / render_entity | 96×144 小卡，来源限式神/形态/觉醒；等级 0–3，0 仅底框与卡图。power/health 非负，combat_power/shield 可负；四色字段缺省白，可 red/green/purple。负战力/负护甲分别用 `sign_size_minus` 调减号尺寸，缺省为字号一半。`art_scale` 独立控制小卡原画缩放，偏移沿用大卡并按框内透明窗修正，默认再上移窗高 4% |
 | 右上组件 | energy / countdown | 均为非负整数、含 0；energy 黄字，countdown 白字。前端互斥，渲染库允许共存且 countdown 后绘制；气绝保留 energy、隐藏 countdown |
 | 气绝组件 | defeated_countdown | 非负整数（含 0，供复活过渡帧）或精确字符串 `infinity`；白字，永久气绝经 `numbers/white_inf.png` 绘制 ∞；最后绘制 |
 
@@ -63,7 +63,7 @@
 
 ## 机制
 
-机制统一保存在 `library/mechanisms/*.yaml`，字段为 `name/frame/text/version_date`，可选 `badge/inline_faction_style/chars_per_line/global/project/shikigami`。缺省 `global=true`；非全局机制必须有所属项目，可进一步归属主要式神，同组版本共享归属，项目/式神改名同步引用。
+机制统一保存在 `library/mechanisms/*.yaml`，字段为 `name/frame/text/version_date`，可选 `badge/inline_faction_style/chars_per_line/global/project/shikigami`。缺省 `global=true`；非全局机制必须有所属项目，可进一步归属主要式神，同组版本共享归属，项目/式神改名同步引用。新建时空白版本日期优先取所属式神最早版本日期，项目级机制取项目发布日期，均无则取当天；显式日期不覆盖。
 
 - 列表逐级显示全局机制、当前项目机制与当前式神机制；新建或取消全局时按最近选择确定归属（式神优先），无项目上下文则拒绝。选中全局机制会清空项目/式神/卡牌选择。
 

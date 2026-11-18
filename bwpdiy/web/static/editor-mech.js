@@ -299,4 +299,6 @@ document.getElementById('c-del-mech').onclick = async () => {
   exitMech(); clearCard();
   listErr([]);
   await loadMechs();
+  buildCardList();
+  buildForm();
 };

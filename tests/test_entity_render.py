@@ -394,6 +394,42 @@ def test_entity_native_size_and_zero_stats(assets_dir, sample_art, monkeypatch):
     assert digits == ["0", "0"]
 
 
+def test_entity_negative_combat_power_and_shield_keep_minus_sign(
+        assets_dir, sample_art, monkeypatch):
+    import bwpdiy.render.entity as entity
+
+    digits = []
+    signs = []
+    original = entity._render_digits
+    original_sign = entity._render_sign
+    monkeypatch.setattr(entity, "_render_digits",
+                        lambda text, *args: digits.append(text) or original(text, *args))
+    monkeypatch.setattr(entity, "_render_sign",
+                        lambda lib, name, size, *args: signs.append((name, size))
+                        or original_sign(lib, name, size, *args))
+    render_entity(make_card(sample_art),
+                  {"power": 2, "health": 4, "combat_power": -3, "shield": -6},
+                  assets_dir)
+    assert digits == ["2", "4", "3", "6"]
+    default_sign_size = _DEFAULT_LAYOUT["elements"]["combat_power"]["sign_size_minus"]
+    assert signs == [("minus", default_sign_size), ("minus", default_sign_size)]
+    signs.clear()
+    render_entity(make_card(sample_art), {"combat_power": 3, "shield": 6}, assets_dir)
+    assert signs == []
+
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["elements"]["combat_power"]["sign_size_minus"] = 7
+    layout["elements"]["shield"]["sign_size_minus"] = 15
+    base = render_entity(make_card(sample_art), {"combat_power": -3, "shield": -6},
+                         assets_dir, layout=layout)
+    assert signs == [("minus", 7), ("minus", 15)]
+    signs.clear()
+    scaled = render_entity(make_card(sample_art), {"combat_power": -3, "shield": -6},
+                           assets_dir, layout=layout, width=base.width * 2)
+    assert scaled.width == base.width * 2
+    assert signs[-2:] == [("minus", 14), ("minus", 30)]
+
+
 def test_entity_stat_digits_share_card_spacing(assets_dir, sample_art, monkeypatch):
     import bwpdiy.render.entity as entity
     from bwpdiy.render.badges import _DIGIT_GAP
@@ -836,6 +872,8 @@ def test_validate_entity_state_accepts_ten_digits_and_rejects_eleven(field):
     ("power", "stroke_width", -1),
     ("power", "stroke_width", 33),
     ("power", "num_offset", [math.inf, 0]),
+    ("combat_power", "sign_size_minus", 0),
+    ("shield", "sign_size_minus", 1025),
     ("energy", "pos", [True, 0]),
     ("energy", "pos", [5000, 0]),
     ("energy", "num_offset", [math.inf, 0]),
@@ -863,7 +901,8 @@ def test_entity_rejects_invalid_layout_before_allocation(
         lambda *args, **kwargs: pytest.fail("非法布局不得进入数字图分配"))
     with pytest.raises(ValueError):
         render_entity(make_card(sample_art),
-                      {"energy": 0, "defeated_countdown": 2}, assets_dir, layout=layout)
+                      {"combat_power": -1, "shield": -1,
+                       "energy": 0, "defeated_countdown": 2}, assets_dir, layout=layout)
 
 
 @pytest.mark.parametrize("key, value", [

@@ -785,9 +785,8 @@ function buildProps() {
   const tl = typeLayout();
   if (sel.kind === 'element') {
     const e = tl.elements[sel.name];
-    div.appendChild(title(e.kind === 'stat'
-      ? `${disp(sel.name)}（数值：${disp(e.field)}）`
-      : `${disp(sel.name)}（${disp(e.kind)}）`));
+    div.appendChild(title(entityLayoutMode
+      ? ({level: '等级', combat_power: '战力'}[sel.name] || disp(sel.name)) : disp(sel.name)));
     if (['burst', 'status'].includes(e.kind)) {
       numRow(div, '偏移 x', e.offset[0], v => { e.offset[0] = v; draw(); });
       numRow(div, '偏移 y', e.offset[1], v => { e.offset[1] = v; draw(); });
@@ -800,6 +799,10 @@ function buildProps() {
       numRow(div, '数字偏移 x', e.num_offset[0], v => { e.num_offset[0] = v; draw(); });
       numRow(div, '数字偏移 y', e.num_offset[1], v => { e.num_offset[1] = v; draw(); });
       numRow(div, '字号', e.font_size, v => e.font_size = v);
+      if (entityLayoutMode && ['combat_power', 'shield'].includes(e.field)) {
+        e.sign_size_minus ??= Math.max(1, Math.round(e.font_size * 0.5));
+        numRow(div, '减号尺寸', e.sign_size_minus, v => e.sign_size_minus = v);
+      }
       // 图标由数值字段自动推导 stats/{stem}.png（力量/生命全类型共用；负护甲换破甲），不提供手动选择
       const n = document.createElement('div');
       n.className = 'note';

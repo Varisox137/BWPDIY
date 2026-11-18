@@ -889,7 +889,7 @@ def load_mechanism(library: Path, name: str) -> dict:
 
 
 def save_mechanism(library: Path, name: str, data: dict) -> Path:
-    """校验并保存机制；非全局机制校验项目/式神归属，且同组版本共享归属。"""
+    """校验并保存机制；非全局机制校验归属、共享版本归属并继承所属条目的最早日期。"""
     _check_name(name, "机制名")
     data = dict(data)
     if "version_date" in data:
@@ -897,17 +897,21 @@ def save_mechanism(library: Path, name: str, data: dict) -> Path:
     errors = validate_mechanism(data)
     if errors:
         raise SchemaError(errors)
+    inherited_date = ""
     if data.get("global") is False:
         pdir = _require_project(library, data["project"])
         shikigami = data.get("shikigami")
         if shikigami:
-            shiki_dir = pdir / "shikigami"
-            if not any((card or {}).get("name") == shikigami
-                       for path in shiki_dir.glob("*.yaml")
-                       for card in [_read_yaml(path)]):
+            shiki_cards = [_read_yaml(path) for path in (pdir / "shikigami").glob("*.yaml")]
+            if not any((card or {}).get("name") == shikigami for card in shiki_cards):
                 raise SchemaError([f"所属式神不存在：{data['project']}/{shikigami}"])
+            inherited_date = min((card.get("version_date", "") for card in shiki_cards
+                                  if card and card.get("name") == shikigami
+                                  and card.get("version_date")), default="")
+        if not inherited_date:
+            inherited_date = load_project(library, data["project"])["release_date"]
     if not data.get("version_date"):
-        data["version_date"] = date.today().strftime("%Y%m%d")
+        data["version_date"] = inherited_date or date.today().strftime("%Y%m%d")
     mdir = _mech_dir(library)
     mdir.mkdir(parents=True, exist_ok=True)
     path = mdir / f"{name}.yaml"

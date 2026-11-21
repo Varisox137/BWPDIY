@@ -4,7 +4,8 @@ v1.8.3 卡牌可选 smart/wrap/off：smart 独立开头纯关键字短句并比�
 同字号且不增加行数时，先避免闭标点作行首、开标点/符号留行尾，再避免高亮跨行、图标作行首；
 最终字号/行数确定后，smart 缩窄临时文本区均衡行长，不增加断行罚项或修改布局；
 wrap 仅自动换行与字号适配；off 仅显式分行、固定最大字号。通用文本与机制缺省 wrap。
-换行与水平居中按整行文字掩膜的最紧边界测宽，段内 advance/字距保持不变。
+描述行间空白随实际字号取字高的 1/3；换行与水平居中按整行文字掩膜的最紧边界测宽，
+段内 advance/字距保持不变。
 
 关键字高亮：描述文本中 [[关键字]] 用双英文方括号标记（v1.2.1 起；单 [ ] 为字面字符），
 括号不绘制、内容按框品异色（FRAME_KEYWORD_FILL）。从左往右匹配（'[[' 配其后
@@ -53,8 +54,6 @@ FRAME_KEYWORD_FILL = {
 
 TEXT_FILL = FRAME_TEXT_FILL["norm"]["desc"]
 KEYWORD_FILL = FRAME_KEYWORD_FILL["norm"]
-
-_LINE_GAP = 6
 
 # 内嵌图标代码（两位拼音首字母，不区分大小写）→ assets/icons/<name>.png
 ICON_CODES = {
@@ -372,9 +371,10 @@ def _smart_candidates(items):
     return candidates
 
 
-def _line_height(font: ImageFont.FreeTypeFont, gap: float = _LINE_GAP) -> float:
+def _line_height(font: ImageFont.FreeTypeFont, gap: float | None = None) -> float:
     box = font.getbbox("国Ag")
-    return box[3] - box[1] + gap
+    glyph_height = box[3] - box[1]
+    return glyph_height + (glyph_height / 3 if gap is None else gap)
 
 
 def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeTypeFont,
@@ -389,14 +389,14 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
     区域中心 + `center_offset`（缺省 [0,0]，per-type 键）- 临时上移 dy
     （_fit 的自适应尝试用，见 _fit）；区域边界与行宽不变。
     行可用宽度按掩膜墨迹（row_runs）逐行收窄，间距字段 obstacle_gap（缺省 4）。
-    内部 auto 断点另要求上一行至少占可用宽度 35%；keyword/显式断行不受此限。
+    内部 auto 断点要求单行前缀至少占可用宽度 35%；多行前缀、keyword/显式断行不受此限。
     """
     cx, cy = region["center"]
     ox, oy = region.get("center_offset", [0, 0])
     acx, acy = cx + ox, cy + oy - dy  # 居中锚点（dy=自适应临时上移量）
     half_w, half_h = region["width"] / 2, region["height"] / 2
     y_top, y_bottom = cy - half_h, cy + half_h
-    lh = _line_height(font, region.get("_line_gap", _LINE_GAP))
+    lh = _line_height(font, region.get("_line_gap"))
     gap = region.get("obstacle_gap", 4)
     icon_scale = region.get("icon_scale", 1.0)  # 内嵌图标相对文字大小（高=字号×scale）
     icon_w = (_icon_widths(items, font, lib, icon_variant, icon_scale, inline_faction_style)
@@ -430,6 +430,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
         lines: list[list] = []
         current: list = []
         for pi, paragraph in enumerate(paragraphs):
+            paragraph_line_start = len(lines)
             for item in paragraph:
                 trial = current + [item]
                 span = span_at(y)
@@ -455,8 +456,9 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
             if pi < len(paragraphs) - 1 and separators[pi] == "auto":
                 span = span_at(y)
                 if (span is None or not current
-                        or _line_width(current, font, icon_w)
-                        < _AUTO_BREAK_MIN_FILL * (span[1] - span[0])):
+                        or (len(lines) == paragraph_line_start
+                            and _line_width(current, font, icon_w)
+                            < _AUTO_BREAK_MIN_FILL * (span[1] - span[0]))):
                     return None
             if pi < len(paragraphs) - 1 or current:
                 if span_at(y) is None:
@@ -523,7 +525,7 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
 
     def best_at_size(size, target_region=region):
         font = lib.font(target_region["font"], size)
-        max_dy = int(_line_height(font, target_region.get("_line_gap", _LINE_GAP)) / 2)
+        max_dy = int(_line_height(font, target_region.get("_line_gap")) / 2)
         for dy in range(0, max_dy + 1):
             choices = []
             for candidate, semantic_breaks, keyword_first, index in candidates:
@@ -550,7 +552,7 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
         span = (cx - region["width"] / 2, cx + region["width"] / 2)
         if row_runs:
             span = clamp_span_by_mask(
-                span, cy, _line_height(font, region.get("_line_gap", _LINE_GAP)) / 2,
+                span, cy, _line_height(font, region.get("_line_gap")) / 2,
                 row_runs, region.get("obstacle_gap", 4))
         available = span[1] - span[0] if span is not None else 0
         return (available > 0 and _line_width(line, font, icon_w)
@@ -600,7 +602,7 @@ def _explicit_layout(items, region, lib):
     cx, cy = region["center"]
     ox, oy = region.get("center_offset", [0, 0])
     acx, acy = cx + ox, cy + oy
-    lh = _line_height(font, region.get("_line_gap", _LINE_GAP))
+    lh = _line_height(font, region.get("_line_gap"))
     y0 = acy - len(paragraphs) * lh / 2 + lh / 2
     return font, [(line, acx, y0 + i * lh) for i, line in enumerate(paragraphs)]
 

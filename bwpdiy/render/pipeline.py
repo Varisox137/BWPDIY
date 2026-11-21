@@ -329,8 +329,6 @@ def render_card(card: dict, assets_dir: Path, layout: dict | None = None,
         load_layouts(Path(assets_dir)), card_type, variant)
     if factor != 1:
         type_layout = scale_layout(type_layout, factor)
-        for region in (type_layout.get("text_regions") or {}).values():
-            region["_line_gap"] = 6 * factor
         for elem in (type_layout.get("elements") or {}).values():
             if elem.get("kind") in ("stat", "burst"):
                 elem["_digit_gap"] = 3 * factor

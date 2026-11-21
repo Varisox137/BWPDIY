@@ -726,3 +726,25 @@ def test_text_layout_rejects_unknown_mode(assets_dir):
     with pytest.raises(ValueError, match="text_layout"):
         fit_in_region("文本", rect_region(100, 100, 400, 200), lib,
                       text_layout="auto")
+
+
+@pytest.mark.parametrize("size", [24, 36])
+def test_line_gap_scales_with_font_size(assets_dir, size):
+    """行间空白约为字高的三分之一，不再固定为 6px。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(100, 100, 400, 300, font_range=[size, size])
+    font, lines = fit_in_region("第一行\n第二行", region, lib, text_layout="off")
+    box = font.getbbox("国Ag")
+    glyph_height = box[3] - box[1]
+    assert lines[1][2] - lines[0][2] == pytest.approx(glyph_height * 4 / 3)
+
+
+def test_smart_layout_breaks_after_wrapped_prefix_without_extra_line(assets_dir):
+    """多行前缀不套用单行前缀的 35% 门槛，同字号同行数时在增强前断行。"""
+    lib = AssetLibrary(assets_dir)
+    region = rect_region(0, 0, 170, 300, font_range=[24, 24])
+    fitted = fit_in_region("造成很很点伤害。[[增强]]：本回合你使用过法术牌。",
+                           region, lib, text_layout="smart")
+    assert fitted is not None
+    assert [line[0] for line in fitted[1]] == [
+        "造成很很点伤", "害。", "增强：本回合你", "使用过法术牌。"]

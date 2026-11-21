@@ -109,9 +109,11 @@ def _anchor_box(card_type: str, name: str) -> tuple:
     if kind == "stat":  # 图标为代表（数字由专项测试覆盖）
         return (*e["pos"], e["icon_size"] / 2, e["icon_size"] / 2)
     if kind in ("burst", "status"):
-        level = elem(card_type, "level")
-        return (level["pos"][0] + e["offset"][0], level["pos"][1] + e["offset"][1],
-                e["icon_size"] / 2, e["icon_size"] / 2)
+        pos = e.get("pos")
+        if pos is None:
+            level = elem(card_type, "level")
+            pos = (level["pos"][0] + e["offset"][0], level["pos"][1] + e["offset"][1])
+        return (*pos, e["icon_size"] / 2, e["icon_size"] / 2)
     if kind == "text":
         return (e["pos"][0], e["pos"][1], 120, e["font_size"])
     if kind == "duo_frame":
@@ -130,8 +132,10 @@ def _neighborhood(card_type: str, name: str) -> tuple:
     if kind == "rarity_flank":  # 左右双标整体
         return (e["pos"][0], e["pos"][1], e["gap"] + e["size"] / 2 + 8, e["size"] / 2 + 8)
     if kind in ("burst", "status"):
-        level = elem(card_type, "level")
-        pos = (level["pos"][0] + e["offset"][0], level["pos"][1] + e["offset"][1])
+        pos = e.get("pos")
+        if pos is None:
+            level = elem(card_type, "level")
+            pos = (level["pos"][0] + e["offset"][0], level["pos"][1] + e["offset"][1])
         if kind == "status":
             return (*pos, e["icon_size"] / 2 + 8, e["icon_size"] / 2 + 8)
         return (*pos, e["icon_size"] / 2 + abs(e["num_offset"][0]) + e["font_size"],

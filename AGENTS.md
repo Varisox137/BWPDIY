@@ -36,7 +36,7 @@
 - 正常退出、闲置终止、手动退出和更新替换前调用 `cleanup_unused_images`；任一 YAML 不可读或 images/ 为外链时跳过该项目，路径先 resolve 比较。
 - schema 字段只增不改，机制未实现不进数据。stat 数值最多 10 位；artwork/portrait 数值有限；布局数值有限且绝对值 ≤8192。
 - GUI 在新建非式神、非协战卡时选择 `token: true` 作为衍生牌，创建后不在右栏切换；衍生牌默认无稀有度。衍生物式神用类型与 `shikigami`，支持 `special_type`，不提供头像预览/参数/导出。
-- `burst/status` 仅临时渲染字段，不进 store schema 或持久化。`inline_faction_style` 为 1/2/3，缺省 1；扩展控件隐藏时不清空已保存值。
+- `burst/status` 仅临时渲染字段，不进 store schema 或持久化。爆能以独立 `pos` 定位于大卡右上角，旧等级相对 `offset` 加载时按新旧默认位置差迁移；特殊状态仍随等级锚点。`inline_faction_style` 为 1/2/3，缺省 1；扩展控件隐藏时不清空已保存值。
 
 ## 布局与渲染
 

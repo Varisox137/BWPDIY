@@ -653,8 +653,8 @@ function draw() {
   const tl = typeLayout();
   for (const [name, e] of Object.entries(tl.elements)) {
     if (e.kind === 'burst' && !EVOLVE_TYPES.has(curType)) continue;
-    // 爆能/特殊状态锚点 = 等级位置 + offset；其余点元素直接使用 pos。
-    const pos = ['burst', 'status'].includes(e.kind)
+    // 特殊状态锚点 = 等级位置 + offset；爆能与其余点元素直接使用 pos。
+    const pos = e.kind === 'status'
       ? [tl.elements.level.pos[0] + e.offset[0], tl.elements.level.pos[1] + e.offset[1]] : e.pos;
     // 元素位置点：绿色小圆点（比文本区中心方块略小），选中变黄
     handle(pos, sel && sel.name === name ? '#ff4' : '#4f4', 4);
@@ -725,7 +725,7 @@ function pick(mx, my) {
   const near = (x, y) => Math.hypot(mx - x, my - y) < 8;
   for (const [name, e] of Object.entries(tl.elements)) {
     if (e.kind === 'burst' && !EVOLVE_TYPES.has(curType)) continue;
-    const pos = ['burst', 'status'].includes(e.kind)
+    const pos = e.kind === 'status'
       ? [tl.elements.level.pos[0] + e.offset[0], tl.elements.level.pos[1] + e.offset[1]] : e.pos;
     if (['stat', 'burst', 'counter'].includes(e.kind)) {
       const np = [pos[0] + e.num_offset[0], pos[1] + e.num_offset[1]];
@@ -755,7 +755,7 @@ function pick(mx, my) {
         set: (x, y) => { e.slot2_dy = y - e.pos[1]; } };
     }
     if (near(...pos)) return { sel: {kind: 'element', name}, set: (x, y) => {
-      if (['burst', 'status'].includes(e.kind))
+      if (e.kind === 'status')
         e.offset = [x - tl.elements.level.pos[0], y - tl.elements.level.pos[1]];
       else e.pos = [x, y];
     } };
@@ -787,7 +787,7 @@ function buildProps() {
     const e = tl.elements[sel.name];
     div.appendChild(title(entityLayoutMode
       ? ({level: '等级', combat_power: '战力'}[sel.name] || disp(sel.name)) : disp(sel.name)));
-    if (['burst', 'status'].includes(e.kind)) {
+    if (e.kind === 'status') {
       numRow(div, '偏移 x', e.offset[0], v => { e.offset[0] = v; draw(); });
       numRow(div, '偏移 y', e.offset[1], v => { e.offset[1] = v; draw(); });
     } else {

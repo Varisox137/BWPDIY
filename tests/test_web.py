@@ -1955,7 +1955,7 @@ console.log('OK');
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_layout_burst_status_and_entity_counter_props_drag_and_order(tmp_path):
-    """爆能/特殊状态按等级锚点调参/拖拽；实体 counter 无符号参数并按固定顺序列出。"""
+    """爆能按绝对位置、特殊状态按等级锚点调参；实体 counter 无符号参数且顺序固定。"""
     script = _script()
     functions = "\n".join(_extract_js(script, decl) for decl in (
         "function buildLists()",
@@ -1977,7 +1977,7 @@ const layouts = {{
     level: {{kind: 'level_badge', pos: [10, 10]}},
     power: {{kind: 'stat', field: 'power+', pos: [0, 100], icon_size: 12,
       num_offset: [12, 0], font_size: 14, stroke_width: 2}},
-    burst: {{kind: 'burst', offset: [30, 40], icon_size: 12, num_offset: [12, 0],
+    burst: {{kind: 'burst', pos: [40, 50], icon_size: 12, num_offset: [12, 0],
       font_size: 14, stroke_width: 2, sign_offset: [0, 0], group_offset: [0, 0],
       sign_size_plus: 7, sign_size_minus: 6}},
     status: {{kind: 'status', offset: [-20, 40], icon_size: 20}},
@@ -2029,19 +2029,19 @@ function collect(node, target = controls) {{
   for (const child of node.children || []) collect(child, target);
 }}
 collect(props);
-for (const label of ['偏移 x', '偏移 y', '图标尺寸', '数字偏移 x', '数字偏移 y', '字号',
+for (const label of ['位置 x', '位置 y', '图标尺寸', '数字偏移 x', '数字偏移 y', '字号',
                      '符号偏移 x', '符号偏移 y', '符号数字整体偏移 x',
                      '符号数字整体偏移 y', '加号尺寸', '减号尺寸'])
   assert(controls[label], `缺少爆能参数：${{label}}`);
-assert(!controls['位置 x']);
+assert(!controls['偏移 x']);
 assert(!controls['描边宽度']);
 const target = pick(40, 50);
 assert(target && target.sel.name === 'burst');
 target.set(70, 80);
-assert.deepStrictEqual(layouts['战斗'].elements.burst.offset, [60, 70]);
+assert.deepStrictEqual(layouts['战斗'].elements.burst.pos, [70, 80]);
 assert.deepStrictEqual(layouts['战斗'].elements.level.pos, [10, 10]);
-controls['偏移 x'].value = '9'; controls['偏移 x'].onchange();
-assert.deepStrictEqual(layouts['战斗'].elements.burst.offset, [9, 70]);
+controls['位置 x'].value = '9'; controls['位置 x'].onchange();
+assert.deepStrictEqual(layouts['战斗'].elements.burst.pos, [9, 80]);
 sel = {{kind: 'element', name: 'status'}};
 buildProps();
 const statusControls = {{}};

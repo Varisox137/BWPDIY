@@ -30,7 +30,7 @@
 | 轮廓裁剪 | silhouette clip | 牌框先按 alpha≥128 取得实心轮廓并向内腐蚀 2px，再裁掉框外卡图，最后叠框与元素；探出框缘的元素不受影响 |
 | 双式神框 | duo_frame | 协战可选布尔字段，缺省不绘制。每槽位为底图/头像 → 内外斜框 → 派系标；资源 `duo/{back,frame_1,frame_2,highlight_1}.png`，槽位 2 高光旋转派生，派系复用 `factions/`。头像由 web 按所属式神注入内部 `_duo`，不进 schema |
 | 头像 | portrait | 主要式神可选 `{offset_x,offset_y,scale,rotate,frame}`，与卡图变换独立；`frame=false` 只导出菱形裁剪头像。衍生物式神不使用头像 |
-| 爆能 | burst | 大卡临时带符号整数，绝对值最多 10 位；0/缺省不绘制。仅战斗/法术/形态/幻境支持，式神/协战忽略；WebGUI 输入仅非正整数。以等级 pos + offset 定位，白字能量大图标，不持久化 |
+| 爆能 | burst | 大卡临时带符号整数，绝对值最多 10 位；0/缺省不绘制。仅战斗/法术/形态/幻境支持，式神/协战忽略；WebGUI 输入仅非正整数。以独立 pos 定位于卡牌右上角，旧等级相对 offset 加载时迁移并保留微调；白字能量大图标，不持久化 |
 | 特殊状态 | status | 大卡临时字段：None/bless/eclipse/bond/curse/radiance/nightmare/eternal/endless/unused/multi_status/shown，对应 badges 中文资源；以等级锚点 + offset 定位，icon_size 控制大小。可越出基础画布并纳入紧致边界，不持久化 |
 | 对局式神 | entity / render_entity | 96×144 小卡，来源限式神/形态/觉醒；等级 0–3，0 仅底框与卡图。power/health 非负，combat_power/shield 可负；四色字段缺省白，可 red/green/purple。负战力/负护甲分别用 `sign_size_minus` 调减号尺寸，缺省为字号一半。`art_scale` 独立控制小卡原画缩放，偏移沿用大卡并按框内透明窗修正，默认再上移窗高 4% |
 | 右上组件 | energy / countdown | 均为非负整数、含 0；energy 黄字，countdown 白字。前端互斥，渲染库允许共存且 countdown 后绘制；气绝保留 energy、隐藏 countdown |

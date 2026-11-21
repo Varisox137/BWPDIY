@@ -109,7 +109,7 @@ def test_expected_elements_per_type():
     ("burst", {"kind": "burst", "offset": [9, 8]}),
     ("status", {"kind": "status", "offset": [9, 8], "icon_size": 37}),
 ])
-def test_burst_status_backfilled_without_overriding_existing_layout(tmp_path, name, existing):
+def test_burst_status_backfilled_and_legacy_burst_migrated(tmp_path, name, existing):
     custom = {t: {"elements": {}, "text_regions": {}} for t in TYPES}
     custom["法术"]["elements"][name] = existing.copy()
     _config_path(tmp_path).write_text(json.dumps(custom, ensure_ascii=False), encoding="utf-8")
@@ -121,7 +121,12 @@ def test_burst_status_backfilled_without_overriding_existing_layout(tmp_path, na
         for variant in ("norm", *layout.FRAME_LAYOUT_VARIANTS):
             effective = layout.get_type_layout(layouts, card_type, variant)
             assert (name in effective["elements"]) == expected
-    assert layouts["法术"]["elements"][name] == existing
+    actual = layouts["法术"]["elements"][name]
+    if name == "burst":
+        assert actual["pos"] == [237, 14]  # 新默认 [228,70] + 旧微调 [9,8] - [0,64]
+        assert "offset" not in actual
+    else:
+        assert actual == existing
 
 
 def _stat(font_size):

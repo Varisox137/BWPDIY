@@ -78,7 +78,7 @@ def test_render_with_layout_override(assets_dir, sample_art):
     assert list(moved.getdata()) != list(default.getdata())
 
 
-def test_burst_follows_level_layout_without_card_level(assets_dir, sample_art):
+def test_burst_position_is_independent_of_level_without_card_level(assets_dir, sample_art):
     import copy
 
     from PIL import ImageChops
@@ -101,13 +101,24 @@ def test_burst_follows_level_layout_without_card_level(assets_dir, sample_art):
     moved_bbox = ImageChops.difference(
         moved.convert("RGB"), moved_empty.convert("RGB")).getbbox()
     assert moved_bbox is not None
-    for before, after, delta in zip(bbox, moved_bbox, (7, 9, 7, 9)):
-        assert abs(after - before - delta) <= 1
+    for before, after in zip(bbox, moved_bbox):
+        assert abs(after - before) <= 1
 
     name_x, name_y = type_layout["elements"]["name"]["pos"]
     name_x += _anchor_x(assets_dir, "法术")
     name_box = (name_x - 90, name_y - 25, name_x + 90, name_y + 25)
     assert base.crop(name_box).tobytes() == moved.crop(name_box).tobytes()
+
+    moved_layout["elements"]["burst"]["pos"][0] += 7
+    moved_layout["elements"]["burst"]["pos"][1] += 9
+    moved = render_card(card, assets_dir, layout=moved_layout, crop=False)
+    moved_empty = render_card(dict(card, burst=0), assets_dir,
+                              layout=moved_layout, crop=False)
+    moved_bbox = ImageChops.difference(
+        moved.convert("RGB"), moved_empty.convert("RGB")).getbbox()
+    assert moved_bbox is not None
+    for before, after, delta in zip(bbox, moved_bbox, (7, 9, 7, 9)):
+        assert abs(after - before - delta) <= 1
 
 
 @pytest.mark.parametrize("value", [True, 1.5, 10**10])
@@ -122,7 +133,19 @@ def test_burst_accepts_ten_digits(assets_dir, sample_art):
     assert render_card(card, assets_dir).width > 0
 
 
-def test_burst_native_size_scales_layout_offset(assets_dir, sample_art):
+def test_burst_default_layout_is_at_card_upper_right(assets_dir, sample_art):
+    from PIL import ImageChops
+
+    card = make_card(sample_art.parent, "法术", burst=-10, description="")
+    marked = render_card(card, assets_dir, crop=False)
+    empty = render_card(dict(card, burst=0), assets_dir, crop=False)
+    box = ImageChops.difference(marked.convert("RGB"), empty.convert("RGB")).getbbox()
+    assert box is not None
+    assert (box[0] + box[2]) / 2 > marked.width * 0.65
+    assert (box[1] + box[3]) / 2 < marked.height * 0.25
+
+
+def test_burst_native_size_scales_layout_position(assets_dir, sample_art):
     from PIL import ImageChops
 
     card = make_card(sample_art.parent, "法术", burst=10, description="")
@@ -136,7 +159,7 @@ def test_burst_native_size_scales_layout_offset(assets_dir, sample_art):
     assert base_box is not None and large_box is not None
     assert large.size == large_empty.size == (base.width * 2, base.height * 2)
     for small, big in zip(base_box, large_box):
-        assert abs(big - small * 2) <= 2
+        assert abs(big - small * 2) <= 4  # 原生位图重采样的透明边缘允许 2 个源像素误差
 
 
 @pytest.mark.parametrize("status", [

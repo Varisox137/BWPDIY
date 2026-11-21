@@ -323,9 +323,12 @@ def render_element(canvas: Image.Image, lib: AssetLibrary, name: str,
                 raise ValueError("爆能绝对值最多 10 位")
             if value == 0:
                 return canvas
-            anchor = elem["_anchor"]
-            offset = elem.get("offset", [0, 0])
-            pos = (anchor[0] + offset[0], anchor[1] + offset[1])
+            if "pos" in elem:
+                pos = elem["pos"]
+            else:
+                anchor = elem["_anchor"]
+                offset = elem.get("offset", [0, 0])
+                pos = (anchor[0] + offset[0], anchor[1] + offset[1])
             stem = "energy"
             icon_size = elem["icon_size"]
             num_offset = elem["num_offset"]

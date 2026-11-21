@@ -67,6 +67,16 @@ def _fill_element_defaults(layouts: dict, default: dict) -> None:
             default_element = default_layout.get("elements", {}).get(name)
             if isinstance(elements, dict) and name not in elements and default_element:
                 elements[name] = copy.deepcopy(default_element)
+        default_burst = default_layout.get("elements", {}).get("burst")
+        if default_burst and "pos" in default_burst:
+            candidates = [type_layout, *(type_layout.get("frame_variants", {}) or {}).values()]
+            for candidate in candidates:
+                burst = candidate.get("elements", {}).get("burst")
+                if not isinstance(burst, dict) or "pos" in burst or "offset" not in burst:
+                    continue
+                offset = burst.pop("offset")
+                burst["pos"] = [default_burst["pos"][0] + offset[0],
+                                default_burst["pos"][1] + offset[1] - 64]
 
 
 def _materialize_frame_variants(layouts: dict) -> None:

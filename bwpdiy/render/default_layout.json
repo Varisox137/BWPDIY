@@ -354,9 +354,9 @@
       },
       "burst": {
         "kind": "burst",
-        "offset": [
-          0,
-          64
+        "pos": [
+          228,
+          70
         ],
         "icon_size": 68,
         "num_offset": [
@@ -636,9 +636,9 @@
       },
       "burst": {
         "kind": "burst",
-        "offset": [
-          0,
-          64
+        "pos": [
+          228,
+          70
         ],
         "icon_size": 68,
         "num_offset": [
@@ -932,9 +932,9 @@
       },
       "burst": {
         "kind": "burst",
-        "offset": [
-          0,
-          64
+        "pos": [
+          228,
+          70
         ],
         "icon_size": 68,
         "num_offset": [
@@ -1186,9 +1186,9 @@
       },
       "burst": {
         "kind": "burst",
-        "offset": [
-          0,
-          64
+        "pos": [
+          228,
+          70
         ],
         "icon_size": 68,
         "num_offset": [

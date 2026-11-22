@@ -265,6 +265,7 @@ async function saveLayoutNow() {
   try {
     await draftStore.saveLayout({schema: 1, layouts: globalLayouts});
     document.getElementById("l-status").textContent = "已保存到当前浏览器";
+    updateStorageStatus();
   } catch (error) {
     document.getElementById("l-status").textContent = `保存失败：${error.message}`;
   }
@@ -358,8 +359,10 @@ async function handleLayoutRender(message, target, seq) {
     document.getElementById("l-status").textContent = "已使用浏览器本地布局";
     return;
   }
-  layoutPreviewImage = await bitmapFromMessage(message);
-  if (seq !== layoutRequestSeq) return;
+  const nextImage = await bitmapFromMessage(message);
+  if (seq !== layoutRequestSeq) { nextImage.close(); return; }
+  if (layoutPreviewImage) layoutPreviewImage.close();
+  layoutPreviewImage = nextImage;
   layoutCropOrigin = message.info.crop_origin || [0, 0];
   const canvas = document.getElementById("l-preview");
   canvas.width = layoutPreviewImage.width;

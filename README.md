@@ -25,7 +25,7 @@ PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产�
 python prototype/pyodide/server.py   # http://127.0.0.1:8640/
 ```
 
-支持原版三主标签页与配色、单卡/机制编辑、对局小卡与头像合成、按类型和框品调整全局布局、鼠标拖拽/滚轮调整卡图、PNG 导出、JSON 草稿备份及断网重载。表单、卡图和布局仅保存在浏览器 IndexedDB，程序与素材仅缓存于浏览器 Cache Storage；服务器不提供渲染或写盘 API。
+支持原版三主标签页与配色、单卡/机制编辑、对局小卡与头像合成、按类型和框品调整全局布局、鼠标/触屏手势调整卡图、PNG 导出、JSON 草稿备份及断网重载。桌面保留三栏，平板与手机采用响应式布局；低负载预览和浏览器存储容量/持久保护状态仅在本机处理。表单、卡图和布局仅保存在浏览器 IndexedDB，程序与素材仅缓存于浏览器 Cache Storage；服务器不提供渲染或写盘 API。
 
 ## 文档
 

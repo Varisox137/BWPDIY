@@ -66,3 +66,66 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
   #c-left { width: 210px; }
   #c-right, #b-right { width: 280px; }
 }
+
+
+/* 响应式布局：桌面保留三栏，平板预览置顶双栏，手机按预览→表单→本地工具单栏排列。 */
+@media (max-width: 1050px) {
+  body { height: auto; min-height: 100vh; min-height: 100dvh; }
+  #topnav { position: sticky; top: 0; z-index: 20; flex-wrap: wrap; }
+  #tab-cards.active, #tab-battle.active, #tab-layout.active {
+    display: grid;
+    grid-template-columns: minmax(190px, 1fr) minmax(280px, 2fr);
+    grid-template-rows: minmax(430px, 62vh) auto;
+    overflow: visible;
+  }
+  #c-mid, #b-mid, #l-main { grid-column: 1 / -1; grid-row: 1; min-height: 430px; overflow-y: auto; }
+  #c-left, #b-left, #l-sidebar { grid-column: 1; grid-row: 2; width: 100%; overflow: visible; }
+  #c-right, #b-right, #l-props { grid-column: 2; grid-row: 2; width: 100%; overflow: visible; }
+  #c-preview, #b-preview { max-height: 52vh; }
+  #l-preview { max-width: calc(100% - 24px); height: auto !important; }
+  #l-mech canvas { max-width: 100%; height: auto; }
+}
+
+@media (max-width: 760px) {
+  #topnav { padding: 6px 4px; }
+  .navtab { flex: 1; min-width: 0; margin-right: 3px; padding: 7px 4px; font-size: 12px; white-space: nowrap; }
+  #ext-options { display: none; }
+  #tab-cards.active, #tab-battle.active, #tab-layout.active {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #c-mid, #b-mid, #l-main { order: 1; width: 100%; min-height: 390px; max-height: none; overflow: visible; padding-bottom: 10px; }
+  #c-right, #b-right { order: 2; width: 100%; padding: 12px; }
+  #c-left, #b-left, #l-sidebar { order: 3; width: 100%; padding: 12px; }
+  #l-props { order: 4; width: 100%; padding: 12px; }
+  #c-preview, #b-preview { max-width: calc(100% - 16px); max-height: 58vh; }
+  #c-form input:not([type="checkbox"]), #c-form select, #c-form input[type="number"],
+  #b-form input, #b-form select, #b-form input[type="number"] { width: 100%; min-height: 38px; font-size: 16px; }
+  #c-form textarea { font-size: 16px; }
+  #c-form label, #b-form label { font-size: 13px; }
+  #c-form .number-grid { gap: 0 12px; }
+  .render-actions button, .btnrow button, #c-mid button, #b-mid button, #l-main button { min-height: 38px; }
+  #b-styles { display: flex; gap: 5px; }
+  #b-styles button { min-height: 40px; }
+  #l-types { display: flex; flex-wrap: wrap; }
+  #l-props input[type="number"] { min-height: 36px; font-size: 16px; }
+  #l-mech { gap: 10px; padding: 0 8px; }
+  .mouse-help { max-width: 94%; text-align: center; line-height: 1.6; }
+  body { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+@media (pointer: coarse) {
+  button, select, input { min-height: 38px; }
+  #c-preview, #b-preview { touch-action: none; }
+  .item { min-height: 34px; align-items: center; }
+}
+
+@media (max-width: 380px) {
+  .navtab { font-size: 11px; }
+  #c-form .number-grid { grid-template-columns: 1fr; }
+}
+
+.power-option { display: flex; gap: 5px; align-items: flex-start; font-size: 11px; line-height: 1.5; color: #625b4d; }
+.power-option input { width: auto; min-height: 0; margin-top: 3px; }
+#persist-storage { font-size: 11px; }

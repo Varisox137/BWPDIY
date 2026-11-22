@@ -26,6 +26,9 @@
     <div class="btnrow"><button id="clear-draft">清除本地草稿</button><button id="clear-cache">清除资源缓存</button></div>
     <div id="draft-status" class="local-note">正在读取浏览器草稿…</div>
     <div id="cache-status" class="local-note">正在启用浏览器资源缓存…</div>
+    <div id="storage-status" class="local-note">正在读取浏览器存储状态…</div>
+    <div class="btnrow"><button id="persist-storage">请求持久存储保护</button></div>
+    <label class="power-option"><input id="low-power" type="checkbox"> 低负载预览（触屏拖拽时使用较小预览，松手恢复完整质量）</label>
     <p class="note">草稿和卡图位于 IndexedDB；程序和素材位于 Cache Storage。服务器不保存任何作品。</p>
     <h4 class="cat">本地卡图</h4>
     <input id="artwork" type="file" accept=".png,.jpg,.jpeg,.webp">
@@ -41,7 +44,7 @@
     <div id="c-error"></div>
     <img id="c-preview" alt="浏览器合成结果">
     <p class="result-meta">尚未渲染</p>
-    <p class="mouse-help">左键拖拽移动 · 滚轮缩放 · 右键 + 滚轮旋转</p>
+    <p class="mouse-help">左键/单指拖拽移动 · 滚轮/双指缩放 · 右键 + 滚轮/双指转动旋转</p>
   </div>
   <aside id="c-right"><div id="c-form">
     <section id="card-editor">
@@ -95,7 +98,7 @@
 
 <div id="tab-battle" class="tabpage">
   <aside id="b-left"><h4>预览样式</h4><div id="b-styles"><button class="battle-style active" data-kind="entity">式神小卡</button><button class="battle-style" data-kind="card">完整大卡</button><button class="battle-style" data-kind="portrait">式神头像</button></div></aside>
-  <div id="b-mid"><div><button id="b-btn-refresh">强制刷新</button><button class="download-button" disabled>导出</button><span id="b-status"></span></div><div id="b-error"></div><img id="b-preview" alt="对局预览"><p class="result-meta">尚未渲染</p><p class="mouse-help">左键拖拽移动 · 滚轮缩放 · 右键 + 滚轮旋转</p></div>
+  <div id="b-mid"><div><button id="b-btn-refresh">强制刷新</button><button class="download-button" disabled>导出</button><span id="b-status"></span></div><div id="b-error"></div><img id="b-preview" alt="对局预览"><p class="result-meta">尚未渲染</p><p class="mouse-help">左键/单指拖拽移动 · 滚轮/双指缩放 · 右键 + 滚轮/双指转动旋转</p></div>
   <aside id="b-right"><div id="b-form">
     <h3>临时对局状态</h3>
     <label>等级 <select data-state="level"><option>0</option><option>1</option><option selected>2</option><option>3</option></select></label>

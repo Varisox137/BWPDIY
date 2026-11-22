@@ -21,8 +21,14 @@ let currentRenderKind = "card";
 let activeMainTab = "cards";
 let battleKind = "entity";
 let renderActive = false;
-let queuedRenderKind = null;
+let queuedRender = null;
 let normalPreviewTimer = null;
+const lowPowerInput = document.getElementById("low-power");
+let lowPowerPreference = null;
+try { lowPowerPreference = localStorage.getItem("bwpdiy-low-power"); } catch (error) {}
+lowPowerInput.checked = lowPowerPreference === null ?
+  (matchMedia("(pointer: coarse)").matches || (navigator.deviceMemory && navigator.deviceMemory <= 4)) :
+  lowPowerPreference === "1";
 const pending = new Map();
 
 function log(message, isError = false) {
@@ -89,6 +95,7 @@ worker.onmessage = event => {
     document.body.dataset.ready = "true";
     setRendering(false);
     log(`初始化 ${message.info.startup_ms} ms；资源包 ${(message.info.runtime_bytes / 1048576).toFixed(1)} MiB`);
+    updateStorageStatus();
     initializeLayouts(message.info.layouts).catch(error => log(`布局初始化失败：${error.message}`, true));
   }
   if (message.type === "result") {
@@ -177,6 +184,7 @@ async function saveDraftNow() {
     await draftStore.save(currentDraft());
     draftStatus.textContent = `草稿已保存到当前浏览器：${new Date().toLocaleTimeString()}`;
     document.body.dataset.draftSaved = "true";
+    updateStorageStatus();
   } catch (error) {
     draftStatus.textContent = `草稿保存失败：${error.message}`;
     log(draftStatus.textContent, true);
@@ -322,9 +330,10 @@ function cardPayload(values) {
   return card;
 }
 
-function renderPayload(kind) {
+function renderPayload(kind, interactive = false) {
   const state = readUiState();
-  const width = state.width ? Number(state.width) : null;
+  let width = state.width ? Number(state.width) : null;
+  if (interactive && lowPowerInput.checked && kind === "card" && width === null) width = 200;
   if (kind === "mechanism") {
     const mechanism = {...state.mechanism, chars_per_line: numberValue(state.mechanism.chars_per_line),
       inline_faction_style: numberValue(state.mechanism.inline_faction_style)};
@@ -346,33 +355,35 @@ function renderPayload(kind) {
     portrait, artwork_path: artworkPath, width, layouts: globalLayouts};
 }
 
-async function render(kind, manual = false) {
+async function render(kind, manual = false, interactive = false) {
   if (!kindSupported(kind)) return;
   if (manual) clearTimeout(normalPreviewTimer);
   currentRenderKind = kind;
-  if (renderActive) { queuedRenderKind = kind; return; }
+  if (renderActive) { queuedRender = {kind, interactive}; return; }
   renderActive = true;
   setRendering(true);
-  let next = kind;
+  downloadButtons.forEach(button => { button.disabled = true; });
+  let next = {kind, interactive};
   try {
     while (next) {
-      queuedRenderKind = null;
-      currentRenderKind = next;
+      queuedRender = null;
+      currentRenderKind = next.kind;
       document.body.dataset.error = "";
-      try { await callWorker("render", renderPayload(next), artworkBytes); }
+      try { await callWorker("render", renderPayload(next.kind, next.interactive), artworkBytes); }
       catch (error) { console.error(error); }
-      next = queuedRenderKind;
+      next = queuedRender;
     }
   } finally {
     renderActive = false;
     setRendering(false);
+    downloadButtons.forEach(button => { button.disabled = !currentPng; });
   }
 }
 
-function scheduleNormalPreview(kind = currentRenderKind, delay = 250) {
-  if (activeMainTab === "layout" || !kindSupported(kind)) return;
+function scheduleNormalPreview(kind = currentRenderKind, delay = 250, interactive = false) {
+  if (activeMainTab === "layout" || document.hidden || !kindSupported(kind)) return;
   clearTimeout(normalPreviewTimer);
-  normalPreviewTimer = setTimeout(() => render(kind), delay);
+  normalPreviewTimer = setTimeout(() => render(kind, false, interactive), delay);
 }
 
 for (const button of renderButtons) button.addEventListener("click", () => render(button.dataset.kind, true));
@@ -505,7 +516,9 @@ document.getElementById("clear-cache").addEventListener("click", async () => {
 });
 
 function bindArtMouse(image) {
+  const pointers = new Map();
   let drag = null;
+  let gesture = null;
   let rightButtonDown = false;
   const channel = () => currentRenderKind === "portrait" ? "portrait" : "art";
   const get = key => Number(document.querySelector(`[data-${channel()}="${key}"]`).value || (key === "scale" ? 1 : 0));
@@ -513,28 +526,61 @@ function bindArtMouse(image) {
     document.querySelector(`[data-${channel()}="${key}"]`).value = String(value);
     scheduleDraftSave();
   };
+  const metrics = () => {
+    const points = [...pointers.values()].slice(0, 2);
+    const dx = points[1].x - points[0].x;
+    const dy = points[1].y - points[0].y;
+    return {distance: Math.max(1, Math.hypot(dx, dy)), angle: Math.atan2(dy, dx) * 180 / Math.PI,
+      x: (points[0].x + points[1].x) / 2, y: (points[0].y + points[1].y) / 2};
+  };
+  const displayRatio = () => {
+    const rect = image.getBoundingClientRect();
+    return rect.width > 0 && image.naturalWidth > 0 ? image.naturalWidth / rect.width : 1;
+  };
   image.addEventListener("pointerdown", event => {
     if (event.button === 2) { rightButtonDown = true; return; }
     if (event.button !== 0 || !currentPng || currentRenderKind === "mechanism") return;
     event.preventDefault();
     image.setPointerCapture(event.pointerId);
-    drag = {id: event.pointerId, x: event.clientX, y: event.clientY, ox: get("offset_x"), oy: get("offset_y")};
+    pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    if (pointers.size === 1) {
+      drag = {id: event.pointerId, x: event.clientX, y: event.clientY, ox: get("offset_x"), oy: get("offset_y")};
+    } else if (pointers.size === 2) {
+      const start = metrics();
+      drag = null;
+      gesture = {distance: start.distance, angle: start.angle, x: start.x, y: start.y,
+        scale: get("scale"), rotate: get("rotate"), ox: get("offset_x"), oy: get("offset_y")};
+    }
   });
   window.addEventListener("pointerup", event => {
     if (event.button === 2) rightButtonDown = false;
   });
   image.addEventListener("pointermove", event => {
-    if (!drag || drag.id !== event.pointerId) return;
-    const rect = image.getBoundingClientRect();
-    const ratio = rect.width > 0 && image.naturalWidth > 0 ? image.naturalWidth / rect.width : 1;
-    set("offset_x", Math.round(drag.ox + (event.clientX - drag.x) * ratio));
-    set("offset_y", Math.round(drag.oy + (event.clientY - drag.y) * ratio));
-    scheduleNormalPreview(currentRenderKind, 80);
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    if (gesture && pointers.size >= 2) {
+      const current = metrics();
+      const angleDelta = current.angle - gesture.angle;
+      set("scale", Math.round(Math.max(0.01, gesture.scale * current.distance / gesture.distance) * 1000) / 1000);
+      set("rotate", Math.round(gesture.rotate + angleDelta));
+      set("offset_x", Math.round(gesture.ox + (current.x - gesture.x) * displayRatio()));
+      set("offset_y", Math.round(gesture.oy + (current.y - gesture.y) * displayRatio()));
+    } else if (drag && drag.id === event.pointerId) {
+      set("offset_x", Math.round(drag.ox + (event.clientX - drag.x) * displayRatio()));
+      set("offset_y", Math.round(drag.oy + (event.clientY - drag.y) * displayRatio()));
+    }
+    scheduleNormalPreview(currentRenderKind, 80, true);
   });
   const finish = event => {
-    if (!drag || drag.id !== event.pointerId) return;
+    if (!pointers.has(event.pointerId)) return;
+    pointers.delete(event.pointerId);
+    gesture = null;
     drag = null;
-    scheduleNormalPreview(currentRenderKind, 0);
+    if (pointers.size === 1) {
+      const [id, point] = [...pointers.entries()][0];
+      drag = {id, x: point.x, y: point.y, ox: get("offset_x"), oy: get("offset_y")};
+    }
+    scheduleNormalPreview(currentRenderKind, 0, false);
   };
   image.addEventListener("pointerup", finish);
   image.addEventListener("pointercancel", finish);
@@ -543,12 +589,63 @@ function bindArtMouse(image) {
     event.preventDefault();
     if ((event.buttons & 2) || rightButtonDown) set("rotate", Math.round(get("rotate")) + (event.deltaY < 0 ? 3 : -3));
     else set("scale", Math.round(Math.max(0.01, get("scale") * (event.deltaY < 0 ? 1.05 : 1 / 1.05)) * 1000) / 1000);
-    scheduleNormalPreview(currentRenderKind, 60);
+    scheduleNormalPreview(currentRenderKind, 60, false);
   }, {passive: false});
   image.addEventListener("contextmenu", event => event.preventDefault());
 }
 bindArtMouse(document.getElementById("c-preview"));
 bindArtMouse(document.getElementById("b-preview"));
+
+lowPowerInput.addEventListener("change", () => {
+  try { localStorage.setItem("bwpdiy-low-power", lowPowerInput.checked ? "1" : "0"); } catch (error) {}
+  log(lowPowerInput.checked ? "已启用低负载预览；导出仍使用完整质量" : "已关闭低负载预览");
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && activeMainTab === "layout") scheduleLayoutPreview(0);
+});
+
+function formatStorageSize(value) {
+  if (!Number.isFinite(value) || value <= 0) return "0 MiB";
+  return `${(value / 1048576).toFixed(value >= 10485760 ? 0 : 1)} MiB`;
+}
+
+async function updateStorageStatus() {
+  const element = document.getElementById("storage-status");
+  const button = document.getElementById("persist-storage");
+  if (!navigator.storage || !navigator.storage.estimate) {
+    element.textContent = "当前浏览器不提供存储容量查询；请定期导出草稿备份";
+    button.disabled = true;
+    return;
+  }
+  try {
+    const estimate = await navigator.storage.estimate();
+    const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+    const usage = formatStorageSize(estimate.usage || 0);
+    const quota = estimate.quota ? formatStorageSize(estimate.quota) : "未知";
+    element.textContent = `本站浏览器存储 ${usage} / ${quota}；持久保护：${persisted ? "已开启" : "未开启"}`;
+    document.body.dataset.storagePersisted = String(persisted);
+    button.disabled = persisted || !navigator.storage.persist;
+    if (persisted) button.textContent = "已获得持久存储保护";
+  } catch (error) {
+    element.textContent = `存储状态读取失败：${error.message}`;
+  }
+}
+
+document.getElementById("persist-storage").addEventListener("click", async () => {
+  if (!navigator.storage || !navigator.storage.persist) return;
+  const button = document.getElementById("persist-storage");
+  button.disabled = true;
+  try {
+    const granted = await navigator.storage.persist();
+    log(granted ? "浏览器已允许持久存储保护" : "浏览器暂未授予持久存储保护；请保留导出的草稿备份", !granted);
+  } catch (error) {
+    log(`持久存储请求失败：${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    await updateStorageStatus();
+  }
+});
 
 async function setupResourceCache() {
   if (!("serviceWorker" in navigator) || !("caches" in window)) {
@@ -569,6 +666,7 @@ async function start() {
   setRendering(true);
   logElement.textContent = "";
   const cacheTask = setupResourceCache();
+  updateStorageStatus();
   try {
     const draft = await draftStore.load();
     if (!await restoreDraft(draft)) {

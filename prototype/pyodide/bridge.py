@@ -32,14 +32,14 @@ def environment_info():
     }, ensure_ascii=False)
 
 
-def _artwork(card, artwork_path):
+def _artwork(card, artwork_path, transform):
     card = copy.deepcopy(card)
-    if artwork_path:
-        card["_base_dir"] = str(USER_DIR)
-        card["artwork"] = {"images": [{"path": artwork_path}]}
-    else:
-        card["_base_dir"] = str(SAMPLE_ART.parent)
-        card["artwork"] = {"images": [{"path": SAMPLE_ART.name}]}
+    base_dir = USER_DIR if artwork_path else SAMPLE_ART.parent
+    card["_base_dir"] = str(base_dir)
+    art = {key: value for key, value in transform.items()
+           if key in {"offset_x", "offset_y", "scale", "rotate"}}
+    art["path"] = artwork_path or SAMPLE_ART.name
+    card["artwork"] = {"images": [art]}
     return card
 
 
@@ -69,34 +69,31 @@ def browser_render(payload_json):
                 mechanism, ASSETS, layout=load_layouts(ASSETS)["机制"],
                 chars_per_line=mechanism.get("chars_per_line", 12))
         else:
-            card = copy.deepcopy(SAMPLE_CARDS[payload.get("type", "战斗")])
-            for field in ("name", "description"):
-                if field in payload:
-                    card[field] = payload[field]
-            card = _artwork(card, payload.get("artwork_path"))
+            card = copy.deepcopy(SAMPLE_CARDS[payload["card"]["type"]])
+            override = {key: value for key, value in payload["card"].items()
+                        if not key.startswith("_") and key != "artwork"}
+            card.update(override)
+            if card["type"] == "法术" and not card.get("evolve"):
+                card.pop("power+", None)
+                card.pop("health+", None)
+            card = _artwork(card, payload.get("artwork_path"),
+                            payload.get("artwork", {}))
             width = payload.get("width")
             if kind == "card":
                 img = render_card(card, ASSETS, width=width)
             elif kind == "entity":
-                state = {
-                    "level": 2,
-                    "level_color": "yellow",
-                    "frame_variant": "norm",
-                    "power": 3,
-                    "health": 4,
-                    "combat_power": 1,
-                    "shield": -2,
-                    "energy": 2,
-                    "art_scale": 1.0,
-                }
-                img = render_entity(card, state, ASSETS, width=width)
+                img = render_entity(card, payload["state"], ASSETS, width=width)
             elif kind == "portrait":
                 layouts = load_layouts(ASSETS)
                 elem = layouts["协战"]["elements"]["duo_frame"]
-                art = card["artwork"]["images"][0]
-                art["path"] = str(Path(card["_base_dir"]) / art["path"])
+                portrait = payload.get("portrait", {})
+                art = {key: value for key, value in portrait.items()
+                       if key in {"offset_x", "offset_y", "scale", "rotate"}}
+                art["path"] = str(Path(card["_base_dir"]) / card["artwork"]["images"][0]["path"])
                 img = render_portrait(get_library(ASSETS), elem, art,
-                                      card.get("faction"), faction_style=2,
+                                      card.get("faction"),
+                                      faction_style=card.get("faction_style"),
+                                      with_frame=portrait.get("frame", True) is not False,
                                       width=width)
             else:
                 raise ValueError(f"未知渲染类型：{kind}")

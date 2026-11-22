@@ -34,7 +34,7 @@ def test_static_server_only_exposes_prototype_directory():
         connection.request("GET", "/prototype/pyodide/")
         response = connection.getresponse()
         assert response.status == 200
-        assert b"Pyodide" in response.read()
+        assert "在线本地版" in response.read().decode("utf-8")
         connection.close()
     finally:
         server.shutdown()

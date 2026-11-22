@@ -5,24 +5,28 @@ body {
   font-family: system-ui, "Microsoft YaHei", sans-serif;
 }
 
-main {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
+main { max-width: 1280px; margin: 0 auto; padding: 24px; }
 h1 { margin-top: 0; }
-.intro { color: #b9bec7; }
-.controls {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 12px;
+h2 { font-size: 1.15rem; }
+.intro, .muted { color: #b9bec7; }
+.local-status { display: flex; flex-wrap: wrap; gap: 20px; margin: 14px 0; color: #a9c8a2; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid #555; margin-bottom: 16px; }
+.tabs button { border-radius: 5px 5px 0 0; }
+.tabs button.active { color: #fff; background: #50555e; }
+.editor, .local-tools {
   padding: 16px;
   border: 1px solid #464950;
   border-radius: 8px;
   background: #292b30;
 }
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
 label { display: flex; flex-direction: column; gap: 6px; }
+label.check { flex-direction: row; align-items: center; align-self: end; min-height: 34px; }
+label.check input { width: auto; }
 .wide { grid-column: 1 / -1; }
 input, select, textarea, button { font: inherit; }
 input, select, textarea {
@@ -35,30 +39,32 @@ input, select, textarea {
 .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 button { padding: 8px 14px; cursor: pointer; }
 button:disabled { cursor: wait; opacity: .55; }
-.output {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-top: 20px;
-}
+.render-actions { margin-top: 16px; }
+details { margin-top: 16px; padding-top: 12px; border-top: 1px solid #464950; }
+summary { margin-bottom: 12px; cursor: pointer; }
+.local-tools { margin-top: 16px; }
+.local-tools h2 { margin-top: 0; }
+.output { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
 #log {
-  min-height: 240px;
+  min-height: 260px;
+  max-height: 560px;
   padding: 12px;
   overflow: auto;
   white-space: pre-wrap;
   color: #c9d4c5;
   background: #151617;
 }
-.preview-wrap { min-width: 0; }
-#preview {
-  display: block;
-  max-width: 100%;
-  max-height: 720px;
-  margin: 0 auto;
-  object-fit: contain;
-}
+.preview-wrap { min-width: 0; text-align: center; }
+.preview-wrap h2, .preview-wrap p { text-align: left; }
+#preview { display: block; max-width: 100%; max-height: 720px; margin: 0 auto 12px; object-fit: contain; }
 #preview:not([src]) { display: none; }
 .error { color: #ff9d96; }
-@media (max-width: 800px) {
-  .controls, .output { grid-template-columns: 1fr; }
+[hidden] { display: none !important; }
+@media (max-width: 900px) {
+  .form-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+  .output { grid-template-columns: 1fr; }
+}
+@media (max-width: 520px) {
+  main { padding: 14px; }
+  .form-grid { grid-template-columns: 1fr; }
 }

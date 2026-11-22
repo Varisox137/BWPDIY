@@ -19,13 +19,13 @@ python -m bwpdiy   # 开发版启动编辑器（默认 http://127.0.0.1:8631；�
 PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产物 releases/BWPDIY-v<版本>.exe
 ```
 
-实验性 Pyodide 浏览器渲染原型（需要联网下载 Pyodide；不参与 exe 打包）：
+实验性 Pyodide 在线本地版原型（首次需要联网；不参与 exe 打包）：
 
 ```bash
 python prototype/pyodide/server.py   # http://127.0.0.1:8640/
 ```
 
-原型仅在浏览器中合成图片，服务器不提供渲染或写盘 API。
+支持单卡/机制编辑、对局小卡与头像合成、PNG 导出、JSON 草稿备份及断网重载。表单和卡图仅保存在浏览器 IndexedDB，程序与素材仅缓存于浏览器 Cache Storage；服务器不提供渲染或写盘 API。
 
 ## 文档
 

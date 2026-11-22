@@ -1740,6 +1740,28 @@ console.log('OK');
 
 
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_entity_layout_frame_variant_buttons_enabled(tmp_path):
+    """对局式神布局允许切换四色边框，当前框品保持选中。"""
+    function = _extract_js(_script(), "function syncLayoutFrameButtons()")
+    driver = f"""
+const assert = require('node:assert');
+const FRAME_VARIANT_TYPES = new Set(['式神', '战斗', '法术', '形态', '幻境', '协战']);
+let curType = '式神', entityLayoutMode = true, layoutFrameVariant = 'blue';
+const buttons = ['norm', 'blue', 'black', 'red'].map(variant => ({{
+  dataset: {{fv: variant}}, disabled: false,
+  classList: {{toggle(name, active) {{ this.active = active; }}}},
+}}));
+const document = {{querySelectorAll: () => buttons}};
+{function}
+syncLayoutFrameButtons();
+assert(buttons.every(button => !button.disabled));
+assert.deepStrictEqual(buttons.map(button => !!button.classList.active), [false, true, false, false]);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_entity_layout_list_fixed_order(tmp_path):
     """对局式神元素按业务顺序排列，不受字典插入顺序和 x 坐标影响。"""
     script = _script()
@@ -1863,7 +1885,7 @@ def test_entity_layout_preview_native_size_and_scaled_mouse(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 let entityLayoutMode = true, mechLayoutMode = false, cardLayoutMode = null;
-let previewSeq = 0, dirty = false, singleDirty = false;
+let previewSeq = 0, dirty = false, singleDirty = false, layoutFrameVariant = 'norm';
 let previewImg = null, previewOffset = [0, 0];
 const entityLayoutSample = {{level: 2, level_color: 'yellow', power: 2, health: 5, combat_power: 1, shield: -1}};
 const layouts = {{'对局式神': {{elements: {{}}}}}};
@@ -1891,7 +1913,8 @@ let activeAsk = null;
   assert.strictEqual(requests[0].url, '/api/entity-preview');
   assert.deepStrictEqual(JSON.parse(requests[0].options.body), {{
     card: {{type: '式神', name: '布局样卡'}},
-    state: {{level: 2, level_color: 'yellow', power: 2, health: 5, combat_power: 1, shield: -1}},
+    state: {{level: 2, level_color: 'yellow', frame_variant: 'norm',
+      power: 2, health: 5, combat_power: 1, shield: -1}},
     layout: layouts['对局式神'],
   }});
   assert.strictEqual(canvas.width, 96);
@@ -2191,6 +2214,7 @@ def test_layout_entity_counter_samples_and_requests_without_dirty(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 let entityLayoutMode = true, cardLayoutMode = null, dirty = false, scheduled = 0, previewSeq = 0;
+let layoutFrameVariant = 'red';
 const layout = {{version: 2, elements: {{energy: {{kind: 'counter', pos: [82, 18]}},
   defeated: {{kind: 'counter', pos: [48, 66]}}}}, art_window: {{center: [48, 72]}}}};
 const before = JSON.stringify(layout);
@@ -2237,6 +2261,7 @@ function control(label) {{
   control('能量数值').value = '3'; control('能量数值').onchange();
   await refreshEntityLayoutPreview();
   let state = JSON.parse(requests[0].options.body).state;
+  assert.strictEqual(state.frame_variant, 'red');
   assert.strictEqual(state.energy, 3);
   assert.strictEqual(state.countdown, null);
   assert.strictEqual(state.defeated_countdown, null);

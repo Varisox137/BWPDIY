@@ -41,19 +41,21 @@ function layoutForRender(layout) {
   return {elements: layout.elements, text_regions: layout.text_regions};
 }
 function syncLayoutFrameButtons() {
-  const shown = FRAME_VARIANT_TYPES.has(curType) ? layoutFrameVariant : 'norm';
+  const enabled = entityLayoutMode || FRAME_VARIANT_TYPES.has(curType);
+  const shown = enabled ? layoutFrameVariant : 'norm';
   document.querySelectorAll('#l-frame-variants .fv').forEach(b => {
     b.classList.toggle('active', b.dataset.fv === shown);
-    b.disabled = entityLayoutMode || (b.dataset.fv !== 'norm' && !FRAME_VARIANT_TYPES.has(curType));
+    b.disabled = b.dataset.fv !== 'norm' && !enabled;
   });
 }
-// 框品按钮：切换同类型的独立布局；未保存工作保留在对应框品工作副本中
+// 框品按钮：大卡切换独立布局；对局式神仅切换预览边框，共用同一布局段
 document.querySelectorAll('#l-frame-variants .fv').forEach(b => b.onclick = async () => {
   if (b.disabled || b.dataset.fv === layoutFrameVariant) return;
   if ((cardLayoutMode ? singleDirty : dirty) &&
       !await sessionConfirm('布局有未保存修改（切换框品不会丢弃，但仍未保存），继续？', 'unsaved')) return;
   layoutFrameVariant = b.dataset.fv;
-  selectType(curType);
+  if (entityLayoutMode) selectEntityLayout();
+  else selectType(curType);
 });
 let sel = null;              // {kind:'element'|'region', name}
 let dirty = false;
@@ -606,7 +608,7 @@ async function refreshEntityLayoutPreview() {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
         card: {type: '式神', name: '布局样卡'},
-        state: entityLayoutSample,
+        state: {...entityLayoutSample, frame_variant: layoutFrameVariant},
         layout: typeLayout(),
       }),
     });

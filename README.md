@@ -19,6 +19,14 @@ python -m bwpdiy   # 开发版启动编辑器（默认 http://127.0.0.1:8631；�
 PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产物 releases/BWPDIY-v<版本>.exe
 ```
 
+实验性 Pyodide 浏览器渲染原型（需要联网下载 Pyodide；不参与 exe 打包）：
+
+```bash
+python prototype/pyodide/server.py   # http://127.0.0.1:8640/
+```
+
+原型仅在浏览器中合成图片，服务器不提供渲染或写盘 API。
+
 ## 文档
 
 - BWPro 渲染集成：`docs/integration.md`

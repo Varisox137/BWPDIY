@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BWPDIY Pyodide 浏览器渲染原型</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-ready="false">
+  <main>
+    <h1>BWPDIY 浏览器渲染原型</h1>
+    <p class="intro">Python + Pillow 在浏览器 Web Worker 内运行。服务器只提供静态文件；卡图和卡牌内容不发送到渲染 API。</p>
+    <p class="intro">Pyodide 运行时从 jsDelivr 下载；BWPDIY 代码、真实字体和美术资源由本原型服务器提供。</p>
+
+    <section class="controls" aria-label="渲染输入">
+      <label>大卡类型
+        <select id="card-type">
+          <option value="战斗" selected>战斗（义道）</option>
+          <option value="式神">式神（山风）</option>
+          <option value="法术">法术（觉醒·山风）</option>
+          <option value="形态">形态（竹取物语）</option>
+          <option value="幻境">幻境（燕子安贝）</option>
+          <option value="协战">协战（鸮羽共鸣）</option>
+        </select>
+      </label>
+      <label>卡名 <input id="card-name" value="义道"></label>
+      <label>目标宽度（留空为默认） <input id="width" type="number" min="1" max="8192"></label>
+      <label class="wide">描述
+        <textarea id="description" rows="4">贯通，连击。对有破甲的式神造成双倍伤害。</textarea>
+      </label>
+      <label class="wide">本地卡图（可选，默认使用原型样图）
+        <input id="artwork" type="file" accept=".png,.jpg,.jpeg,.webp">
+      </label>
+      <div class="buttons wide">
+        <button class="render-button" data-kind="card" disabled>渲染大卡</button>
+        <button class="render-button" data-kind="entity" disabled>渲染式神小卡</button>
+        <button class="render-button" data-kind="portrait" disabled>渲染头像</button>
+        <button class="render-button" data-kind="mechanism" disabled>渲染机制框</button>
+        <button id="run-all" disabled>运行全部自检</button>
+        <button id="download" disabled>下载当前 PNG</button>
+      </div>
+    </section>
+
+    <section class="output">
+      <div>
+        <h2>运行记录</h2>
+        <pre id="log">等待初始化…</pre>
+      </div>
+      <div class="preview-wrap">
+        <h2>浏览器合成结果</h2>
+        <p id="result-meta">尚未渲染</p>
+        <img id="preview" alt="浏览器渲染结果">
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

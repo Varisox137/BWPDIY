@@ -7,6 +7,7 @@
 - 分层方向：`render`（纯 PIL）← `store`（卡牌库与校验）← `web`（FastAPI 编辑器）。`render` 不得 import `store/web`；基础包只依赖 Pillow，PyYAML/FastAPI/Uvicorn 属 `web` 可选依赖。
 - 前端无构建：`editor.html` 只保留结构，`editor.css` 与 `editor-{core,cards,battle,mech,layout,main}.js` 按固定顺序以经典脚本加载。共享全局词法依赖不变，禁止擅自改为 ES Module 或引入框架；Node 测试按 HTML 顺序拼接真实脚本。
 - `legacy/` 只读封存；`library/` 是用户创作数据，gitignore，不提交。
+- `prototype/pyodide/` 是隔离的浏览器渲染实验：Pyodide + Pillow 在 Web Worker 内运行，静态服务器只提供原型文件和运行时资源包，不得加入渲染/写盘 API 或暴露仓库其他目录；不参与 exe 打包。
 - 资源命名与目录以 `docs/asset-mapping-v1.0.md` 和 `docs/terminology.md` 为准；改动资源引用须同步文档。`assets/legacy/`、`assets/psd_export/` 不进 exe。
 
 ## 启动、日志与更新

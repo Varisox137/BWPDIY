@@ -4,173 +4,126 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
-  <title>BWPDIY 在线本地版原型</title>
+  <title>BWPDIY 在线本地版</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body data-ready="false">
-  <main>
-    <h1>BWPDIY 在线本地版原型</h1>
-    <p class="intro">编辑、草稿和图片均保存在当前浏览器；Python + Pillow 在本地 Web Worker 中合成。服务器只提供静态程序与素材。</p>
-    <div class="local-status">
-      <span id="draft-status">正在读取浏览器草稿…</span>
-      <span id="cache-status">正在启用浏览器资源缓存…</span>
+<nav id="topnav">
+  <button class="navtab active" data-tab="cards">卡牌库</button>
+  <button class="navtab" data-tab="battle">对局预览</button>
+  <button class="navtab" data-tab="layout">全局布局设置</button>
+  <span class="brand">BWPDIY 在线本地版 by <a href="https://github.com/Varisox137/BWPDIY" target="_blank" rel="noopener">Varisox137</a></span>
+  <span id="ext-options">无需登录 · 数据仅存当前浏览器</span>
+</nav>
+
+<div id="tab-cards" class="tabpage active">
+  <aside id="c-left">
+    <h4 class="cat">编辑模式</h4>
+    <div class="mode-buttons"><button id="tab-card" class="tab active">单卡</button><button id="tab-mechanism" class="tab">机制</button></div>
+    <h4 class="cat">浏览器本地数据</h4>
+    <div class="btnrow"><button id="export-draft">导出草稿备份</button><button id="import-draft">导入草稿备份</button></div>
+    <input id="draft-file" type="file" accept=".json" hidden>
+    <div class="btnrow"><button id="clear-draft">清除本地草稿</button><button id="clear-cache">清除资源缓存</button></div>
+    <div id="draft-status" class="local-note">正在读取浏览器草稿…</div>
+    <div id="cache-status" class="local-note">正在启用浏览器资源缓存…</div>
+    <p class="note">草稿和卡图位于 IndexedDB；程序和素材位于 Cache Storage。服务器不保存任何作品。</p>
+    <h4 class="cat">本地卡图</h4>
+    <input id="artwork" type="file" accept=".png,.jpg,.jpeg,.webp">
+    <div id="artwork-name" class="note">默认使用内置样图</div>
+    <details class="log-details"><summary>运行记录</summary><pre id="log"></pre></details>
+  </aside>
+  <div id="c-mid">
+    <div><button id="c-btn-refresh">强制刷新</button><button class="download-button" disabled>导出当前图片</button><span id="c-status"></span></div>
+    <div id="c-frame-variants">框品
+      <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="blue">琉璃</button>
+      <button class="fv" data-fv="black">墨染</button><button class="fv" data-fv="red">百炼</button>
     </div>
-
-    <nav class="tabs" aria-label="编辑类型">
-      <button id="tab-card" class="active">单卡编辑</button>
-      <button id="tab-mechanism">机制编辑</button>
-    </nav>
-
-    <section id="card-editor" class="editor">
-      <div class="form-grid">
-        <label>类型
-          <select data-card="type">
-            <option value="式神">式神</option><option value="战斗" selected>战斗</option>
-            <option value="法术">法术</option><option value="形态">形态</option>
-            <option value="幻境">幻境</option><option value="协战">协战</option>
-          </select>
-        </label>
-        <label>卡名 <input data-card="name" value="义道"></label>
-        <label>卡牌 ID <input data-card="id" placeholder="可留空"></label>
-        <label>版本日期 <input data-card="version_date" inputmode="numeric" maxlength="8" placeholder="YYYYMMDD"></label>
-        <label>等级
-          <select data-card="level"><option>0</option><option>1</option><option>2</option><option selected>3</option></select>
-        </label>
-        <label>勾玉颜色
-          <select data-card="level_color">
-            <option value="yellow">黄</option><option value="cyan">青</option><option value="purple">紫</option>
-            <option value="red">红</option><option value="blue">蓝</option><option value="brown">棕</option>
-            <option value="greyblue">灰蓝</option><option value="orange">橙</option>
-          </select>
-        </label>
-        <label>框品
-          <select data-card="frame_variant"><option value="norm">常规</option><option value="blue">琉璃</option><option value="black">墨染</option><option value="red">百炼</option></select>
-        </label>
-        <label data-types="战斗,法术,形态,幻境,协战">稀有度
-          <select data-card="rarity"><option value="">无</option><option>N</option><option>R</option><option>SR</option><option selected>SSR</option></select>
-        </label>
-        <label data-types="战斗,法术,形态,幻境">所属式神 <input data-card="shikigami" value="铃鹿御前"></label>
-        <label data-types="协战">所属式神 1 <input data-card="shikigami1" value="山风"></label>
-        <label data-types="协战">所属式神 2 <input data-card="shikigami2" value="薰"></label>
-        <label>子类型 <input data-card="special_type" placeholder="可留空"></label>
-        <label data-types="式神">派系
-          <select data-card="faction"><option value="">无</option><option>红莲</option><option>紫岩</option><option>青岚</option><option selected>苍叶</option></select>
-        </label>
-        <label data-types="式神">派系样式
-          <select data-card="faction_style"><option>1</option><option selected>2</option><option>3</option></select>
-        </label>
-        <label data-types="式神,形态">力量 <input data-card="power" type="number" value="3"></label>
-        <label data-types="式神,形态">生命 <input data-card="health" type="number" value="4"></label>
-        <label data-types="战斗">力量修正 <input data-card="power+" type="number" value="-1"></label>
-        <label data-types="战斗">护甲/破甲修正 <input data-card="shield+" type="number" value="2"></label>
-        <label data-types="法术">永久力量 <input data-card="power+" type="number" value="1"></label>
-        <label data-types="法术">永久生命 <input data-card="health+" type="number" value="1"></label>
-        <label data-types="幻境">耐久 <input data-card="durability" type="number" value="5"></label>
-        <label class="check" data-types="法术"><input data-card="evolve" type="checkbox" checked> 觉醒</label>
-        <label class="check" data-types="协战"><input data-card="duo_frame" type="checkbox"> 双式神框</label>
-        <label>描述排版
-          <select data-card="text_layout"><option value="smart">智能排版</option><option value="wrap">仅自动换行</option><option value="off">取消自动排版</option></select>
-        </label>
-        <label>内嵌派系样式
-          <select data-card="inline_faction_style"><option>1</option><option>2</option><option>3</option></select>
-        </label>
-        <label class="wide">卡牌描述
-          <textarea data-card="description" rows="6">贯通，连击。对有破甲的式神造成双倍伤害。</textarea>
-        </label>
-      </div>
-
-      <details open>
-        <summary>卡图与导出</summary>
-        <div class="form-grid">
-          <label class="wide">本地卡图 <input id="artwork" type="file" accept=".png,.jpg,.jpeg,.webp"></label>
-          <span id="artwork-name" class="wide muted">默认使用内置样图</span>
-          <label>偏移 X <input data-art="offset_x" type="number" value="0"></label>
-          <label>偏移 Y <input data-art="offset_y" type="number" value="0"></label>
-          <label>缩放 <input data-art="scale" type="number" min="0.01" step="0.01" value="1"></label>
-          <label>旋转角度 <input data-art="rotate" type="number" step="0.1" value="0"></label>
-          <label>导出宽度 <input id="width" type="number" min="1" max="8192" placeholder="默认尺寸"></label>
-        </div>
-      </details>
-
-      <details data-types="式神">
-        <summary>头像参数</summary>
-        <div class="form-grid">
-          <label>偏移 X <input data-portrait="offset_x" type="number" value="0"></label>
-          <label>偏移 Y <input data-portrait="offset_y" type="number" value="0"></label>
-          <label>缩放 <input data-portrait="scale" type="number" min="0.01" step="0.01" value="1"></label>
-          <label>旋转角度 <input data-portrait="rotate" type="number" step="0.1" value="0"></label>
-          <label class="check"><input data-portrait="frame" type="checkbox" checked> 绘制头像框和派系标</label>
-        </div>
-      </details>
-
-      <details>
-        <summary>对局小卡状态</summary>
-        <div class="form-grid">
-          <label>等级 <select data-state="level"><option>0</option><option>1</option><option selected>2</option><option>3</option></select></label>
-          <label>勾玉颜色 <select data-state="level_color"><option value="yellow">黄</option><option value="cyan">青</option><option value="purple">紫</option><option value="red">红</option><option value="blue">蓝</option><option value="brown">棕</option><option value="greyblue">灰蓝</option><option value="orange">橙</option></select></label>
-          <label>边框 <select data-state="frame_variant"><option value="norm">常规</option><option value="blue">琉璃</option><option value="black">墨染</option><option value="red">百炼</option></select></label>
-          <label>力量 <input data-state="power" type="number" min="0" value="3"></label>
-          <label>生命 <input data-state="health" type="number" min="0" value="4"></label>
-          <label>战力/乏力 <input data-state="combat_power" type="number" value="1"></label>
-          <label>护甲/破甲 <input data-state="shield" type="number" value="-2"></label>
-          <label>能量 <input data-state="energy" type="number" min="0" value="2"></label>
-          <label>倒计时 <input data-state="countdown" type="number" min="0" placeholder="留空不绘制"></label>
-          <label>气绝倒计时 <input data-state="defeated_countdown" placeholder="空、数字或 infinity"></label>
-          <label>卡图缩放 <input data-state="art_scale" type="number" min="0.01" step="0.01" value="1"></label>
-          <label>力量颜色 <select data-state="power_color"><option value="">白</option><option value="red">红</option><option value="green">绿</option><option value="purple">紫</option></select></label>
-          <label>生命颜色 <select data-state="health_color"><option value="">白</option><option value="red">红</option><option value="green">绿</option><option value="purple">紫</option></select></label>
-          <label>战力颜色 <select data-state="combat_power_color"><option value="">白</option><option value="red">红</option><option value="green">绿</option><option value="purple">紫</option></select></label>
-          <label>护甲颜色 <select data-state="shield_color"><option value="">白</option><option value="red">红</option><option value="green">绿</option><option value="purple">紫</option></select></label>
-        </div>
-      </details>
-
-      <div class="buttons render-actions">
-        <button class="render-button" data-kind="card" disabled>合成大卡</button>
-        <button class="render-button" data-kind="entity" disabled>合成式神小卡</button>
-        <button class="render-button" data-kind="portrait" disabled>合成头像</button>
-      </div>
+    <div id="c-error"></div>
+    <img id="c-preview" alt="浏览器合成结果">
+    <p class="result-meta">尚未渲染</p>
+    <p class="mouse-help">左键拖拽移动 · 滚轮缩放 · 右键 + 滚轮旋转</p>
+  </div>
+  <aside id="c-right"><div id="c-form">
+    <section id="card-editor">
+      <h3>卡牌内容</h3>
+      <label>类型 <select data-card="type"><option value="式神">式神</option><option value="战斗" selected>战斗</option><option value="法术">法术</option><option value="形态">形态</option><option value="幻境">幻境</option><option value="协战">协战</option></select></label>
+      <label>卡名 <input data-card="name" value="义道"></label>
+      <label>卡牌 ID <input data-card="id" placeholder="可留空"></label>
+      <label>版本日期 <input data-card="version_date" inputmode="numeric" maxlength="8" placeholder="YYYYMMDD"></label>
+      <label>等级 <select data-card="level"><option>0</option><option>1</option><option>2</option><option selected>3</option></select></label>
+      <label>勾玉颜色 <select data-card="level_color"><option value="yellow">黄</option><option value="cyan">青</option><option value="purple">紫</option><option value="red">红</option><option value="blue">蓝</option><option value="brown">棕</option><option value="greyblue">灰蓝</option><option value="orange">橙</option></select></label>
+      <label>框品 <select data-card="frame_variant"><option value="norm">常规</option><option value="blue">琉璃</option><option value="black">墨染</option><option value="red">百炼</option></select></label>
+      <label data-types="战斗,法术,形态,幻境,协战">稀有度 <select data-card="rarity"><option value="">无</option><option>N</option><option>R</option><option>SR</option><option selected>SSR</option></select></label>
+      <label data-types="战斗,法术,形态,幻境">所属式神 <input data-card="shikigami" value="铃鹿御前"></label>
+      <label data-types="协战">所属式神 1 <input data-card="shikigami1" value="山风"></label>
+      <label data-types="协战">所属式神 2 <input data-card="shikigami2" value="薰"></label>
+      <label>子类型 <input data-card="special_type" placeholder="可留空"></label>
+      <label data-types="式神">派系 <select data-card="faction"><option value="">无</option><option>红莲</option><option>紫岩</option><option>青岚</option><option selected>苍叶</option></select></label>
+      <label data-types="式神">派系样式 <select data-card="faction_style"><option>1</option><option selected>2</option><option>3</option></select></label>
+      <label data-types="式神,形态">力量 <input data-card="power" type="number" value="3"></label>
+      <label data-types="式神,形态">生命 <input data-card="health" type="number" value="4"></label>
+      <label data-types="战斗">力量修正 <input data-card="power+" type="number" value="-1"></label>
+      <label data-types="战斗">护甲/破甲修正 <input data-card="shield+" type="number" value="2"></label>
+      <label data-types="法术">永久力量 <input data-card="power+" type="number" value="1"></label>
+      <label data-types="法术">永久生命 <input data-card="health+" type="number" value="1"></label>
+      <label data-types="幻境">耐久 <input data-card="durability" type="number" value="5"></label>
+      <label class="check" data-types="法术"><input data-card="evolve" type="checkbox" checked> 觉醒</label>
+      <label class="check" data-types="协战"><input data-card="duo_frame" type="checkbox"> 双式神框</label>
+      <label>描述排版 <select data-card="text_layout"><option value="smart">智能排版</option><option value="wrap">仅自动换行</option><option value="off">取消自动排版</option></select></label>
+      <label>内嵌派系样式 <select data-card="inline_faction_style"><option>1</option><option>2</option><option>3</option></select></label>
+      <label>卡牌描述 <textarea data-card="description">贯通，连击。对有破甲的式神造成双倍伤害。</textarea></label>
+      <h3>卡图参数</h3>
+      <div class="number-grid"><label>偏移 X <input data-art="offset_x" type="number" value="0"></label><label>偏移 Y <input data-art="offset_y" type="number" value="0"></label><label>缩放 <input data-art="scale" type="number" min="0.01" step="0.01" value="1"></label><label>旋转角度 <input data-art="rotate" type="number" step="0.1" value="0"></label></div>
+      <label>导出宽度 <input id="width" type="number" min="1" max="8192" placeholder="默认尺寸"></label>
+      <div data-types="式神"><h3>头像参数</h3><div class="number-grid"><label>偏移 X <input data-portrait="offset_x" type="number" value="0"></label><label>偏移 Y <input data-portrait="offset_y" type="number" value="0"></label><label>缩放 <input data-portrait="scale" type="number" min="0.01" step="0.01" value="1"></label><label>旋转角度 <input data-portrait="rotate" type="number" step="0.1" value="0"></label></div><label class="check"><input data-portrait="frame" type="checkbox" checked> 绘制头像框和派系标</label></div>
+      <div class="btnrow render-actions"><button class="render-button" data-kind="card" disabled>合成大卡</button><button class="render-button" data-kind="entity" disabled>合成式神小卡</button><button class="render-button" data-kind="portrait" disabled>合成头像</button></div>
     </section>
-
-    <section id="mechanism-editor" class="editor" hidden>
-      <div class="form-grid">
-        <label>机制名称 <input data-mech="name" value="灵咒"></label>
-        <label>框体 <select data-mech="frame"><option value="invocation">灵咒</option><option value="skill">关键字</option><option value="seal">加护/蚀印</option></select></label>
-        <label>每行字数 <input data-mech="chars_per_line" type="number" min="1" value="12"></label>
-        <label>角标 <select data-mech="badge"><option value="">无</option><option value="bless">加护</option><option value="eclipse">蚀印</option></select></label>
-        <label>内嵌派系样式 <select data-mech="inline_faction_style"><option>1</option><option>2</option><option>3</option></select></label>
-        <label class="wide">机制描述 <textarea data-mech="text" rows="7">[[唯一]]。
+    <section id="mechanism-editor" hidden>
+      <h3>机制内容</h3>
+      <label>机制名称 <input data-mech="name" value="灵咒"></label>
+      <label>框体 <select data-mech="frame"><option value="invocation">灵咒</option><option value="skill">关键字</option><option value="seal">加护/蚀印</option></select></label>
+      <label>每行字数 <input data-mech="chars_per_line" type="number" min="1" value="12"></label>
+      <label>角标 <select data-mech="badge"><option value="">无</option><option value="bless">加护</option><option value="eclipse">蚀印</option></select></label>
+      <label>内嵌派系样式 <select data-mech="inline_faction_style"><option>1</option><option>2</option><option>3</option></select></label>
+      <label>机制描述 <textarea data-mech="text">[[唯一]]。
 己方回合开始时，获得1#ll和[[贯通]]。
 攻击后移除。</textarea></label>
-      </div>
-      <div class="buttons render-actions"><button class="render-button" data-kind="mechanism" disabled>合成机制框</button></div>
+      <div class="btnrow render-actions"><button class="render-button" data-kind="mechanism" disabled>合成机制框</button></div>
     </section>
+  </div></aside>
+</div>
 
-    <section class="local-tools">
-      <h2>浏览器本地数据</h2>
-      <div class="buttons">
-        <button id="export-draft">导出草稿备份</button>
-        <button id="import-draft">导入草稿备份</button>
-        <input id="draft-file" type="file" accept=".json" hidden>
-        <button id="clear-draft">清除本地草稿</button>
-        <button id="clear-cache">清除资源缓存</button>
-      </div>
-      <p class="muted">草稿备份包含当前表单与卡图。清除浏览器数据可能删除草稿，请定期导出备份；资源缓存可随时重新下载。</p>
-    </section>
+<div id="tab-battle" class="tabpage">
+  <aside id="b-left"><h4>预览样式</h4><div id="b-styles"><button class="battle-style active" data-kind="entity">式神小卡</button><button class="battle-style" data-kind="card">完整大卡</button><button class="battle-style" data-kind="portrait">式神头像</button></div></aside>
+  <div id="b-mid"><div><button id="b-btn-refresh">强制刷新</button><button class="download-button" disabled>导出</button><span id="b-status"></span></div><div id="b-error"></div><img id="b-preview" alt="对局预览"><p class="result-meta">尚未渲染</p><p class="mouse-help">左键拖拽移动 · 滚轮缩放 · 右键 + 滚轮旋转</p></div>
+  <aside id="b-right"><div id="b-form">
+    <h3>临时对局状态</h3>
+    <label>等级 <select data-state="level"><option>0</option><option>1</option><option selected>2</option><option>3</option></select></label>
+    <label>勾玉颜色 <select data-state="level_color"><option value="yellow">黄</option><option value="cyan">青</option><option value="purple">紫</option><option value="red">红</option><option value="blue">蓝</option><option value="brown">棕</option><option value="greyblue">灰蓝</option><option value="orange">橙</option></select></label>
+    <label>边框 <select data-state="frame_variant"><option value="norm">常规</option><option value="blue">琉璃</option><option value="black">墨染</option><option value="red">百炼</option></select></label>
+    <label>力量 <input data-state="power" type="number" min="0" value="3"></label><label>生命 <input data-state="health" type="number" min="0" value="4"></label>
+    <label>战力/乏力 <input data-state="combat_power" type="number" value="1"></label><label>护甲/破甲 <input data-state="shield" type="number" value="-2"></label>
+    <label>能量 <input data-state="energy" type="number" min="0" value="2"></label><label>倒计时 <input data-state="countdown" type="number" min="0" placeholder="留空不绘制"></label>
+    <label>气绝倒计时 <input data-state="defeated_countdown" placeholder="空、数字或 infinity"></label><label>卡图缩放 <input data-state="art_scale" type="number" min="0.01" step="0.01" value="1"></label>
+    <label>力量颜色 <select data-state="power_color"><option value="">白</option><option value="red">红</option><option value="green">绿</option><option value="purple">紫</option></select></label>
+    <label>生命颜色 <select data-state="health_color"><option value="">白</option><option value="red">红</option><option value="green">绿</option><option value="purple">紫</option></select></label>
+    <label>战力颜色 <select data-state="combat_power_color"><option value="">白</option><option value="red">红</option><option value="green">绿</option><option value="purple">紫</option></select></label>
+    <label>护甲颜色 <select data-state="shield_color"><option value="">白</option><option value="red">红</option><option value="green">绿</option><option value="purple">紫</option></select></label>
+  </div></aside>
+</div>
 
-    <section class="output">
-      <div>
-        <h2>运行记录</h2>
-        <pre id="log"></pre>
-      </div>
-      <div class="preview-wrap">
-        <h2>浏览器合成结果</h2>
-        <p id="result-meta">尚未渲染</p>
-        <img id="preview" alt="浏览器渲染结果">
-        <button id="download" disabled>下载当前 PNG</button>
-      </div>
-    </section>
-  </main>
-  <script src="storage.js"></script>
-  <script src="app.js"></script>
+<div id="tab-layout" class="tabpage">
+  <aside id="l-sidebar"><div id="l-types"></div><h4>元素</h4><div id="l-elems"></div></aside>
+  <div id="l-main"><div><button id="l-btn-preview">强制刷新</button><button id="l-btn-restore">还原当前类型</button><span id="l-status"></span></div>
+    <div id="l-frame-variants">框品 <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="blue">琉璃</button><button class="fv" data-fv="black">墨染</button><button class="fv" data-fv="red">百炼</button></div>
+    <canvas id="l-preview"></canvas>
+    <div id="l-mech"><div class="mech-view"><h4>灵咒框</h4><canvas id="l-mech-invocation"></canvas></div><div class="mech-view"><h4>关键字框</h4><canvas id="l-mech-skill"></canvas></div><div class="mech-view"><h4>加护蚀印框</h4><canvas id="l-mech-seal"></canvas></div></div>
+  </div>
+  <aside id="l-props">加载布局后选择元素</aside>
+</div>
+
+<script src="storage.js"></script>
+<script src="layout.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

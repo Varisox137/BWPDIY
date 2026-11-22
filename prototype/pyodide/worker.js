@@ -47,6 +47,7 @@ sys.path.insert(0, '/work')
   postStatus(`真实字体：${environment.fonts.join("、")}`);
   return {
     environment,
+    layouts: JSON.parse(pyodide.globals.get("browser_layouts")()),
     runtime_bytes: runtimeBytes.length,
     startup_ms: Math.round(performance.now() - started),
   };

@@ -157,6 +157,7 @@ from bwpdiy.render import render_entity
 state = {
     "level": 2,
     "level_color": "yellow",
+    "frame_variant": "norm",  # norm/blue/black/red；缺省继承 card.frame_variant，未设置则为 norm
     "power": 3,
     "health": 4,
     "combat_power": 1,
@@ -173,6 +174,7 @@ entity.save("entity.png")
 ```
 
 - 适用来源：式神、形态或任意 `evolve: true` 的卡牌；其他类型抛出 `ValueError`。
+- `frame_variant` 为 `norm/blue/black/red`；state 未提供时继承 `card.frame_variant`，卡牌也未提供则为 `norm`。非法值抛出 `ValueError`。
 - `level` 为 0–3；0 只绘制底框和卡图，不绘制等级标、数值角标及状态组件。
 - `power/health` 必须非负；`combat_power/shield` 可为负。四个数值颜色均可选 `red/green/purple`，缺省白色，均复用大卡位图数字；负战力/负护甲保留负号并分别使用乏力/破甲图标，正值不带加号，两项布局分别支持 `sign_size_minus`（缺省为字号一半），符号与数字整体居中并计入紧致边界。战力/乏力读取 `stats/combat_power.png` 与 `stats/weak.png` 大图标；仅描述文本内嵌 `#zl`/`#fl` 使用 `icons/` 小图。
 - `energy/countdown/defeated_countdown` 为临时状态，不写入卡牌。energy 与 countdown 可同时非空，绘制顺序为能量在下、倒计时在上；气绝保留 energy 并隐藏 countdown，仅灰化底框和卡图，气绝组件最后绘制。永久气绝只接受精确字符串 `"infinity"`，读取 `numbers/white_inf.png`。

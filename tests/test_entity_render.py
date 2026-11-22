@@ -55,6 +55,7 @@ def test_validate_entity_state_defaults_and_discards_unknown_keys():
     assert validate_entity_state(state) == {
         "level": 1,
         "level_color": "yellow",
+        "frame_variant": "norm",
         "power": 2,
         "health": 0,
         "combat_power": 0,
@@ -74,6 +75,32 @@ def test_validate_entity_state_defaults_and_discards_unknown_keys():
 def test_entity_accepts_greyblue_and_orange_level_colors():
     for color in ("greyblue", "orange"):
         assert validate_entity_state({"level_color": color})["level_color"] == color
+
+
+@pytest.mark.parametrize("value", ["gold", None, 1, True])
+def test_entity_rejects_invalid_frame_variant(value):
+    with pytest.raises(ValueError, match="frame_variant"):
+        validate_entity_state({"frame_variant": value})
+
+
+def test_entity_frame_variant_inherits_card_and_changes_border(assets_dir, sample_art):
+    layout = deepcopy(_DEFAULT_LAYOUT)
+    layout["elements"] = {}
+
+    def border(card, state):
+        return render_entity(card, state, assets_dir, layout=layout,
+                             crop=False).getpixel((48, 1))
+
+    card = make_card(sample_art)
+    assert border(card, {}) == border(card, {"frame_variant": "norm"})
+    colors = set()
+    for variant in ("norm", "blue", "black", "red"):
+        inherited = border(make_card(sample_art, frame_variant=variant), {})
+        explicit = border(card, {"frame_variant": variant})
+        assert inherited == explicit
+        colors.add(explicit)
+    assert len(colors) == 4
+    assert border(card, {"frame_variant": "black"}) == (198, 164, 93, 255)
 
 
 @pytest.mark.parametrize("field, value", [

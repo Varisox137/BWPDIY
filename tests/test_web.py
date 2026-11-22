@@ -2370,6 +2370,7 @@ def test_entity_state_is_temporary(tmp_path):
 const assert = require('node:assert');
 const ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan', 'purple', 'red', 'blue', 'brown']);
+const FRAME_VARIANT_VALUES = new Set(['norm', 'blue', 'black', 'red']);
 const STAT_VALUE_COLOR_VALUES = new Set(['red', 'green', 'purple']);
 const cards = {{shikigami: [{{name: '基础式神', power: 3, health: 4}},
   {{name: '极值式神', power: 9999999999, health: 9999999999}}], cards: []}};
@@ -2383,20 +2384,20 @@ assert(battleStyles({{type: '形态'}}).includes('entity'));
 assert(battleStyles({{type: '法术', evolve: true}}).includes('entity'));
 assert(!battleStyles({{type: '战斗'}}).includes('entity'));
 const source = {{type: '法术', evolve: true, shikigami: '基础式神', 'power+': 2, 'health+': -1,
-                level: 2, level_color: 'cyan', power: -2, health: 5.5,
+                level: 2, level_color: 'cyan', frame_variant: 'red', power: -2, health: 5.5,
                 combat_power: 8, shield: 9, art_scale: 7, power_color: 'green'}};
 const state = makeEntityState(source);
 battleEntityState = state;
-assert.deepStrictEqual([state.level, state.level_color, state.power, state.health,
+assert.deepStrictEqual([state.level, state.level_color, state.frame_variant, state.power, state.health,
                         state.combat_power, state.shield, state.art_scale],
-                       [2, 'cyan', 5, 3, 0, 0, 1]);
+                       [2, 'cyan', 'red', 5, 3, 0, 0, 1]);
 assert.strictEqual(state.power_color, 'green');
 assert.strictEqual(state.energy, null);
 assert.strictEqual(state.countdown, null);
 assert.strictEqual(state.defeated_countdown, null);
-const fallback = makeEntityState({{type: '式神', level: 4, level_color: 'bad', power: 3, health: 4}});
-assert.deepStrictEqual([fallback.level, fallback.level_color, fallback.power, fallback.health],
-                       [1, 'yellow', 3, 4]);
+const fallback = makeEntityState({{type: '式神', level: 4, level_color: 'bad', frame_variant: 'bad', power: 3, health: 4}});
+assert.deepStrictEqual([fallback.level, fallback.level_color, fallback.frame_variant, fallback.power, fallback.health],
+                       [1, 'yellow', 'norm', 3, 4]);
 assert.deepStrictEqual(makeEntityState({{type: '形态', shikigami: '基础式神', power: 2, health: 5}}).power, 2);
 const awakenedForm = makeEntityState({{type: '形态', evolve: true, shikigami: '基础式神',
                                        power: 9, health: 9}});
@@ -3246,12 +3247,13 @@ def test_battle_entity_controls_cover_counters_without_dirtying(tmp_path):
     driver = f"""
 const assert = require('node:assert');
 const ENTITY_LEVELS = [0, 1, 2, 3], LEVEL_COLORS = [['yellow', '黄']];
+const FRAME_VARIANTS = [['norm', '常规'], ['blue', '琉璃'], ['black', '墨染'], ['red', '百炼']];
 const EVOLVE_TYPES = new Set(['战斗', '法术', '形态', '幻境']);
 const STATS_BY_TYPE = {{'形态': ['power', 'health']}};
 const STAT_MATRIX = {{'形态': {{power: '力量', health: '生命'}}}};
 const STAT_VALUE_COLORS = [['white', '白'], ['red', '红']];
 let battleStyle = 'entity', battleCardState = {{type: '形态'}};
-let battleEntityState = {{level: 2, level_color: 'yellow', power: 3, health: 4,
+let battleEntityState = {{level: 2, level_color: 'yellow', frame_variant: 'norm', power: 3, health: 4,
   combat_power: 0, shield: 0, art_scale: 1, energy: null, countdown: null,
   defeated_countdown: null, power_color: null, health_color: null,
   combat_power_color: null, shield_color: null}};
@@ -3282,6 +3284,9 @@ function control(label, id = null) {{
   }}
   return found;
 }}
+const frameVariant = control('边框');
+frameVariant.value = 'blue'; frameVariant.onchange();
+assert.strictEqual(battleEntityState.frame_variant, 'blue');
 const mode = control('右上状态');
 mode.value = 'energy'; mode.onchange();
 assert.strictEqual(battleEntityState.energy, 0);
@@ -3358,6 +3363,7 @@ def test_battle_entry_rebuilds_temporary_state_without_dirtying(tmp_path):
 const assert = require('node:assert');
 const ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan']);
+const FRAME_VARIANT_VALUES = new Set(['norm', 'blue', 'black', 'red']);
 const STAT_VALUE_COLOR_VALUES = new Set(['red', 'green', 'purple']);
 let cards = {{shikigami: [], cards: []}};
 let curProject = '项目', curCard = '形态-stem', curMech = null;
@@ -3610,6 +3616,7 @@ def test_battle_navigation_integrates_hash_entry_guards_and_return(tmp_path):
 const assert = require('node:assert');
 const ENTITY_LEVELS = [0, 1, 2, 3];
 const LEVEL_COLOR_VALUES = new Set(['yellow', 'cyan']);
+const FRAME_VARIANT_VALUES = new Set(['norm', 'blue', 'black', 'red']);
 const STAT_VALUE_COLOR_VALUES = new Set(['red', 'green', 'purple']);
 function classList(active = false) {{
   const values = new Set(active ? ['active'] : []);

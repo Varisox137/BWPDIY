@@ -29,6 +29,16 @@ ENTITY_MAX_WORK_SIDE = 4096
 ENTITY_MAX_WORK_PIXELS = 16_000_000
 ENTITY_ART_Y_BIAS = -0.04  # 下角标使视觉重心偏下，卡图默认上移窗口高度的 4%
 LEVEL_COLORS = {"yellow", "cyan", "purple", "red", "blue", "brown", "greyblue", "orange"}
+ENTITY_FRAME_COLORS = {
+    "norm": ((31, 38, 52, 238), (154, 166, 190, 255),
+             (65, 72, 96, 255), (205, 213, 229, 220)),
+    "blue": ((17, 34, 45, 238), (83, 139, 153, 255),
+             (31, 64, 75, 255), (144, 190, 194, 220)),
+    "black": ((18, 23, 31, 238), (198, 164, 93, 255),
+              (55, 39, 25, 255), (235, 214, 153, 220)),
+    "red": ((47, 24, 29, 238), (180, 101, 91, 255),
+            (82, 40, 42, 255), (220, 151, 128, 220)),
+}
 
 _DEFAULT_LAYOUT = json.loads(Path(__file__).with_name("default_layout.json").read_text(
     encoding="utf-8"))["对局式神"]
@@ -129,6 +139,7 @@ def validate_entity_state(state: dict) -> dict:
     normalized = {
         "level": state.get("level", 1),
         "level_color": state.get("level_color", "yellow"),
+        "frame_variant": state.get("frame_variant", "norm"),
         "power": state.get("power", 0),
         "health": state.get("health", 0),
         "combat_power": state.get("combat_power", 0),
@@ -174,6 +185,9 @@ def validate_entity_state(state: dict) -> dict:
     color = normalized["level_color"]
     if not isinstance(color, str) or color not in LEVEL_COLORS:
         raise ValueError("level_color 非法")
+    variant = normalized["frame_variant"]
+    if not isinstance(variant, str) or variant not in ENTITY_FRAME_COLORS:
+        raise ValueError("frame_variant 非法")
     scale = normalized["art_scale"]
     if isinstance(scale, bool) or not isinstance(scale, (int, float)):
         raise ValueError("art_scale 必须是有限正数")
@@ -196,6 +210,10 @@ def _card_state(card: dict, state: dict) -> dict:
     if "level_color" not in state:
         normalized["level_color"] = (
             color if isinstance(color, str) and color in LEVEL_COLORS else "yellow")
+    variant = card.get("frame_variant")
+    if "frame_variant" not in state:
+        normalized["frame_variant"] = (
+            variant if isinstance(variant, str) and variant in ENTITY_FRAME_COLORS else "norm")
     for field in ("power", "health", "combat_power", "shield"):
         key = f"{field}_color"
         color = card.get(key)
@@ -456,15 +474,15 @@ def _entity_work_bounds(lib: AssetLibrary, elements: dict,
 
 
 def _render_frame(art: Image.Image, origin: tuple[int, int],
-                  factor: float = 1.0) -> Image.Image:
+                  factor: float = 1.0, variant: str = "norm") -> Image.Image:
     size = (max(1, round(ENTITY_SIZE[0] * factor)),
             max(1, round(ENTITY_SIZE[1] * factor)))
     v = lambda value: round(value * factor)
     line = max(1, v(1))
+    fill, outer, inner, art_edge = ENTITY_FRAME_COLORS[variant]
     canvas = Image.new("RGBA", size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
-    draw.rounded_rectangle((v(1), v(1), v(94), v(142)), radius=v(8),
-                           fill=(18, 23, 31, 238))
+    draw.rounded_rectangle((v(1), v(1), v(94), v(142)), radius=v(8), fill=fill)
     x, y = origin
     inner_box = (x, y, x + art.width - 1, y + art.height - 1)
     mask = Image.new("L", size, 0)
@@ -475,11 +493,10 @@ def _render_frame(art: Image.Image, origin: tuple[int, int],
     canvas = Image.alpha_composite(canvas, layer)
     draw = ImageDraw.Draw(canvas)
     draw.rounded_rectangle((v(1), v(1), v(94), v(142)), radius=v(8),
-                           outline=(198, 164, 93, 255), width=line)
+                           outline=outer, width=line)
     draw.rounded_rectangle((v(2), v(2), v(93), v(141)), radius=v(7),
-                           outline=(55, 39, 25, 255), width=line)
-    draw.rounded_rectangle(inner_box, radius=v(6),
-                           outline=(235, 214, 153, 220), width=line)
+                           outline=inner, width=line)
+    draw.rounded_rectangle(inner_box, radius=v(6), outline=art_edge, width=line)
     return canvas
 
 
@@ -538,7 +555,7 @@ def render_entity(card: dict, state: dict, assets_dir: Path,
                           offset_y, state["art_scale"], cover_base=original)
     center_x, center_y = window["center"]
     origin = (round(center_x - window_width / 2), round(center_y - window_height / 2))
-    frame = _render_frame(art, origin, factor)
+    frame = _render_frame(art, origin, factor, state["frame_variant"])
     if state["defeated_countdown"] is not None:
         alpha = frame.getchannel("A")
         frame = ImageOps.grayscale(frame).convert("RGBA")

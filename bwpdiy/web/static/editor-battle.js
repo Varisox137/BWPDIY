@@ -29,8 +29,9 @@ function makeEntityState(card) {
   }
   power = Math.min(9999999999, power);
   health = Math.min(9999999999, health);
-  const state = {level, level_color: color, power, health,
-    combat_power: 0, shield: 0, energy: null, countdown: null,
+  const state = {level, level_color: color,
+    frame_variant: FRAME_VARIANT_VALUES.has(card.frame_variant) ? card.frame_variant : 'norm',
+    power, health, combat_power: 0, shield: 0, energy: null, countdown: null,
     defeated_countdown: null, art_scale: 1};
   for (const field of ['power', 'health', 'combat_power', 'shield']) {
     const key = `${field}_color`;
@@ -285,6 +286,8 @@ function buildBattleForm() {
     }
     return;
   }
+  battleSelectRow(div, '边框', FRAME_VARIANTS, state.frame_variant,
+    value => setBattleEntityField('frame_variant', value));
   battleScaleRow(div);
   for (const [field, label, nonneg] of [
     ['power', '力量', true], ['health', '生命', true],

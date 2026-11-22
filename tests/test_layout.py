@@ -123,7 +123,7 @@ def test_burst_status_backfilled_and_legacy_burst_migrated(tmp_path, name, exist
             assert (name in effective["elements"]) == expected
     actual = layouts["法术"]["elements"][name]
     if name == "burst":
-        assert actual["pos"] == [237, 14]  # 新默认 [228,70] + 旧微调 [9,8] - [0,64]
+        assert actual["pos"] == [277, 12]  # 新默认 [268,68] + 旧微调 [9,8] - [0,64]
         assert "offset" not in actual
     else:
         assert actual == existing

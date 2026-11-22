@@ -354,16 +354,12 @@
       },
       "burst": {
         "kind": "burst",
-        "pos": [
-          228,
-          70
-        ],
-        "icon_size": 68,
+        "icon_size": 74,
         "num_offset": [
-          0,
-          0
+          1,
+          1
         ],
-        "font_size": 40,
+        "font_size": 46,
         "sign_offset": [
           0,
           0
@@ -373,7 +369,11 @@
           0
         ],
         "sign_size_plus": 24,
-        "sign_size_minus": 16
+        "sign_size_minus": 16,
+        "pos": [
+          258,
+          68
+        ]
       },
       "status": {
         "kind": "status",
@@ -444,6 +444,12 @@
               499
             ]
           },
+          "burst": {
+            "pos": [
+              262,
+              68
+            ]
+          },
           "status": {
             "offset": [
               56,
@@ -478,6 +484,12 @@
             "pos": [
               235,
               480
+            ]
+          },
+          "burst": {
+            "pos": [
+              254,
+              68
             ]
           }
         },
@@ -636,16 +648,12 @@
       },
       "burst": {
         "kind": "burst",
-        "pos": [
-          228,
-          70
-        ],
-        "icon_size": 68,
+        "icon_size": 74,
         "num_offset": [
-          0,
-          0
+          1,
+          1
         ],
-        "font_size": 40,
+        "font_size": 46,
         "sign_offset": [
           0,
           0
@@ -655,7 +663,11 @@
           0
         ],
         "sign_size_plus": 24,
-        "sign_size_minus": 16
+        "sign_size_minus": 16,
+        "pos": [
+          268,
+          68
+        ]
       },
       "status": {
         "kind": "status",
@@ -720,6 +732,12 @@
               498
             ]
           },
+          "burst": {
+            "pos": [
+              272,
+              68
+            ]
+          },
           "status": {
             "offset": [
               50,
@@ -766,6 +784,12 @@
             "pos": [
               137,
               498
+            ]
+          },
+          "burst": {
+            "pos": [
+              264,
+              68
             ]
           },
           "status": {
@@ -821,6 +845,12 @@
             "pos": [
               146,
               495
+            ]
+          },
+          "burst": {
+            "pos": [
+              272,
+              68
             ]
           },
           "status": {
@@ -932,16 +962,12 @@
       },
       "burst": {
         "kind": "burst",
-        "pos": [
-          228,
-          70
-        ],
-        "icon_size": 68,
+        "icon_size": 74,
         "num_offset": [
-          0,
-          0
+          1,
+          1
         ],
-        "font_size": 40,
+        "font_size": 46,
         "sign_offset": [
           0,
           0
@@ -951,7 +977,11 @@
           0
         ],
         "sign_size_plus": 24,
-        "sign_size_minus": 16
+        "sign_size_minus": 16,
+        "pos": [
+          256,
+          68
+        ]
       },
       "status": {
         "kind": "status",
@@ -1021,6 +1051,12 @@
               138,
               498
             ]
+          },
+          "burst": {
+            "pos": [
+              260,
+              68
+            ]
           }
         },
         "text_regions": {
@@ -1056,6 +1092,12 @@
             "pos": [
               132,
               497
+            ]
+          },
+          "burst": {
+            "pos": [
+              254,
+              68
             ]
           }
         },
@@ -1101,6 +1143,12 @@
             "pos": [
               138,
               495
+            ]
+          },
+          "burst": {
+            "pos": [
+              260,
+              68
             ]
           }
         },
@@ -1186,16 +1234,12 @@
       },
       "burst": {
         "kind": "burst",
-        "pos": [
-          228,
-          70
-        ],
-        "icon_size": 68,
+        "icon_size": 74,
         "num_offset": [
-          0,
-          0
+          1,
+          1
         ],
-        "font_size": 40,
+        "font_size": 46,
         "sign_offset": [
           0,
           0
@@ -1205,7 +1249,11 @@
           0
         ],
         "sign_size_plus": 24,
-        "sign_size_minus": 16
+        "sign_size_minus": 16,
+        "pos": [
+          272,
+          68
+        ]
       },
       "status": {
         "kind": "status",
@@ -1263,6 +1311,12 @@
               145,
               500
             ]
+          },
+          "burst": {
+            "pos": [
+              268,
+              68
+            ]
           }
         },
         "text_regions": {
@@ -1306,6 +1360,12 @@
               164,
               500
             ]
+          },
+          "burst": {
+            "pos": [
+              288,
+              68
+            ]
           }
         },
         "text_regions": {
@@ -1348,6 +1408,12 @@
             "pos": [
               155,
               495
+            ]
+          },
+          "burst": {
+            "pos": [
+              278,
+              68
             ]
           }
         },

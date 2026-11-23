@@ -568,15 +568,11 @@ def test_entity_preview_is_read_only(client, project, library_dir):
 def test_editor_page_at_root(client):
     r = client.get("/")
     assert r.status_code == 200 and "text/html" in r.headers["content-type"]
-    # 编辑器主体页含三 tab：卡牌库 / 对局预览 / 布局设置
-    assert "卡牌库" in r.text and "对局预览" in r.text and "布局设置" in r.text
+    assert '>制作</button>' in r.text and '>对局预览</button>' in r.text and '>高级布局</button>' in r.text
 
 
-def test_layout_redirects_to_editor_layout_tab(client):
-    """独立布局页已退役：/layout 重定向到编辑器主体页的布局设置 tab。"""
-    r = client.get("/layout", follow_redirects=False)
-    assert r.status_code in (301, 302, 303, 307, 308)
-    assert r.headers["location"] == "/#layout"
+def test_retired_layout_route_is_not_available(client):
+    assert client.get("/layout", follow_redirects=False).status_code == 404
 
 
 # ---------- 修复轮 1：StoreError.code 分派 + 坏 artwork 容错 ----------

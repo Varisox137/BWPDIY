@@ -1,4 +1,5 @@
 // ================= 共享常量与工具 =================
+var tutorialMode = false;
 const TYPES = ["式神", "战斗", "法术", "形态", "幻境", "协战"];
 const FACTIONS = ["红莲", "苍叶", "青岚", "紫岩", "无相"];
 const RARITIES = ["N", "R", "SR", "SSR"];
@@ -51,6 +52,11 @@ function tracksStorageWrite(args) {
 }
 window.fetch = (...args) => {
   const tracked = tracksStorageWrite(args);
+  if (tutorialMode && tracked) {
+    return Promise.resolve(new Response(JSON.stringify({detail: '教程模式不会写入卡牌库'}), {
+      status: 409, headers: {'Content-Type': 'application/json'},
+    }));
+  }
   if (tracked) pendingStorageWrites++;
   return _origFetch(...args).catch(e => {
     if (!serverDownShown && !manualShutdown) {
@@ -119,6 +125,7 @@ function showTab(name) {
 // tab 切换门卫：未保存修改弹窗提醒（不丢弃——布局/卡牌修改均保留在内存，仅提示）；
 // 单卡布局模式下离开布局 tab：确认后退出单卡模式（布局调整丢弃，卡牌内容修改保留回卡牌库）
 async function tryShowTab(name) {
+  if (typeof tutorialMode !== 'undefined' && tutorialMode) return false;
   const cur = document.getElementById('tab-battle').classList.contains('active') ? 'battle'
     : document.getElementById('tab-layout').classList.contains('active') ? 'layout' : 'cards';
   if (name === cur) return;
@@ -138,7 +145,7 @@ document.querySelectorAll('.navtab').forEach(b => b.onclick = () => tryShowTab(b
 // 布局 navtab 文案：单卡模式下显示「单卡布局设置」
 function updateLayoutNavtab() {
   document.querySelector('.navtab[data-tab="layout"]').textContent =
-    cardLayoutMode ? '单卡布局设置' : '全局布局设置';
+    cardLayoutMode ? '单卡布局设置' : '高级布局';
 }
 
 // ================= 顶栏扩展选项（localStorage 持久化） =================
@@ -147,7 +154,6 @@ function updateLayoutNavtab() {
 const EXT_KEY = 'bwpdiy_ext_options';
 const extOptions = {layout: false, marker: false};
 try { Object.assign(extOptions, JSON.parse(localStorage.getItem(EXT_KEY) || '{}')); } catch (e) {}
-if (extOptions.rarity_n) { extOptions.marker = true; delete extOptions.rarity_n; }  // 旧键迁移
 function saveExtOptions() { localStorage.setItem(EXT_KEY, JSON.stringify(extOptions)); }
 function applyExtOptions() {
   document.getElementById('ext-layout').checked = extOptions.layout;

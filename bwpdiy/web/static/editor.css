@@ -40,6 +40,11 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
   #c-form .readonly { color: #666; font-size: 12px; margin-top: 4px; }
   #c-form-errors { color: #c0392b; font-size: 12px; white-space: pre-line; margin-top: 8px; }
   #c-dirty { color: #a00; font-size: 12px; margin-left: 8px; }
+  .primary-action { border: 1px solid #9d7d35; background: #d9b96a; color: #26221c; font-weight: bold; cursor: pointer; }
+  .primary-action:disabled { cursor: default; opacity: .55; }
+  #c-card-advanced { margin-top: 10px; border-top: 1px solid #c9c2b2; padding-top: 6px; }
+  #c-card-advanced > summary { cursor: pointer; color: #61563f; font-size: 12px; font-weight: bold; }
+  #c-card-advanced[open] > summary { margin-bottom: 4px; }
 
   /* ---- 对局预览 tab ---- */
   #b-left { width: 130px; padding: 8px; overflow-y: auto; background: #f3efe8; box-sizing: border-box; }

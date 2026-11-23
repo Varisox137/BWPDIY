@@ -16,7 +16,7 @@ from io import BytesIO
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
@@ -170,11 +170,6 @@ def create_app(assets_dir: Path, static_dir: Path | None = None,
     @app.get("/")
     def editor_page():
         return FileResponse(static_dir / "editor.html")
-
-    @app.get("/layout")
-    def layout_page():
-        # 布局设置已迁入编辑器主体页 tab（editor.html #layout），独立页退役，保留重定向兼容旧链接
-        return RedirectResponse("/#layout")
 
     @app.get("/api/layout")
     def get_layout():

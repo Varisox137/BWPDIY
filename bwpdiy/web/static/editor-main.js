@@ -20,12 +20,13 @@ document.getElementById('c-btn-changelog').onclick = () => {
 document.getElementById('changelog-close').onclick = () => { changelogModal.style.display = 'none'; };
 changelogModal.onclick = ev => { if (ev.target === changelogModal) changelogModal.style.display = 'none'; };
 
+initializeTutorial();
 fetch('/api/version').then(r => r.json()).then(v => {
   document.title += ' v' + v.version;
   document.querySelector('#topnav .brand .ver').textContent = 'v' + v.version;
   if (v.boot_id && localStorage.getItem('bwpdiy_boot_id') !== String(v.boot_id)) {
     localStorage.setItem('bwpdiy_boot_id', v.boot_id);
-    openChangelog(v.version, v.notes);
+    if (!tutorialWelcomeOpen() && !tutorialMode) openChangelog(v.version, v.notes);
   }
 }).catch(() => {});
 applyExtOptions();  // 扩展选项恢复（含布局 navtab 显隐）
@@ -87,10 +88,14 @@ function checkUpdate() {
 checkUpdate();
 setInterval(checkUpdate, 60000);
 if (location.hash === '#battle' && extOptions.marker) showTab('battle');
-if (location.hash === '#layout' && extOptions.layout) showTab('layout');  // /layout 重定向落点（布局 tab 隐藏时不跳转）
+if (location.hash === '#layout' && extOptions.layout) showTab('layout');  // 布局 hash 深链（布局 tab 隐藏时不跳转）
 
-function hasUnsavedChanges() { return dirty || singleDirty || cDirty || mDirty || pDirty; }
+function hasUnsavedChanges() {
+  const cardDirty = typeof tutorialMode !== 'undefined' && tutorialMode ? false : cDirty || mDirty;
+  return dirty || singleDirty || cardDirty || pDirty;
+}
 async function shutdownTool() {
+  if (typeof tutorialMode !== 'undefined' && tutorialMode) return;
   if (hasUnsavedChanges() && !await sessionConfirm(
       '有未保存修改，退出将丢失这些修改，继续退出？', 'unsaved')) return;
   const button = document.getElementById('app-shutdown');

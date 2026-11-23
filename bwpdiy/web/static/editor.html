@@ -4,14 +4,15 @@
 <meta charset="utf-8">
 <title>BWPDIY 编辑器</title>
 <link rel="stylesheet" href="editor.css">
+<link rel="stylesheet" href="editor-tutorial.css">
 </head>
 <body>
 <nav id="topnav">
   <span class="brand">BWPDIY <span class="ver"></span> by <a href="https://github.com/Varisox137/BWPDIY" target="_blank" rel="noopener">Varisox137</a></span>
   <button id="app-shutdown">退出DIY工具</button>
-  <button class="navtab active" data-tab="cards">卡牌库</button>
+  <button class="navtab active" data-tab="cards">制作</button>
   <button class="navtab" data-tab="battle">对局预览</button>
-  <button class="navtab" data-tab="layout">全局布局设置</button>
+  <button class="navtab" data-tab="layout">高级布局</button>
   <span id="ext-options">
     扩展选项：
     <label><input type="checkbox" id="ext-layout"> 手动调整布局</label>
@@ -134,8 +135,11 @@
   <div id="help-box">
     <button id="help-close">关闭</button>
     <h3>BWPDIY 使用说明</h3>
+    <button id="help-start-tutorial" class="primary-action">开始五步互动教程</button>
     <h4>基本流程</h4>
     <div>左栏新建项目与卡牌（默认新建式神；非式神卡的「所属式神」可关联同项目式神）→ 右栏编辑卡牌内容、上传卡图 → 中央实时预览 → 「保存」写盘；「导出卡图」把当前卡牌（含未保存修改）下载为 PNG 图片（默认按卡名命名）。保存与上传会自动补齐空白 ID，卡图按最终 ID 命名落盘。项目、主要式神与卡牌/衍生物均按 ID 升序排列，无 ID 项在后按名称排序。再次点击已选条目可取消选择：卡牌回到所属式神，式神回到项目，项目或机制回到仅显示全局机制。连续 2 小时无操作时程序会自动停止（防占用），重新启动即可。</div>
+    <h4>互动教程</h4>
+    <div>首次使用或点击上方「开始五步互动教程」即可练习卡名与描述、内置样图、鼠标构图、关键字高亮和 PNG 导出。教程使用纯内存沙盒，保存、上传与项目操作会被禁止；完成后恢复教程前的卡牌、机制和未保存修改。ID、日期与外观选项收在右栏「外观与高级信息」中。</div>
     <h4>描述文本自适应</h4>
     <div>默认「智能」排版会把开头的纯关键字短句独立为首行，并比较条件/增强/响应/觉醒前的断行效果；按文字实际墨迹宽度换行与居中，优先避免闭标点/句读位于行首、运算符或前引号/开括号留在行尾，再在不增加行数时避免高亮跨行与内嵌图标位于行首。确定字号和行数后，还会在不降低断行美观度的前提下缩窄临时文本区，使每行长度更一致；保存的文本区布局不变。每行水平居中、整体竖直居中，排不下时先微调居中点、再逐级缩小字号，并避让左下/右下角标。启用「扩展功能」后可在描述上方逐卡选择「智能/仅换行/关闭」：仅换行不使用语义断行与行长均衡；关闭只按手动换行绘制且不自动缩小字号。</div>
     <h4>关键字高亮</h4>
@@ -203,11 +207,35 @@
   </div>
 </div>
 
+<div id="tutorial-welcome" role="dialog" aria-modal="true" aria-labelledby="tutorial-welcome-title">
+  <div id="tutorial-welcome-box">
+    <h2 id="tutorial-welcome-title">用五步做出第一张卡</h2>
+    <p>通过山风样卡体验内容编辑、内置卡图、鼠标构图、关键字高亮和真实 PNG 导出。</p>
+    <p>教程在纯内存沙盒中进行，不会保存、上传或改动你的真实卡牌；没有项目也能完整体验，退出后恢复教程前内容。</p>
+    <div class="tutorial-welcome-actions">
+      <button id="tutorial-start" class="primary-action">开始教程</button>
+      <button id="tutorial-skip">直接使用</button>
+    </div>
+  </div>
+</div>
+<div id="tutorial-highlight" hidden></div>
+<div id="tutorial-coach" role="dialog" aria-live="polite" hidden>
+  <div id="tutorial-progress"></div>
+  <h2 id="tutorial-title"></h2>
+  <p id="tutorial-text"></p>
+  <div class="tutorial-actions">
+    <button id="tutorial-back">上一步</button>
+    <button id="tutorial-next" class="primary-action">下一步</button>
+    <button id="tutorial-exit">退出教程</button>
+  </div>
+</div>
+
 <script src="editor-core.js"></script>
 <script src="editor-cards.js"></script>
 <script src="editor-battle.js"></script>
 <script src="editor-mech.js"></script>
 <script src="editor-layout.js"></script>
+<script src="editor-tutorial.js"></script>
 <script src="editor-main.js"></script>
 </body>
 </html>

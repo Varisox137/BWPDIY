@@ -15,34 +15,7 @@ FRAME_LAYOUT_TYPES = ("式神", "战斗", "法术", "形态", "幻境", "协战"
 FRAME_LAYOUT_VARIANTS = ("blue", "black", "red")
 
 
-def _scale_legacy_entity(value, key=None, element_name=None):
-    if isinstance(value, dict):
-        return {
-            name: _scale_legacy_entity(
-                item, name, name if key == "elements" else element_name)
-            for name, item in value.items()
-        }
-    if isinstance(value, list):
-        scaled = [_scale_legacy_entity(item, element_name=element_name) for item in value]
-        if key == "num_offset" and len(value) == 2 and not isinstance(value[1], bool):
-            if element_name in ("power", "health") and value[1] == 10:
-                scaled[1] = 6
-            elif element_name in ("combat_power", "shield") and value[1] == 9:
-                scaled[1] = 5
-        return scaled
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return value
-    return value * 1.5
-
-
 def _fill_entity_defaults(entity: dict, default: dict) -> None:
-    elements = entity.get("elements")
-    if isinstance(elements, dict):
-        legacy = elements.pop("right_top", None)
-        if isinstance(legacy, dict):
-            for name in ("energy", "countdown"):
-                if name not in elements:
-                    elements[name] = copy.deepcopy(legacy)
     for key, value in default.items():
         if key not in entity:
             entity[key] = copy.deepcopy(value)
@@ -107,10 +80,6 @@ def load_layouts(assets_dir: Path) -> dict:
             layouts[name] = copy.deepcopy(default[name])
     entity = layouts.get("对局式神")
     if isinstance(entity, dict):
-        if "version" not in entity:
-            layouts["对局式神"] = _scale_legacy_entity(entity)
-            entity = layouts["对局式神"]
-            entity["version"] = 2
         _fill_entity_defaults(entity, default["对局式神"])
     _fill_element_defaults(layouts, default)
     _materialize_frame_variants(layouts)

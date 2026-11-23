@@ -514,11 +514,12 @@ function buildCardProps() {
   };
   l.appendChild(ta); div.appendChild(l);
 }
-function textRow(div, label, val, set) {
+function textRow(div, label, val, set, id = null) {
   const l = document.createElement('label');
   l.textContent = label + ' ';
   const i = document.createElement('input');
   i.type = 'text'; i.value = val;
+  if (id) i.id = id;
   i.onchange = () => set(i.value);
   l.appendChild(i); div.appendChild(l);
 }

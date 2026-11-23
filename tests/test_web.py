@@ -34,8 +34,9 @@ def test_get_layout(client):
 
 def test_editor_static_assets(client):
     """拆分后的 HTML 引用必须由真实服务提供，且不得遮蔽现有 API。"""
-    for name in ("editor.css", "editor-core.js", "editor-cards.js", "editor-battle.js",
-                 "editor-mech.js", "editor-layout.js", "editor-main.js"):
+    for name in ("editor.css", "editor-tutorial.css", "editor-core.js", "editor-cards.js",
+                 "editor-battle.js", "editor-mech.js", "editor-layout.js", "editor-tutorial.js",
+                 "editor-main.js"):
         r = client.get(f"/{name}")
         assert r.status_code == 200 and r.content
     assert client.get("/api/version").status_code == 200
@@ -2135,7 +2136,7 @@ def test_layout_burst_signed_sample_request_without_dirty(tmp_path):
         "function cardField(name)",
         "function setCardField(name, value)",
         "function buildCardProps()",
-        "function textRow(div, label, val, set)",
+        "function textRow(div, label, val, set, id = null)",
         "function numRowC(div, label, val, nonneg, set, extra = null, max = 9999999999, min = null)",
         "function selRow(div, label, opts, val, set, map = null)",
         "function selRowC(div, label, opts, val, set, map = null)",
@@ -3836,7 +3837,7 @@ def test_battle_page_structure_and_card_library_migration():
     assert 'id="c-entity"' not in html
     scripts = [chunk.split('"', 1)[0] for chunk in html.split('<script src="')[1:]]
     assert scripts == ["editor-core.js", "editor-cards.js", "editor-battle.js",
-                       "editor-mech.js", "editor-layout.js", "editor-main.js"]
+                       "editor-mech.js", "editor-layout.js", "editor-tutorial.js", "editor-main.js"]
     cards = (EDITOR_HTML.parent / "editor-cards.js").read_text(encoding="utf-8")
     for obsolete in ("appendEntityForm", "exportEntity", "statColorSelect",
                      "scheduleEntityPreview", "c-entity"):
@@ -4755,6 +4756,207 @@ async function loadCards(stem) {{ loads.push(stem); }}
   resolveRefresh();
   await pending;
   assert.deepStrictEqual(loads, []);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_tutorial_write_barrier_blocks_network_without_breaking_preview(tmp_path):
+    functions = "\n".join(_extract_js(_script(), decl) for decl in (
+        "function tracksStorageWrite(args)",
+        "window.fetch = (...args) =>",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let tutorialMode = true, pendingStorageWrites = 0;
+let serverDownShown = false, manualShutdown = false;
+const calls = [];
+const window = {{fetch: (...args) => {{ calls.push(args); return Promise.resolve({{ok: true}}); }}}};
+const _origFetch = window.fetch.bind(window);
+{functions}
+(async () => {{
+  const blocked = await window.fetch('/api/projects/P/cards/A', {{method: 'PUT'}});
+  assert.strictEqual(blocked.status, 409);
+  assert.strictEqual(calls.length, 0);
+  assert.strictEqual(pendingStorageWrites, 0);
+  await window.fetch('/api/preview', {{method: 'POST'}});
+  assert.strictEqual(calls.length, 1);
+  assert.strictEqual(pendingStorageWrites, 0);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+def test_desktop_tutorial_structure_and_primary_navigation():
+    html = EDITOR_HTML.read_text(encoding="utf-8")
+    assert '<link rel="stylesheet" href="editor-tutorial.css">' in html
+    assert '>制作</button>' in html
+    assert '>高级布局</button>' in html
+    for element_id in ("tutorial-welcome", "tutorial-start", "tutorial-skip",
+                       "tutorial-coach", "tutorial-next", "tutorial-exit",
+                       "help-start-tutorial"):
+        assert f'id="{element_id}"' in html
+    welcome = html.split('id="tutorial-welcome"', 1)[1].split('id="tutorial-coach"', 1)[0]
+    assert "纯内存" in welcome and "不会保存" in welcome
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_tutorial_sandbox_restores_all_editing_state_without_changing_selection(tmp_path):
+    functions = "\n".join(_extract_js(_script(), decl) for decl in (
+        "async function startTutorial()",
+        "async function restoreTutorialBackup()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let tutorialMode = false, tutorialBackup = null, tutorialStep = 0, tutorialFinished = false;
+let curProject = '真实项目', curCard = '真实卡', curMech = '真实机制';
+let cardData = {{name: '已存卡'}}, formData = {{name: '未存卡'}}, cDirty = true, contentRev = 7;
+let undoStack = [{{name: '撤回基准'}}], prevFormSnap = {{name: '上一快照'}}, lastEditAt = 123;
+let mechData = {{name: '已存机制'}}, mechForm = {{name: '未存机制'}}, mDirty = true;
+let cPreviewSeq = 2, cPreviewAppliedSeq = 1, cPortraitSeq = 3, cPortraitAppliedSeq = 2;
+let cPreviewTimer = null, cPortraitTimer = null, selectSeq = 0;
+const mousePreviewFrames = {{art: 0, portrait: 0}};
+function cancelAnimationFrame() {{}}
+const requests = [], builds = [];
+const elements = Object.fromEntries(['tutorial-welcome', 'tutorial-coach', 'tutorial-highlight',
+  'help-modal', 'changelog-modal', 'c-preview', 'c-portrait'].map(id => [id,
+  {{style: {{display: 'none'}}, hidden: true, removeAttribute() {{}}}}]));
+const document = {{getElementById: id => elements[id]}};
+const tutorialWelcome = elements['tutorial-welcome'];
+const tutorialCoach = elements['tutorial-coach'];
+const tutorialHighlight = elements['tutorial-highlight'];
+const cPreviewImg = elements['c-preview'];
+const cStatusEl = {{textContent: ''}};
+function deepCopy(value) {{ return JSON.parse(JSON.stringify(value)); }}
+function clearTimeout() {{}}
+function resetUndo() {{ undoStack = []; prevFormSnap = deepCopy(formData); lastEditAt = 0; }}
+function buildForm() {{ builds.push('card'); }}
+function buildMechForm() {{ builds.push('mech'); }}
+function setTutorialChrome() {{}}
+function renderTutorialStep() {{}}
+function cPreviewPortrait() {{}}
+async function cPreviewForm() {{ requests.push('form-preview'); }}
+async function cPreviewProject() {{ requests.push('project-preview'); }}
+async function mechPreview(withForm) {{ requests.push(['mech-preview', withForm]); }}
+async function fetch(url) {{
+  assert.strictEqual(url, '/api/samples');
+  return {{ok: true, json: async () => ({{式神: {{type: '式神', name: '山风', description: '[[不屈]]'}}}})}};
+}}
+{functions}
+(async () => {{
+  const original = {{cardData, formData, curProject, curCard, mechData, mechForm}};
+  await startTutorial();
+  assert.strictEqual(tutorialMode, true);
+  assert.strictEqual(formData.name, '山风');
+  assert.strictEqual(formData.artwork.images[0].path, 'sample_art.png');
+  assert.strictEqual(cardData.name, '山风');
+  assert.strictEqual(curMech, null);
+  assert.strictEqual(mechForm, null);
+  assert.strictEqual(cDirty, false);
+  assert.strictEqual(mDirty, false);
+  assert.strictEqual(curProject, original.curProject);
+  assert.strictEqual(curCard, original.curCard);
+  formData.name = '教程改动'; cDirty = true; contentRev = 99;
+  undoStack.push({{name: '教程撤回'}}); prevFormSnap = {{name: '教程快照'}}; lastEditAt = 999;
+  await restoreTutorialBackup();
+  assert.strictEqual(tutorialMode, false);
+  assert.strictEqual(tutorialBackup, null);
+  assert.deepStrictEqual(cardData, original.cardData);
+  assert.deepStrictEqual(formData, original.formData);
+  assert.deepStrictEqual(mechData, original.mechData);
+  assert.deepStrictEqual(mechForm, original.mechForm);
+  assert.strictEqual(curMech, '真实机制');
+  assert.strictEqual(cDirty, true);
+  assert.strictEqual(mDirty, true);
+  assert.strictEqual(contentRev, 7);
+  assert.deepStrictEqual(undoStack, [{{name: '撤回基准'}}]);
+  assert.deepStrictEqual(prevFormSnap, {{name: '上一快照'}});
+  assert.strictEqual(lastEditAt, 123);
+  assert.strictEqual(curProject, '真实项目');
+  assert.strictEqual(curCard, '真实卡');
+  assert.deepStrictEqual(builds, ['card', 'mech']);
+  assert.deepStrictEqual(requests.at(-1), ['mech-preview', true]);
+  assert(cPreviewAppliedSeq >= cPreviewSeq);
+  assert(cPortraitAppliedSeq >= cPortraitSeq);
+  console.log('OK');
+}})().catch(e => {{ console.error(e); process.exit(1); }});
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_tutorial_last_step_hides_next_until_real_export_success(tmp_path):
+    functions = "\n".join(_extract_js(_script(), decl) for decl in (
+        "function renderTutorialStep()",
+        "function finishTutorial()",
+        "function tutorialExportSucceeded()",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let tutorialMode = true, tutorialFinished = false, tutorialStep = 4;
+const TUTORIAL_STEPS = Array.from({{length: 5}}, (_, i) => ({{selector: '#target-' + i,
+  title: '步骤' + i, text: '说明' + i}}));
+const tutorialBack = {{hidden: false}}, tutorialNext = {{hidden: false, textContent: ''}};
+const tutorialExit = {{textContent: ''}}, tutorialHighlight = {{hidden: false}};
+const elements = Object.fromEntries(['tutorial-progress', 'tutorial-title', 'tutorial-text'].map(id =>
+  [id, {{textContent: ''}}]));
+const document = {{getElementById: id => elements[id], querySelector: () => null}};
+function scheduleTutorialHighlight() {{}}
+function markTutorialSeen() {{}}
+{functions}
+renderTutorialStep();
+assert.strictEqual(elements['tutorial-progress'].textContent.includes('5/5'), true);
+assert.strictEqual(tutorialNext.hidden, true);
+assert.strictEqual(tutorialFinished, false);
+tutorialFinished = false;
+renderTutorialStep();
+tutorialExportSucceeded();
+assert.strictEqual(tutorialFinished, true);
+assert.strictEqual(tutorialNext.hidden, false);
+assert.strictEqual(tutorialNext.textContent, '完成并返回');
+assert.strictEqual(tutorialBack.hidden, true);
+console.log('OK');
+"""
+    _run_node(tmp_path, driver)
+
+
+@pytest.mark.skipif(NODE is None, reason="node 不可用")
+def test_tutorial_preview_uses_generic_body_and_normal_request_is_unchanged(tmp_path):
+    functions = "\n".join(_extract_js(_script(), decl) for decl in (
+        "async function tutorialPreviewBody()",
+        "async function cPreviewForm(withPortrait = true)",
+    ))
+    driver = f"""
+const assert = require('node:assert');
+let tutorialMode = false, curProject = '项目', curCard = '卡牌';
+let formData = {{type: '式神', name: '山风', frame_variant: 'blue'}};
+let cPreviewSeq = 0;
+const empty = () => ({{elements: {{}}, text_regions: {{}}}});
+const layouts = {{式神: {{...empty(), frame_variants: {{blue: empty()}}}}}};
+const requests = [];
+function validateCardJS() {{ return []; }}
+function cPreviewPortrait() {{}}
+async function ensureLayouts() {{ return layouts; }}
+function globalTypeLayout(type, variant) {{ return layouts[type].frame_variants[variant]; }}
+function layoutForRender(layout) {{ return {{...layout, rendered: true}}; }}
+function enc(value) {{ return value; }}
+async function cHandlePreviewResponse() {{}}
+async function fetch(url, options) {{ requests.push({{url, options}}); return {{ok: true}}; }}
+{functions}
+(async () => {{
+  await cPreviewForm(false);
+  assert.strictEqual(requests[0].url, '/api/projects/项目/cards/卡牌/preview');
+  assert.deepStrictEqual(JSON.parse(requests[0].options.body), {{card: formData}});
+  tutorialMode = true; curProject = null; curCard = null;
+  await cPreviewForm(false);
+  assert.strictEqual(requests[1].url, '/api/preview');
+  assert.deepStrictEqual(JSON.parse(requests[1].options.body), {{
+    type: '式神', card: formData,
+    layout: {{elements: {{}}, text_regions: {{}}, rendered: true}},
+  }});
   console.log('OK');
 }})().catch(e => {{ console.error(e); process.exit(1); }});
 """

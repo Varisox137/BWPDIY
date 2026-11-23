@@ -5,7 +5,7 @@
 ## 架构红线
 
 - 分层方向：`render`（纯 PIL）← `store`（卡牌库与校验）← `web`（FastAPI 编辑器）。`render` 不得 import `store/web`；基础包只依赖 Pillow，PyYAML/FastAPI/Uvicorn 属 `web` 可选依赖。
-- 前端无构建：`editor.html` 只保留结构，`editor.css` 与 `editor-{core,cards,battle,mech,layout,main}.js` 按固定顺序以经典脚本加载。共享全局词法依赖不变，禁止擅自改为 ES Module 或引入框架；Node 测试按 HTML 顺序拼接真实脚本。
+- 前端无构建：`editor.html` 只保留结构，`editor.css` 与 `editor-{core,cards,battle,mech,layout,tutorial,main}.js` 按固定顺序以经典脚本加载。共享全局词法依赖不变，禁止擅自改为 ES Module 或引入框架；Node 测试按 HTML 顺序拼接真实脚本。
 - `legacy/` 只读封存；`library/` 是用户创作数据，gitignore，不提交。
 - `prototype/pyodide/` 是隔离的在线本地版实验：Pyodide + Pillow 在 Web Worker 内运行，静态服务器仅在固定根路径白名单提供文件和运行时包（排除 PSD），旧路径/目录/未知 API 均 404；运行时包进程内只构建一次并按 2 MiB 分包（`runtime.json` + `runtime-chunks/`），不提供整包下载端点；默认全局限流 120/分钟、突发 30、连接 8、请求头超时 20s/响应 120s，安全边界见 `docs/online-security.md`。不得加入渲染/写盘 API 或暴露仓库其他目录；唯一例外是 `/api/log-admin/` 提取码鉴权的只读日志接口，运维页 `/log-admin/` 与 API 均禁缓存且不经 Service Worker；不参与 exe 打包。
 - 原型草稿、卡图与全局布局只存浏览器 IndexedDB（`storage.js`；布局独立于草稿），程序与素材只存浏览器 Cache Storage（`sw.js`）；两者均不得落服务器。同源资源与固定版本 Pyodide CDN 均按版本化缓存优先；修改任何原型程序或运行时资源必须递增 `RESOURCE_CACHE`，清缓存不得清草稿或布局。
@@ -39,7 +39,7 @@
 - 卡牌类型创建后固定。上传卡图按最终 `<id><ext>` 落盘，目标被其他组引用时自动加后缀；改 ID 不主动重命名旧图。无 ID 历史数据补号时保留原回退图引用与变换。
 - 项目级 YAML 快照保护保存联动，失败回滚；web 本地写操作串行。图片原子写入，写图后保存失败只恢复图片，不回滚此前已写入的项目/所属式神 YAML。
 - 正常退出、闲置终止、手动退出和更新替换前调用 `cleanup_unused_images`；任一 YAML 不可读或 images/ 为外链时跳过该项目，路径先 resolve 比较。
-- schema 字段只增不改，机制未实现不进数据。stat 数值最多 10 位；artwork/portrait 数值有限；布局数值有限且绝对值 ≤8192。
+- schema 字段只增不改，机制未实现不进数据。stat 数值最多 10 位；artwork/portrait 数值有限；布局数值有限且绝对值 ≤8192。2.0 仅接受当前 YYYYMMDD 日期与机制字段，不再归一短横线日期或静默清除早期 `marks`。
 - GUI 在新建非式神、非协战卡时选择 `token: true` 作为衍生牌，创建后不在右栏切换；衍生牌默认无稀有度。衍生物式神用类型与 `shikigami`，支持 `special_type`，不提供头像预览/参数/导出。
 - `burst/status` 仅临时渲染字段，不进 store schema 或持久化。爆能以独立 `pos` 定位于大卡右上角，旧等级相对 `offset` 加载时按新旧默认位置差迁移；特殊状态仍随等级锚点。`inline_faction_style` 为 1/2/3，缺省 1；扩展控件隐藏时不清空已保存值。
 
@@ -47,7 +47,7 @@
 
 - 开发版与正式版统一读写 `$HOME/.bwpdiy/layout.json`，缺失回退包内 `bwpdiy/render/default_layout.json`。包内默认布局变更的版本必须在「最近更新」首条加粗提示用户重新调整本地布局。
 - 六卡牌类型均按「类型 × 框品」完全解耦保存 `elements/text_regions`；`frame_variants.{blue,black,red}` 为稀疏覆盖，加载补全、保存剔同。单卡 `layout` 再覆盖实际框品全局布局，不跨类型传播。
-- 旧对局 `right_top` 加载时复制迁移到 `energy/countdown`；旧 64×96 对局布局只按 1.5 倍迁移一次。保留这些兼容迁移与校验，精简时不得删除。
+- 对局布局直接按当前 96×144 结构加载并补齐缺省元素；2.0 起不再迁移 64×96 或 `right_top` 早期配置。爆能旧 `offset` 的 1.8.8 迁移仍保留。
 - 大卡默认在 512×512 工作画布合成，最终按全部可见元素的 tightest alpha bbox 原尺寸返回；布局绝对 x 以实际牌框左缘为原点，y 以画布顶为原点。`crop=False` 仅用于内部/测试。
 - `render_card/render_entity/render_portrait` 支持可选 `width/height`：单参数按默认紧致比例推算，双参数允许取整 1px 误差；必须为正整数，边长 ≤8192、总像素 ≤6400 万。按目标原生重绘所有元素，禁止先渲染默认成品再 resize；无参数路径逐像素不变。
 - `render_mechanism` 支持 `chars_per_line` 与 `font_scale`，不要求保持比例：字数决定文本宽与框宽；倍率同步缩放文字、文本区、框宽/横向偏移和框行高，不缩放角标。
@@ -61,7 +61,8 @@
 
 ## WebGUI 行为
 
-- 三个主 tab：卡牌库、对局预览、全局布局设置。布局与对局页分别由「手动调整布局」「扩展功能」控制显隐；`/layout` 仅保留到 `/#layout` 的重定向。
+- 三个主 tab：制作、对局预览、高级布局（单卡模式仍显示单卡布局设置）。布局与对局页分别由「手动调整布局」「扩展功能」控制显隐；旧独立 `/layout` 路由已移除，仅保留 `/#layout` hash 深链。
+- 桌面互动教程使用 `editor-tutorial.js/css` 和通用样卡预览接口构成纯内存沙盒：保存并恢复卡牌/机制表单与撤回状态，禁止保存、上传和项目操作，导出真实 PNG 后才完成；无项目也可运行，不得为教程创建或覆盖用户数据。首次欢迎优先于最近更新，localStorage 仅记录教程完成偏好。
 - 再次点击已选条目取消选择：卡牌回所属式神、式神回项目、项目/机制回到仅显示全局机制。删除式神、专属牌或非全局机制后同样保留上一级项目/式神上下文并恢复对应表单，不自动选中兄弟项。全局机制选中时清空项目/式神/卡牌；非全局机制保留所属上下文，列表显示全局+当前项目+当前式神机制，其中非全局机制名称加粗。新建/取消全局按最近选择归属（式神优先），无项目则拒绝。
 - 卡牌鼠标预览按 art/portrait 独立 `requestAnimationFrame` 调度：每通道每帧最多一次、取最新值，最多一个在途请求与一个最新待办，禁止排队回放轨迹；mouseup 强制最终预览，响应序号防逆序覆盖，切卡/清空使旧响应失效。普通输入 300ms 防抖。
 - 对局预览使用独立会话和响应序号；离开页面使旧预览/导出失效。所有临时调参与导出不写盘、不置脏。

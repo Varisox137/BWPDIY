@@ -1221,18 +1221,6 @@ def test_validate_mechanism_rejects(mech, needle):
     assert any(needle in e for e in errors), errors
 
 
-def test_mechanism_load_migrates_legacy_marks(lib):
-    """旧机制文件里的 marks 键（唯一/瞬发角标，已移除）读取时静默丢弃，保存不写回。"""
-    import yaml
-    mdir = lib / "mechanisms"
-    mdir.mkdir(parents=True)
-    (mdir / "旧机制.yaml").write_text(
-        yaml.safe_dump({**MECH, "name": "旧机制", "marks": ["unique"]},
-                       allow_unicode=True), encoding="utf-8")
-    data = load_mechanism(lib, "旧机制")
-    assert "marks" not in data
-
-
 # ---------- 版本日期与多版本（v1.6.0） ----------
 
 from bwpdiy.store import (
@@ -1468,15 +1456,6 @@ def test_schema_rejects_nonfinite_layout_values_and_overlong_stats(lib):
         {**SHIKIGAMI, "layout": {"elements": {"name": {"pos": [float("inf"), 0]}}}}))
     assert validate_card({**SHIKIGAMI, "power": 10 ** 10 - 1}) == []
     assert any("10 位" in e for e in validate_card({**SHIKIGAMI, "power": 10 ** 10}))
-
-
-def test_legacy_dashed_version_date_normalized(lib):
-    """旧带短横线日期（v1.6.0）：保存/读取归一为 8 位数字（v1.6.1）。"""
-    create_project(lib, "山风")
-    save_card(lib, "山风", "斩", {**FIGHT, "shikigami": "", "version_date": "2026-01-02"})
-    assert load_card(lib, "山风", "斩")["version_date"] == "20260102"
-    save_mechanism(lib, "蛊蚀", {**MECH, "version_date": "2026-01-02"})
-    assert load_mechanism(lib, "蛊蚀")["version_date"] == "20260102"
 
 
 def test_shorthand_id_expands_with_shikigami(lib):

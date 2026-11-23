@@ -274,92 +274,7 @@ def _write_entity_layout(tmp_path, entity):
         json.dumps({"对局式神": entity}, ensure_ascii=False), encoding="utf-8")
 
 
-def test_legacy_default_entity_layout_migrates_to_96(tmp_path):
-    legacy = {
-        "elements": {
-            "level": {"kind": "level_badge", "pos": [32, 88], "base_size": 18,
-                      "num_size": 14, "num_offset": [0, 0]},
-            "power": {"kind": "stat", "field": "power", "pos": [10, 82],
-                      "icon_size": 16, "num_offset": [0, 10],
-                      "font_size": 14, "stroke_width": 1},
-            "health": {"kind": "stat", "field": "health", "pos": [54, 82],
-                       "icon_size": 16, "num_offset": [0, 10],
-                       "font_size": 14, "stroke_width": 1},
-            "combat_power": {"kind": "stat", "field": "combat_power", "pos": [10, 62],
-                             "icon_size": 14, "num_offset": [0, 9],
-                             "font_size": 12, "stroke_width": 1},
-            "shield": {"kind": "stat", "field": "shield", "pos": [54, 62],
-                       "icon_size": 14, "num_offset": [0, 9],
-                       "font_size": 12, "stroke_width": 1},
-        },
-    }
-    _write_entity_layout(tmp_path, legacy)
-    entity = layout.load_layouts(tmp_path)["对局式神"]
-    assert entity["version"] == 2
-    assert entity["art_window"] == {
-        "center": [48, 72], "width": 84, "height": 132,
-        "frame_center": True, "offset_y": 0,
-    }
-    assert entity["elements"]["level"] == {
-        "kind": "level_badge", "pos": [48, 132], "base_size": 27,
-        "num_size": 21, "num_offset": [0, 0],
-    }
-    assert entity["elements"]["power"]["pos"] == [15, 123]
-    assert entity["elements"]["power"]["num_offset"] == [0, 6]
-    assert entity["elements"]["power"]["icon_size"] == 24
-    assert entity["elements"]["power"]["font_size"] == 21
-    assert entity["elements"]["combat_power"]["num_offset"] == [0, 5]
-    assert entity["elements"]["shield"]["num_offset"] == [0, 5]
-
-
-def test_legacy_custom_entity_numbers_scale_once(tmp_path):
-    legacy = {
-        "elements": {
-            "level": {"kind": "level_badge", "pos": [20, 30], "base_size": 20,
-                      "num_size": 10, "num_offset": [2, 4]},
-            "power": {"kind": "stat", "field": "power", "pos": [8, 70],
-                      "icon_size": 20, "num_offset": [1, 12],
-                      "font_size": 10, "stroke_width": 2},
-        },
-    }
-    _write_entity_layout(tmp_path, legacy)
-    migrated = layout.load_layouts(tmp_path)
-    entity = migrated["对局式神"]
-    assert entity["elements"]["level"] == {
-        "kind": "level_badge", "pos": [30, 45], "base_size": 30,
-        "num_size": 15, "num_offset": [3, 6],
-    }
-    assert entity["elements"]["power"] == {
-        "kind": "stat", "field": "power", "pos": [12, 105],
-        "icon_size": 30, "num_offset": [1.5, 18],
-        "font_size": 15, "stroke_width": 3,
-    }
-    _write_entity_layout(tmp_path, migrated["对局式神"])
-    assert layout.load_layouts(tmp_path) == migrated
-
-
-@pytest.mark.parametrize("element_name, offset_y, expected", [
-    ("power", 10, 6),
-    ("health", 10, 6),
-    ("combat_power", 9, 5),
-    ("shield", 9, 5),
-    ("level", 10, 15),
-    ("level", 9, 13.5),
-    ("combat_power", 10, 15),
-    ("shield", 10, 15),
-    ("power", 9, 13.5),
-    ("health", 9, 13.5),
-])
-def test_legacy_num_offset_special_cases_depend_on_element_name(
-        tmp_path, element_name, offset_y, expected):
-    _write_entity_layout(tmp_path, {
-        "elements": {element_name: {"num_offset": [0, offset_y]}},
-    })
-    entity = layout.load_layouts(tmp_path)["对局式神"]
-    assert entity["elements"][element_name]["num_offset"] == [0, expected]
-
-
-def test_version_2_entity_layout_only_deep_fills_defaults(tmp_path):
+def test_entity_layout_only_deep_fills_defaults(tmp_path):
     from bwpdiy.render.entity import _DEFAULT_LAYOUT
 
     current = {
@@ -392,19 +307,6 @@ def test_entity_counter_layout_backfilled_and_shipped(tmp_path):
         elements = layout.load_layouts(path)["对局式神"]["elements"]
         for name in ("energy", "countdown", "defeated"):
             assert elements[name] == _DEFAULT_LAYOUT["elements"][name]
-
-
-def test_entity_right_top_layout_migrates_without_overriding_new_elements(tmp_path):
-    legacy = {"kind": "counter", "pos": [80, 20], "icon_size": 26,
-              "num_offset": [1, 2], "font_size": 22, "stroke_width": 1}
-    existing = {**legacy, "pos": [70, 30], "font_size": 20}
-    _write_entity_layout(tmp_path, {"version": 2, "elements": {
-        "right_top": legacy, "energy": existing,
-    }})
-    elements = layout.load_layouts(tmp_path)["对局式神"]["elements"]
-    assert elements["energy"] == existing
-    assert elements["countdown"] == legacy
-    assert "right_top" not in elements
 
 
 def test_default_entity_layouts_are_synchronized():

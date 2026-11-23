@@ -99,7 +99,7 @@ function finishSessionConfirm(ok) {
 document.getElementById('session-confirm-ok').onclick = () => finishSessionConfirm(true);
 document.getElementById('session-confirm-cancel').onclick = () => finishSessionConfirm(false);
 async function confirmDiscard() {
-  if (askBusy() || storageBusy()) return false;
+  if ((typeof tutorialMode !== 'undefined' && tutorialMode) || askBusy() || storageBusy()) return false;
   if (cDirty && !await sessionConfirm('当前卡牌有未保存修改，切换将丢弃，继续？', 'unsaved')) return false;
   if (mDirty && !await sessionConfirm('当前机制有未保存修改，切换将丢弃，继续？', 'unsaved')) return false;
   if (pDirty && !await sessionConfirm('项目 ID 有未保存修改，切换将丢弃，继续？', 'unsaved')) return false;
@@ -791,17 +791,20 @@ async function cPreviewProject() {
   await cHandlePreviewResponse(r, seq);
 }
 async function cPreviewForm(withPortrait = true) {
-  if (!formData || !curProject || !curCard) return;
+  const inTutorial = typeof tutorialMode !== 'undefined' && tutorialMode;
+  if (!formData || (!inTutorial && (!curProject || !curCard))) return;
   if (validateCardJS(formData).length) return;  // 表单校验未过：不刷预览（错误已在表单侧显示）
   if (withPortrait) cPreviewPortrait(true);  // 鼠标预览按独立通道跳过另一侧重渲
   const seq = ++cPreviewSeq;
   let r;
   try {
-    // 走项目卡预览（基准目录=项目 images/），表单整体覆盖：卡图 offset/scale 修改实时可见；
-    // 不传 layout——服务端自动把卡面 layout 段（单卡布局覆盖）合并到该类型全局布局
-    r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/preview`, {
+    // 普通路径走项目卡预览并自动合并单卡布局；教程仅以表单和全局布局渲染内置样卡。
+    const url = inTutorial ? '/api/preview'
+      : `/api/projects/${enc(curProject)}/cards/${enc(curCard)}/preview`;
+    const body = inTutorial ? await tutorialPreviewBody() : {card: formData};
+    r = await fetch(url, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({card: formData})});
+      body: JSON.stringify(body)});
   } catch (e) {
     if (seq === cPreviewSeq) setPreviewError('main', '预览请求失败: ' + e);
     return;
@@ -809,6 +812,7 @@ async function cPreviewForm(withPortrait = true) {
   await cHandlePreviewResponse(r, seq);
 }
 document.getElementById('c-btn-refresh').onclick = () => {
+  if (typeof tutorialMode !== 'undefined' && tutorialMode) { cPreviewForm(false); return; }
   if (curMech) {  // 机制编辑态：有未保存修改时刷新表单覆盖预览，避免被已保存内容覆盖
     if (mDirty) scheduleMechPreview(); else mechPreview(false);
     return;
@@ -823,6 +827,12 @@ const cPortraitImg = document.getElementById('c-portrait');
 let cPortraitTimer = null, cPortraitSeq = 0, cPortraitAppliedSeq = 0, cPortraitUrl = null;
 async function cPreviewPortrait(withForm) {
   const seq = ++cPortraitSeq;
+  if (typeof tutorialMode !== 'undefined' && tutorialMode) {
+    cPortraitAppliedSeq = seq;
+    cPortraitImg.style.display = 'none';
+    syncSubpreviews();
+    return;
+  }
   const enabled = isMainShikigami(formData) && extOptions.marker &&
     (!formData.portrait || formData.portrait.frame !== false);
   if (!curProject || !curCard || !enabled) {
@@ -1171,25 +1181,36 @@ function buildForm() {
     return;
   }
   const t = formData.type;
-  // 类型创建时定死；id 留空由服务端自动分配（改 id 不动已有卡图）；
-  // 卡名直接编辑（name 字段，文件名 stem 不在 GUI 改）
+  const inTutorial = typeof tutorialMode !== 'undefined' && tutorialMode;
+  const advanced = document.createElement('details');
+  advanced.id = 'c-card-advanced';
+  const summary = document.createElement('summary');
+  summary.textContent = '外观与高级信息';
+  advanced.appendChild(summary);
+  // 类型创建时定死；卡名直接编辑，id/版本与外观参数收进高级折叠区。
   infoRow(div, '类型', t);
-  textRow(div, 'id（2/6/8位）', formData.id ?? '', v => setOptText('id', v));
-  textRow(div, '卡名', formData.name ?? '', v => setField('name', v));
-  versionRows(div, formData, v => setField('version_date', v));
+  textRow(div, '卡名', formData.name ?? '', v => setField('name', v), 'c-card-name');
+  if (!inTutorial) {
+    textRow(advanced, 'id（2/6/8位）', formData.id ?? '', v => setOptText('id', v));
+    versionRows(advanced, formData, v => setField('version_date', v));
+  }
   if (t === '式神') {
-    if (extOptions.marker) factionRow(div);  // 扩展功能：派系 + 派系样式并排
-    else selRowC(div, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
-    if (extOptions.marker) levelRow(div);  // 扩展功能：式神等级
+    if (!inTutorial) {
+      if (extOptions.marker) factionRow(advanced);  // 扩展功能：派系 + 派系样式并排
+      else selRowC(advanced, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
+      if (extOptions.marker) levelRow(advanced);  // 扩展功能：式神等级
+    }
     if (formData.shikigami) {
       infoRow(div, '所属式神', formData.shikigami);  // 衍生物式神
-      textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
+      if (!inTutorial) textRow(advanced, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
     }
   } else {
-    if (extOptions.marker) levelRow(div);  // 扩展功能：等级（含 0=无）
-    else selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
-    selRowC(div, '稀有度', rarityOptions(), formData.rarity ?? '无',
-      v => { if (v === '无') delete formData.rarity; else formData.rarity = v; afterEdit(); });
+    if (!inTutorial) {
+      if (extOptions.marker) levelRow(advanced);  // 扩展功能：等级（含 0=无）
+      else selRowC(advanced, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
+      selRowC(advanced, '稀有度', rarityOptions(), formData.rarity ?? '无',
+        v => { if (v === '无') delete formData.rarity; else formData.rarity = v; afterEdit(); });
+    }
     if (EVOLVE_TYPES.has(t)) {
       checkRowC(div, '觉醒', !!formData.evolve, v => {
         formData.evolve = v;
@@ -1208,7 +1229,7 @@ function buildForm() {
     } else {
       shikigamiRow(div, '所属式神', 'shikigami');
     }
-    textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
+    if (!inTutorial) textRow(advanced, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
   }
   // stat 数值按矩阵（法术仅觉醒；式神/形态/幻境强制非负，滚轮微调同布局页交互）
   if (t !== '法术' || !!formData.evolve) {
@@ -1217,14 +1238,14 @@ function buildForm() {
       numRowC(div, STAT_MATRIX[t][f], formData[f] ?? 0, nonneg, v => setField(f, v));
     }
   }
-  if (extOptions.marker) selRowC(div, '内嵌派系样式', ['1', '2', '3'],
+  if (!inTutorial && extOptions.marker) selRowC(advanced, '内嵌派系样式', ['1', '2', '3'],
     String(formData.inline_faction_style ?? 1), v => {
       const style = parseInt(v, 10);
       if (style === 1) delete formData.inline_faction_style;
       else formData.inline_faction_style = style;
       afterEdit();
     });
-  if (extOptions.marker) selRowC(div, '自动排版', ['smart', 'wrap', 'off'],
+  if (!inTutorial && extOptions.marker) selRowC(advanced, '自动排版', ['smart', 'wrap', 'off'],
     formData.text_layout ?? 'smart', v => {
       if (v === 'smart') delete formData.text_layout;
       else formData.text_layout = v;
@@ -1233,6 +1254,7 @@ function buildForm() {
   const l = document.createElement('label');
   l.textContent = '描述 ';
   const ta = document.createElement('textarea');
+  ta.id = 'c-card-description';
   ta.value = formData.description ?? '';
   ta.onchange = () => {
     ta.value = ta.value.replace(/\n+/g, '\n').replace(/^\n|\n$/g, '');  // 连续换行合并为一个
@@ -1248,10 +1270,12 @@ function buildForm() {
   fileInput.accept = 'image/*';
   fileInput.style.display = 'none';
   const upBtn = document.createElement('button');
-  upBtn.textContent = '上传卡图';
-  upBtn.onclick = () => fileInput.click();
+  upBtn.id = 'c-upload-art';
+  upBtn.textContent = inTutorial ? '教程使用内置样图' : '上传卡图';
+  upBtn.disabled = inTutorial;
+  upBtn.onclick = () => { if (!inTutorial) fileInput.click(); };
   fileInput.onchange = async () => {
-    if (!curProject || !curCard || askBusy() || storageBusy()) return;
+    if (inTutorial || !curProject || !curCard || askBusy() || storageBusy()) return;
     const f = fileInput.files[0];
     if (!f) return;
     guiDebug('artwork.upload.start', `${f.name} (${f.size} bytes, ${f.type || 'unknown'})`);
@@ -1309,7 +1333,8 @@ function buildForm() {
   const curArtRow = document.createElement('div');
   curArtRow.className = 'readonly';
   curArtRow.id = 'c-cur-art';
-  curArtRow.textContent = `当前卡图：${curArt || `（缺省 ${formData.name ?? curCard}.png）`}`;
+  curArtRow.textContent = inTutorial ? '当前卡图：内置山风样图（教程不上传）'
+    : `当前卡图：${curArt || `（缺省 ${formData.name ?? curCard}.png）`}`;
   div.appendChild(curArtRow);
   // 卡图定位：dx/dy/scale/旋转数字输入（旋转绕图片中心、画布自动扩展；亦可在预览画布上拖拽/滚轮/右键滚轮操作，双向同步），改动走保存按钮；
   // 头像设置仅在「扩展功能」与「头像框」同时开启时显示，避免与卡图参数混排
@@ -1338,12 +1363,14 @@ function buildForm() {
       afterEdit(true);  // 头像框同时控制头像参数与预览显隐，需重建表单
     });
   }
+  if (!inTutorial) div.appendChild(advanced);
   if (extOptions.layout) {
     // 单卡布局覆盖：进入布局 tab 的单卡模式（调整结果存卡面 layout 段，仅与全局不同的键写盘）
     const lrow = document.createElement('div');
     lrow.style.marginTop = '10px';
     const lb = document.createElement('button');
     lb.textContent = '调整单卡元素布局';
+    lb.disabled = inTutorial;
     lb.onclick = enterCardLayout;
     lrow.appendChild(lb);
     div.appendChild(lrow);
@@ -1363,14 +1390,18 @@ function buildForm() {
   const row = document.createElement('div');
   row.style.marginTop = '10px';
   const btn = document.createElement('button');
+  btn.id = 'c-save-card';
   btn.textContent = '保存';
+  btn.disabled = inTutorial;
   btn.onclick = saveCard;
   const expBtn = document.createElement('button');
+  expBtn.id = 'c-export-card';
+  expBtn.className = 'primary-action';
   expBtn.textContent = '导出卡图';
   expBtn.style.marginLeft = '6px';
   expBtn.onclick = openExport;
   row.appendChild(btn); row.appendChild(expBtn);
-  if (isMainShikigami(formData)) {
+  if (!inTutorial && isMainShikigami(formData)) {
     const expP = document.createElement('button');
     expP.textContent = '导出头像';
     expP.style.marginLeft = '6px';
@@ -1680,7 +1711,7 @@ function validateCardJS(d) {
 
 // ---- 保存：422 错误按三结构解析显示在表单侧 ----
 async function saveCard() {
-  if (askBusy() || storageBusy()) return false;
+  if ((typeof tutorialMode !== 'undefined' && tutorialMode) || askBusy() || storageBusy()) return false;
   guiDebug('save.card.start', curCard || '');
   const errs = validateCardJS(formData);
   if (errs.length) { showFormErrors(errs); return false; }
@@ -1734,8 +1765,9 @@ async function saveCard() {
 // ---- 导出：弹窗确认文件名（默认卡名.png），按当前表单内容（含未保存修改）渲染 PNG 并触发浏览器下载 ----
 const exportModal = document.getElementById('export-modal');
 function openExport() {
-  if (!formData || !curProject || !curCard) return;
-  const base = String(formData.name || curCard).replace(/[<>:"/\\|?*]/g, '').trim() || 'card';
+  const inTutorial = typeof tutorialMode !== 'undefined' && tutorialMode;
+  if (!formData || (!inTutorial && (!curProject || !curCard))) return;
+  const base = String(formData.name || curCard || 'card').replace(/[<>:"/\\|?*]/g, '').trim() || 'card';
   document.getElementById('export-name').value = base + '.png';
   document.getElementById('export-error').textContent = '';
   exportModal.style.display = 'block';
@@ -1750,11 +1782,14 @@ document.getElementById('export-ok').onclick = async () => {
   errEl.textContent = '';
   let r;
   try {
-    // 与编辑期预览同口径：项目卡预览 + 表单整体覆盖（含未保存修改与实时卡图定位）；
-    // 不传 layout——服务端自动合并卡面 layout 段（单卡布局覆盖）
-    r = await fetch(`/api/projects/${enc(curProject)}/cards/${enc(curCard)}/preview`, {
+    // 普通路径与编辑期项目预览同口径；教程只渲染通用内置样卡，不依赖真实选择。
+    const inTutorial = typeof tutorialMode !== 'undefined' && tutorialMode;
+    const url = inTutorial ? '/api/preview'
+      : `/api/projects/${enc(curProject)}/cards/${enc(curCard)}/preview`;
+    const body = inTutorial ? await tutorialPreviewBody() : {card: formData};
+    r = await fetch(url, {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({card: formData})});
+      body: JSON.stringify(body)});
   } catch (e) { errEl.textContent = '导出请求失败: ' + e; return; }
   if (!r.ok) { errEl.textContent = '渲染失败：' + (await parseErrorDetail(r)).join('\n'); return; }
   const blob = await r.blob();
@@ -1765,6 +1800,7 @@ document.getElementById('export-ok').onclick = async () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
   exportModal.style.display = 'none';
+  if (typeof tutorialExportSucceeded === 'function') tutorialExportSucceeded();
 };
 
 // ---- 导出头像：按当前头像预览（含头像框开关与未保存 portrait 修改）直接下载 PNG ----

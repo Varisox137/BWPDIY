@@ -92,7 +92,7 @@ def test_draw_keyword_different_color(assets_dir):
 
 
 def test_draw_without_keyword_fill_uniform(assets_dir):
-    """keyword_fill=None：标记剥离、整行正文色（向后兼容旧调用）。"""
+    """keyword_fill=None：标记剥离、整行使用正文色。"""
     lib = AssetLibrary(assets_dir)
     img = draw_region(canvas(), lib, "[[贯通]]", rect_region(100, 100, 400, 200))
     assert any(p[3] > 200 and all(abs(p[i] - TEXT_FILL[i]) <= 30 for i in range(3))

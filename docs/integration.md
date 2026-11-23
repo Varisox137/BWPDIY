@@ -178,7 +178,7 @@ entity.save("entity.png")
 - `level` 为 0–3；0 只绘制底框和卡图，不绘制等级标、数值角标及状态组件。
 - `power/health` 必须非负；`combat_power/shield` 可为负。四个数值颜色均可选 `red/green/purple`，缺省白色，均复用大卡位图数字；负战力/负护甲保留负号并分别使用乏力/破甲图标，正值不带加号，两项布局分别支持 `sign_size_minus`（缺省为字号一半），符号与数字整体居中并计入紧致边界。战力/乏力读取 `stats/combat_power.png` 与 `stats/weak.png` 大图标；仅描述文本内嵌 `#zl`/`#fl` 使用 `icons/` 小图。
 - `energy/countdown/defeated_countdown` 为临时状态，不写入卡牌。energy 与 countdown 可同时非空，绘制顺序为能量在下、倒计时在上；气绝保留 energy 并隐藏 countdown，仅灰化底框和卡图，气绝组件最后绘制。永久气绝只接受精确字符串 `"infinity"`，读取 `numbers/white_inf.png`。
-- `layout` 使用布局字典的「对局式神」独立段；缺省读取包内默认段。小卡基础框为 96×144，外扩元素会扩大最终紧致边界；`energy`、`countdown` 与 `defeated` 是独立的 counter 元素，分别配置图标和数字，复用位图数字渲染、边界准备与原生缩放；旧 `right_top` 配置加载时自动复制到能量与倒计时。
+- `layout` 使用布局字典的「对局式神」独立段；缺省读取包内默认段。小卡基础框为 96×144，外扩元素会扩大最终紧致边界；`energy`、`countdown` 与 `defeated` 是独立的 counter 元素，分别配置图标和数字，复用位图数字渲染、边界准备与原生缩放。2.0 起不再迁移旧 `right_top` 或 64×96 配置。
 - `entity_eligible(card)` 可预先判断来源是否支持；`validate_entity_state(state)` 可单独取得规范化状态。
 
 ## 5. 式神头像 `render_portrait`

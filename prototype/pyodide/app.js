@@ -71,6 +71,13 @@ function callWorker(type, payload = null, artwork = null) {
   });
 }
 
+function showPreviewStatus(message, isError = false) {
+  if (renderCount === 0) resultMetas.forEach(element => { element.textContent = message; });
+  for (const id of ["c-error", "b-error"]) {
+    document.getElementById(id).textContent = isError ? message : "";
+  }
+}
+
 function showNormalResult(message) {
   currentPng = new Blob([message.png], {type: "image/png"});
   if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
@@ -79,6 +86,7 @@ function showNormalResult(message) {
   const info = message.info;
   const text = `${info.kind}：${info.width}×${info.height}，渲染 ${info.render_ms} ms，总耗时 ${info.total_ms} ms，PNG ${(info.png_bytes / 1024).toFixed(1)} KiB`;
   resultMetas.forEach(element => { element.textContent = text; });
+  showPreviewStatus(text);
   currentRenderKind = info.kind;
   renderCount += 1;
   document.body.dataset.renderCount = String(renderCount);
@@ -88,15 +96,20 @@ function showNormalResult(message) {
 
 worker.onmessage = event => {
   const message = event.data;
-  if (message.type === "status") { log(message.message); return; }
+  if (message.type === "status") { log(message.message); showPreviewStatus(message.message); return; }
   const request = pending.get(message.id);
   const isLayout = request && request.target && request.target.startsWith("layout-");
   if (message.type === "ready") {
     document.body.dataset.ready = "true";
     setRendering(false);
     log(`初始化 ${message.info.startup_ms} ms；资源包 ${(message.info.runtime_bytes / 1048576).toFixed(1)} MiB`);
+    showPreviewStatus("正在生成首次预览…");
     updateStorageStatus();
-    initializeLayouts(message.info.layouts).catch(error => log(`布局初始化失败：${error.message}`, true));
+    initializeLayouts(message.info.layouts).then(() => {
+      if (!renderActive && renderCount === 0 && activeMainTab !== "layout") {
+        render(activeMainTab === "battle" ? battleKind : currentRenderKind, true);
+      }
+    }).catch(error => showPreviewStatus(`布局初始化失败：${error.message}`, true));
   }
   if (message.type === "result") {
     if (isLayout) handleLayoutRender(message, request.target, request.seq);
@@ -108,6 +121,7 @@ worker.onmessage = event => {
       log(`失败：${message.message}`, true);
       if (message.detail) log(message.detail, true);
       document.body.dataset.error = message.message;
+      showPreviewStatus(`渲染初始化或合成失败：${message.message}`, true);
     }
   }
   if (request) {
@@ -120,6 +134,7 @@ worker.onmessage = event => {
 worker.onerror = event => {
   log(`Worker 加载失败：${event.message}`, true);
   document.body.dataset.error = event.message;
+  showPreviewStatus(`渲染组件加载失败：${event.message}`, true);
   setRendering(true);
 };
 

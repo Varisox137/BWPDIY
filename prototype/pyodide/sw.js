@@ -1,6 +1,6 @@
 "use strict";
 
-const RESOURCE_CACHE = "bwpdiy-online-resources-v1";
+const RESOURCE_CACHE = "bwpdiy-online-resources-v2";
 const PYODIDE_CACHE = "bwpdiy-pyodide-v0.28.3";
 const CURRENT_CACHES = [RESOURCE_CACHE, PYODIDE_CACHE];
 
@@ -14,21 +14,8 @@ self.addEventListener("activate", event => {
   ]));
 });
 
-async function networkFirst(request) {
-  const cache = await caches.open(RESOURCE_CACHE);
-  try {
-    const response = await fetch(request);
-    if (response.ok) await cache.put(request, response.clone());
-    return response;
-  } catch (error) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    throw error;
-  }
-}
-
-async function cacheFirst(request) {
-  const cache = await caches.open(PYODIDE_CACHE);
+async function cacheFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   if (cached) return cached;
   const response = await fetch(request);
@@ -41,9 +28,9 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin === self.location.origin) {
-    event.respondWith(networkFirst(request));
+    event.respondWith(cacheFirst(request, RESOURCE_CACHE));
   } else if (url.origin === "https://cdn.jsdelivr.net" &&
              url.pathname.startsWith("/pyodide/v0.28.3/")) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(cacheFirst(request, PYODIDE_CACHE));
   }
 });

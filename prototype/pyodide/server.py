@@ -22,7 +22,8 @@ def _runtime_files():
         if path.suffix in {".py", ".json", ".png"}:
             yield path, path.relative_to(ROOT).as_posix()
     for path in sorted((ROOT / "assets").rglob("*")):
-        if path.is_file() and not _ASSET_EXCLUDES.intersection(path.relative_to(ROOT / "assets").parts):
+        if (path.is_file() and path.suffix != ".psd"
+                and not _ASSET_EXCLUDES.intersection(path.relative_to(ROOT / "assets").parts)):
             yield path, path.relative_to(ROOT).as_posix()
     yield PROTOTYPE_DIR / "bridge.py", "bridge.py"
 
@@ -38,12 +39,7 @@ def build_runtime_zip() -> bytes:
 class PrototypeHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
-        if path == "/":
-            self.send_response(302)
-            self.send_header("Location", "/prototype/pyodide/")
-            self.end_headers()
-            return
-        if path == "/prototype/pyodide/runtime.zip":
+        if path in {"/runtime.zip", "/prototype/pyodide/runtime.zip"}:
             data = build_runtime_zip()
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
@@ -53,10 +49,15 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
             self.wfile.write(data)
             return
         prefix = "/prototype/pyodide/"
-        if not path.startswith(prefix):
+        if path == "/":
+            relative = "index.html"
+        elif path.startswith(prefix):
+            relative = path.removeprefix(prefix) or "index.html"
+        elif path.startswith("/"):
+            relative = path.removeprefix("/")
+        else:
             self.send_error(404)
             return
-        relative = path.removeprefix(prefix) or "index.html"
         self.path = "/" + relative
         super().do_GET()
 

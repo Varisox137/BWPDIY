@@ -38,8 +38,8 @@
   <div id="c-mid">
     <div><button id="c-btn-refresh">强制刷新</button><button class="download-button" disabled>导出当前图片</button><span id="c-status"></span></div>
     <div id="c-frame-variants">框品
-      <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="blue">琉璃</button>
-      <button class="fv" data-fv="black">墨染</button><button class="fv" data-fv="red">百炼</button>
+      <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="black">墨染</button>
+      <button class="fv" data-fv="blue">琉璃</button><button class="fv" data-fv="red">百炼</button>
     </div>
     <div id="c-error"></div>
     <img id="c-preview" alt="浏览器合成结果">
@@ -55,7 +55,7 @@
       <label>版本日期 <input data-card="version_date" inputmode="numeric" maxlength="8" placeholder="YYYYMMDD"></label>
       <label>等级 <select data-card="level"><option>0</option><option>1</option><option>2</option><option selected>3</option></select></label>
       <label>勾玉颜色 <select data-card="level_color"><option value="yellow">黄</option><option value="cyan">青</option><option value="purple">紫</option><option value="red">红</option><option value="blue">蓝</option><option value="brown">棕</option><option value="greyblue">灰蓝</option><option value="orange">橙</option></select></label>
-      <label>框品 <select data-card="frame_variant"><option value="norm">常规</option><option value="blue">琉璃</option><option value="black">墨染</option><option value="red">百炼</option></select></label>
+      <label>框品 <select data-card="frame_variant"><option value="norm">常规</option><option value="black">墨染</option><option value="blue">琉璃</option><option value="red">百炼</option></select></label>
       <label data-types="战斗,法术,形态,幻境,协战">稀有度 <select data-card="rarity"><option value="">无</option><option>N</option><option>R</option><option>SR</option><option selected>SSR</option></select></label>
       <label data-types="战斗,法术,形态,幻境">所属式神 <input data-card="shikigami" value="铃鹿御前"></label>
       <label data-types="协战">所属式神 1 <input data-card="shikigami1" value="山风"></label>
@@ -103,7 +103,7 @@
     <h3>临时对局状态</h3>
     <label>等级 <select data-state="level"><option>0</option><option>1</option><option selected>2</option><option>3</option></select></label>
     <label>勾玉颜色 <select data-state="level_color"><option value="yellow">黄</option><option value="cyan">青</option><option value="purple">紫</option><option value="red">红</option><option value="blue">蓝</option><option value="brown">棕</option><option value="greyblue">灰蓝</option><option value="orange">橙</option></select></label>
-    <label>边框 <select data-state="frame_variant"><option value="norm">常规</option><option value="blue">琉璃</option><option value="black">墨染</option><option value="red">百炼</option></select></label>
+    <label>边框 <select data-state="frame_variant"><option value="norm">常规</option><option value="black">墨染</option><option value="blue">琉璃</option><option value="red">百炼</option></select></label>
     <label>力量 <input data-state="power" type="number" min="0" value="3"></label><label>生命 <input data-state="health" type="number" min="0" value="4"></label>
     <label>战力/乏力 <input data-state="combat_power" type="number" value="1"></label><label>护甲/破甲 <input data-state="shield" type="number" value="-2"></label>
     <label>能量 <input data-state="energy" type="number" min="0" value="2"></label><label>倒计时 <input data-state="countdown" type="number" min="0" placeholder="留空不绘制"></label>
@@ -118,7 +118,7 @@
 <div id="tab-layout" class="tabpage">
   <aside id="l-sidebar"><div id="l-types"></div><h4>元素</h4><div id="l-elems"></div></aside>
   <div id="l-main"><div><button id="l-btn-preview">强制刷新</button><button id="l-btn-restore">还原当前类型</button><span id="l-status"></span></div>
-    <div id="l-frame-variants">框品 <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="blue">琉璃</button><button class="fv" data-fv="black">墨染</button><button class="fv" data-fv="red">百炼</button></div>
+    <div id="l-frame-variants">框品 <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="black">墨染</button><button class="fv" data-fv="blue">琉璃</button><button class="fv" data-fv="red">百炼</button></div>
     <canvas id="l-preview"></canvas>
     <div id="l-mech"><div class="mech-view"><h4>灵咒框</h4><canvas id="l-mech-invocation"></canvas></div><div class="mech-view"><h4>关键字框</h4><canvas id="l-mech-skill"></canvas></div><div class="mech-view"><h4>加护蚀印框</h4><canvas id="l-mech-seal"></canvas></div></div>
   </div>

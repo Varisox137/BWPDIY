@@ -12,6 +12,55 @@ from prototype.pyodide.server import (
     PROTOTYPE_DIR, PrototypeHandler, PrototypeServer, build_runtime_zip)
 
 
+def test_initial_form_is_neutral_and_tutorial_last_step_has_no_next():
+    from html.parser import HTMLParser
+
+    class FormParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.inputs = []
+            self.selects = []
+            self.current_select = None
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "input":
+                self.inputs.append(attrs)
+            elif tag == "select":
+                self.current_select = {"attrs": attrs, "options": []}
+                self.selects.append(self.current_select)
+            elif tag == "option" and self.current_select is not None:
+                self.current_select["options"].append(attrs)
+
+        def handle_endtag(self, tag):
+            if tag == "select":
+                self.current_select = None
+
+    parser = FormParser()
+    parser.feed((PROTOTYPE_DIR / "index.html").read_text(encoding="utf-8"))
+    card_type = next(item for item in parser.selects if item["attrs"].get("data-card") == "type")
+    assert card_type["options"][0]["value"] == "式神"
+    for select in parser.selects:
+        selected = [index for index, option in enumerate(select["options"]) if "selected" in option]
+        assert selected in ([], [0]), select["attrs"]
+    for attrs in parser.inputs:
+        input_type = attrs.get("type", "text")
+        if input_type != "number":
+            if input_type not in ("checkbox", "file", "hidden", "button"):
+                assert attrs.get("value", "") == "", attrs
+            continue
+        if attrs.get("id") == "width":
+            assert attrs.get("value", "") == ""
+            continue
+        maximum = float(attrs["max"]) if "max" in attrs else None
+        minimum = float(attrs["min"]) if "min" in attrs else None
+        expected = "-1" if maximum is not None and maximum <= 0 else "1" if minimum is not None and minimum > 0 else "0"
+        assert attrs.get("value") == expected, attrs
+
+    tutorial = (PROTOTYPE_DIR / "tutorial.js").read_text(encoding="utf-8")
+    assert "tutorialNext.hidden = tutorialStep === TUTORIAL_STEPS.length - 1;" in tutorial
+
+
 def test_runtime_zip_contains_renderer_and_real_assets():
     data = build_runtime_zip()
     assert build_runtime_zip() is data

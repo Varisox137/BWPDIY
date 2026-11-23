@@ -73,7 +73,7 @@ function renderTutorialStep() {
   document.getElementById("tutorial-title").textContent = step.title;
   document.getElementById("tutorial-text").textContent = step.text;
   tutorialBack.hidden = tutorialStep === 0;
-  tutorialNext.hidden = false;
+  tutorialNext.hidden = tutorialStep === TUTORIAL_STEPS.length - 1;
   tutorialNext.textContent = "下一步";
   tutorialExit.textContent = "退出教程";
   const target = document.querySelector(step.selector);

@@ -317,7 +317,19 @@ const CARD_SAMPLES = {
   "协战": {name: "鸮羽共鸣", description: "选择使用一项：山风-庇羽；薰-鸮鸣", shikigami1: "山风", shikigami2: "薰"},
 };
 
-function applyCardSample(type) { setGroup("[data-card]", CARD_SAMPLES[type]); }
+function resetCardForm(type = "式神") {
+  for (const element of document.querySelectorAll("[data-card]")) {
+    if (element.type === "checkbox") element.checked = element.defaultChecked;
+    else if (element.tagName === "SELECT") element.value = element.options[0]?.value || "";
+    else element.value = element.defaultValue;
+  }
+  document.querySelector('[data-card="type"]').value = type;
+}
+
+function applyCardSample(type) {
+  resetCardForm(type);
+  setGroup("[data-card]", CARD_SAMPLES[type]);
+}
 function numberValue(value) { return Number(value || 0); }
 function optionalCounter(value) {
   const text = String(value || "").trim();
@@ -416,7 +428,7 @@ document.getElementById("tab-card").addEventListener("click", () => {
 document.getElementById("tab-mechanism").addEventListener("click", () => { showTab("mechanism"); currentRenderKind = "mechanism"; scheduleDraftSave(); });
 
 document.querySelector('[data-card="type"]').addEventListener("change", event => {
-  applyCardSample(event.target.value);
+  resetCardForm(event.target.value);
   if (!kindSupported(currentRenderKind)) currentRenderKind = "card";
   updateTypeFields();
   scheduleNormalPreview(currentRenderKind);

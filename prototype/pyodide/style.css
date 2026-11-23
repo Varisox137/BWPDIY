@@ -138,3 +138,8 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
 #help-modal h3 { margin: 14px 0 4px; font-size: 14px; color: #61563f; }
 #help-modal p { margin: 4px 0; font-size: 13px; line-height: 1.65; }
 #help-modal code { background: #e4ddcf; padding: 1px 3px; }
+.primary-action { background: #d9b96a; border: 1px solid #8a7344; font-weight: bold; }
+.data-settings, .advanced-section { margin-top: 14px; border-top: 1px solid #c9c2b2; padding-top: 8px; }
+.data-settings summary, .advanced-section summary { cursor: pointer; color: #61563f; font-size: 13px; font-weight: bold; }
+.advanced-section { margin-bottom: 12px; }
+#help-start-tutorial { margin-top: 12px; }

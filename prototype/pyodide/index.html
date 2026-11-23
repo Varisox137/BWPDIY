@@ -6,12 +6,13 @@
   <link rel="icon" href="data:,">
   <title>BWPDIY 在线本地版</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="tutorial.css">
 </head>
 <body data-ready="false">
 <nav id="topnav">
-  <button class="navtab active" data-tab="cards">卡牌库</button>
+  <button class="navtab active" data-tab="cards">制作</button>
   <button class="navtab" data-tab="battle">对局预览</button>
-  <button class="navtab" data-tab="layout">全局布局设置</button>
+  <button class="navtab" data-tab="layout">高级布局</button>
   <span class="brand">BWPDIY 在线本地版 by <a href="https://github.com/Varisox137/BWPDIY" target="_blank" rel="noopener">Varisox137</a></span>
   <span id="ext-options">无需登录 · 数据仅存当前浏览器</span>
 </nav>
@@ -20,23 +21,25 @@
   <aside id="c-left">
     <h4 class="cat">编辑模式</h4>
     <div class="mode-buttons"><button id="tab-card" class="tab active">单卡</button><button id="tab-mechanism" class="tab">机制</button></div>
-    <h4 class="cat">浏览器本地数据</h4>
-    <div class="btnrow"><button id="export-draft">导出草稿备份</button><button id="import-draft">导入草稿备份</button></div>
-    <input id="draft-file" type="file" accept=".json" hidden>
-    <div class="btnrow"><button id="clear-draft">清除本地草稿</button><button id="clear-cache">清除资源缓存</button></div>
-    <div id="draft-status" class="local-note">正在读取浏览器草稿…</div>
-    <div id="cache-status" class="local-note">正在启用浏览器资源缓存…</div>
-    <div id="storage-status" class="local-note">正在读取浏览器存储状态…</div>
-    <div class="btnrow"><button id="persist-storage">请求持久存储保护</button></div>
-    <label class="power-option"><input id="low-power" type="checkbox"> 低负载预览（触屏拖拽时使用较小预览，松手恢复完整质量）</label>
-    <p class="note">草稿和卡图位于 IndexedDB；程序和素材位于 Cache Storage。服务器不保存任何作品。</p>
     <h4 class="cat">本地卡图</h4>
     <input id="artwork" type="file" accept=".png,.jpg,.jpeg,.webp">
     <div id="artwork-name" class="note">默认使用内置样图</div>
-    <details class="log-details"><summary>运行记录</summary><pre id="log"></pre></details>
+    <details class="data-settings">
+      <summary>数据与设置</summary>
+      <div class="btnrow"><button id="export-draft">导出草稿备份</button><button id="import-draft">导入草稿备份</button></div>
+      <input id="draft-file" type="file" accept=".json" hidden>
+      <div class="btnrow"><button id="clear-draft">清除本地草稿</button><button id="clear-cache">清除资源缓存</button></div>
+      <div id="draft-status" class="local-note">正在读取浏览器草稿…</div>
+      <div id="cache-status" class="local-note">正在启用浏览器资源缓存…</div>
+      <div id="storage-status" class="local-note">正在读取浏览器存储状态…</div>
+      <div class="btnrow"><button id="persist-storage">请求持久存储保护</button></div>
+      <label class="power-option"><input id="low-power" type="checkbox"> 低负载预览（触屏拖拽时使用较小预览，松手恢复完整质量）</label>
+      <p class="note">草稿和卡图位于 IndexedDB；程序和素材位于 Cache Storage。服务器不保存任何作品。</p>
+      <details class="log-details"><summary>运行记录</summary><pre id="log"></pre></details>
+    </details>
   </aside>
   <div id="c-mid">
-    <div id="c-actions"><button id="c-btn-help">使用说明</button><button id="c-btn-refresh">强制刷新</button><button class="download-button" disabled>导出当前图片</button><span id="c-status"></span></div>
+    <div id="c-actions"><button id="c-btn-help">使用说明</button><button id="c-btn-refresh">强制刷新</button><button class="download-button primary-action" disabled>导出当前图片</button><span id="c-status"></span></div>
     <div id="c-frame-variants">框品
       <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="black">墨染</button>
       <button class="fv" data-fv="blue">琉璃</button><button class="fv" data-fv="red">百炼</button>
@@ -51,18 +54,10 @@
       <h3>卡牌内容</h3>
       <label>类型 <select data-card="type"><option value="式神" selected>式神</option><option value="战斗">战斗</option><option value="法术">法术</option><option value="形态">形态</option><option value="幻境">幻境</option><option value="协战">协战</option></select></label>
       <label>卡名 <input data-card="name" placeholder="输入卡名"></label>
-      <label>卡牌 ID <input data-card="id" placeholder="可留空"></label>
-      <label>版本日期 <input data-card="version_date" inputmode="numeric" maxlength="8" placeholder="YYYYMMDD"></label>
-      <label>等级 <select data-card="level"><option>0</option><option>1</option><option>2</option><option selected>3</option></select></label>
-      <label>勾玉颜色 <select data-card="level_color"><option value="yellow">黄</option><option value="cyan">青</option><option value="purple">紫</option><option value="red">红</option><option value="blue">蓝</option><option value="brown">棕</option><option value="greyblue">灰蓝</option><option value="orange">橙</option></select></label>
-      <label>框品 <select data-card="frame_variant"><option value="norm">常规</option><option value="black">墨染</option><option value="blue">琉璃</option><option value="red">百炼</option></select></label>
-      <label data-types="战斗,法术,形态,幻境,协战">稀有度 <select data-card="rarity"><option value="">无</option><option>N</option><option selected>R</option><option>SR</option><option>SSR</option></select></label>
+      <label>卡牌描述 <textarea data-card="description" placeholder="输入卡牌描述"></textarea></label>
       <label data-types="战斗,法术,形态,幻境">所属式神 <input data-card="shikigami" placeholder="可留空"></label>
       <label data-types="协战">所属式神 1 <input data-card="shikigami1" placeholder="输入式神名"></label>
       <label data-types="协战">所属式神 2 <input data-card="shikigami2" placeholder="输入式神名"></label>
-      <label>子类型 <input data-card="special_type" placeholder="可留空"></label>
-      <label data-types="式神">派系 <select data-card="faction"><option value="" selected>无</option><option>红莲</option><option>紫岩</option><option>青岚</option><option>苍叶</option></select></label>
-      <label data-types="式神">派系样式 <select data-card="faction_style"><option>1</option><option selected>2</option><option>3</option></select></label>
       <label data-types="式神,形态">力量 <input data-card="power" type="number" value="0"></label>
       <label data-types="式神,形态">生命 <input data-card="health" type="number" value="0"></label>
       <label data-types="战斗">力量修正 <input data-card="power+" type="number" value="0"></label>
@@ -70,11 +65,22 @@
       <label data-types="法术">永久力量 <input data-card="power+" type="number" value="0"></label>
       <label data-types="法术">永久生命 <input data-card="health+" type="number" value="0"></label>
       <label data-types="幻境">耐久 <input data-card="durability" type="number" value="0"></label>
+      <label data-types="式神">派系 <select data-card="faction"><option value="" selected>无</option><option>红莲</option><option>紫岩</option><option>青岚</option><option>苍叶</option></select></label>
       <label class="check" data-types="法术"><input data-card="evolve" type="checkbox"> 觉醒</label>
       <label class="check" data-types="协战"><input data-card="duo_frame" type="checkbox"> 双式神框</label>
-      <label>描述排版 <select data-card="text_layout"><option value="smart">智能排版</option><option value="wrap">仅自动换行</option><option value="off">取消自动排版</option></select></label>
-      <label>内嵌派系样式 <select data-card="inline_faction_style"><option>1</option><option>2</option><option>3</option></select></label>
-      <label>卡牌描述 <textarea data-card="description" placeholder="输入卡牌描述"></textarea></label>
+      <details class="advanced-section">
+        <summary>外观与高级信息</summary>
+        <label>卡牌 ID <input data-card="id" placeholder="可留空"></label>
+        <label>版本日期 <input data-card="version_date" inputmode="numeric" maxlength="8" placeholder="YYYYMMDD"></label>
+        <label>等级 <select data-card="level"><option>0</option><option>1</option><option>2</option><option selected>3</option></select></label>
+        <label>勾玉颜色 <select data-card="level_color"><option value="yellow">黄</option><option value="cyan">青</option><option value="purple">紫</option><option value="red">红</option><option value="blue">蓝</option><option value="brown">棕</option><option value="greyblue">灰蓝</option><option value="orange">橙</option></select></label>
+        <label>框品 <select data-card="frame_variant"><option value="norm">常规</option><option value="black">墨染</option><option value="blue">琉璃</option><option value="red">百炼</option></select></label>
+        <label data-types="战斗,法术,形态,幻境,协战">稀有度 <select data-card="rarity"><option value="">无</option><option>N</option><option selected>R</option><option>SR</option><option>SSR</option></select></label>
+        <label>子类型 <input data-card="special_type" placeholder="可留空"></label>
+        <label data-types="式神">派系样式 <select data-card="faction_style"><option>1</option><option selected>2</option><option>3</option></select></label>
+        <label>描述排版 <select data-card="text_layout"><option value="smart">智能排版</option><option value="wrap">仅自动换行</option><option value="off">取消自动排版</option></select></label>
+        <label>内嵌派系样式 <select data-card="inline_faction_style"><option>1</option><option>2</option><option>3</option></select></label>
+      </details>
       <h3>卡图参数</h3>
       <div class="number-grid"><label>偏移 X <input data-art="offset_x" type="number" value="0"></label><label>偏移 Y <input data-art="offset_y" type="number" value="0"></label><label>缩放 <input data-art="scale" type="number" min="0.01" step="0.01" value="1"></label><label>旋转角度 <input data-art="rotate" type="number" step="0.1" value="0"></label></div>
       <label>导出宽度 <input id="width" type="number" min="1" max="8192" placeholder="默认尺寸"></label>
@@ -125,6 +131,7 @@
 
 <dialog id="help-modal" aria-labelledby="help-title">
   <div class="help-heading"><h2 id="help-title">BWPDIY 使用说明</h2><button id="help-close">关闭</button></div>
+  <button id="help-start-tutorial" class="primary-action">开始互动教程</button>
   <h3>基本流程</h3>
   <p>在右栏编辑内容并选择本地卡图，初始化完成后自动显示预览；修改内容会重新合成。点击「导出当前图片」下载 PNG。所有合成均在当前浏览器完成，卡图和作品不会上传到服务器。</p>
   <h3>描述排版与标记</h3>
@@ -132,13 +139,27 @@
   <h3>卡图与触屏</h3>
   <p>偏移 X/Y 正值使图像向右/向下移动。鼠标左键拖拽移动、滚轮缩放、右键加滚轮旋转；触屏单指移动，卡图上双指缩放/旋转，不改变页面整体比例。低负载模式只降低连续拖拽时的预览质量，导出仍为完整质量。</p>
   <h3>机制与布局</h3>
-  <p>「机制」可制作灵咒、关键字和加护/蚀印描述框，框高随内容变化。「全局布局设置」按卡牌类型和框品调整元素；对局预览中的临时状态不会写入卡牌草稿。</p>
+  <p>「机制」可制作灵咒、关键字和加护/蚀印描述框，框高随内容变化。「高级布局」按卡牌类型和框品调整元素；对局预览中的临时状态不会写入卡牌草稿。</p>
   <h3>本地数据</h3>
   <p>草稿、卡图和布局仅存当前浏览器。可导出/导入 JSON 草稿备份；「请求持久存储保护」只能降低浏览器自动清理概率，不能代替备份。清除浏览器数据、更换设备或域名前请先导出。</p>
 </dialog>
 
+<dialog id="tutorial-welcome" aria-labelledby="tutorial-welcome-title">
+  <h2 id="tutorial-welcome-title">先做出你的第一张卡</h2>
+  <p>约 1 分钟，在真实编辑器中完成内容、卡图、文本标记和 PNG 导出。教程不会覆盖你已有的草稿。</p>
+  <div class="tutorial-welcome-actions"><button id="tutorial-start" class="primary-action">开始互动教程</button><button id="tutorial-skip">直接使用</button></div>
+</dialog>
+<div id="tutorial-highlight" hidden></div>
+<aside id="tutorial-coach" hidden aria-live="polite">
+  <div id="tutorial-progress"></div>
+  <h2 id="tutorial-title"></h2>
+  <p id="tutorial-text"></p>
+  <div class="tutorial-actions"><button id="tutorial-back">上一步</button><button id="tutorial-next" class="primary-action">下一步</button><button id="tutorial-exit">退出教程</button></div>
+</aside>
+
 <script src="storage.js"></script>
 <script src="layout.js"></script>
+<script src="tutorial.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

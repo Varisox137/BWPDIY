@@ -1,6 +1,6 @@
 # BWPDIY 在线版 2.0 引导 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 新用户无需先理解布局、ID 或存储机制，即可在真实编辑器内完成第一张卡并导出 PNG；老用户可跳过并保留完整高级能力。
 
@@ -32,32 +32,32 @@
 
 ### Task 1: 默认界面信息层级
 
-- [ ] 将在线主标签改为「制作 / 对局预览 / 高级布局」，导出作为唯一金色主按钮，刷新保持次按钮。
-- [ ] 卡名和描述保持主流程可见；ID、版本日期与非必要外观项归入可展开高级区，已有草稿恢复逻辑不变。
-- [ ] 左栏缓存、存储和草稿工具归入「数据与设置」，卡图上传仍可被教程直接定位。
-- [ ] 用浏览器验证无草稿默认值、草稿恢复、各类型切换和按钮间距。
+- [x] 将在线主标签改为「制作 / 对局预览 / 高级布局」，导出作为唯一金色主按钮，刷新保持次按钮。
+- [x] 卡名和描述保持主流程可见；ID、版本日期与非必要外观项归入可展开高级区，已有草稿恢复逻辑不变。
+- [x] 左栏缓存、存储和草稿工具归入「数据与设置」，卡图上传仍可被教程直接定位。
+- [x] 用浏览器验证无草稿默认值、草稿恢复、各类型切换和按钮间距。
 
 ### Task 2: 第一张卡互动教程
 
-- [ ] 新增首次欢迎：「开始第一张卡教程 / 直接使用」，老用户不自动显示。
-- [ ] 实现真实控件高亮、步骤进度、上一步/下一步/退出和移动端底部提示。
-- [ ] 教程步骤依次覆盖内容与范例、卡图上传或样图、卡图缩放/移动、高亮与内嵌图标、真实 PNG 导出。
-- [ ] 在使用说明中提供「开始互动教程」，可随时重开。
-- [ ] 添加 `tests/test_pyodide_prototype.py` 静态资源测试，先确认旧服务返回 404，再实现并验证 200。
+- [x] 新增首次欢迎：「开始第一张卡教程 / 直接使用」，老用户不自动显示。
+- [x] 实现真实控件高亮、步骤进度、上一步/下一步/退出和移动端底部提示。
+- [x] 教程步骤依次覆盖内容与范例、卡图上传或样图、卡图缩放/移动、高亮与内嵌图标、真实 PNG 导出。
+- [x] 在使用说明中提供「开始互动教程」，可随时重开。
+- [x] 添加 `tests/test_pyodide_prototype.py` 静态资源测试，先确认旧服务返回 404，再实现并验证 200。
 
 ### Task 3: 草稿隔离与完成选择
 
-- [ ] 开始前用 `currentDraft()` 保存内存快照；教程中 `scheduleDraftSave/saveDraftNow` 不写 IndexedDB。
-- [ ] 退出时通过 `restoreDraft()` 恢复原表单、卡图和布局；完成时提供「保留作品 / 恢复原草稿」。
-- [ ] 只有完成、跳过或直接使用才记录本地教程已读状态；中途关闭浏览器不视为完成。
-- [ ] 浏览器验证有草稿进入教程不会改变 IndexedDB，退出后恢复，保留作品后才真正保存。
+- [x] 开始前用 `currentDraft()` 保存内存快照；教程中 `scheduleDraftSave/saveDraftNow` 不写 IndexedDB。
+- [x] 退出时通过 `restoreDraft()` 恢复原表单、卡图和布局；完成时提供「保留作品 / 恢复原草稿」。
+- [x] 只有完成、跳过或直接使用才记录本地教程已读状态；中途关闭浏览器不视为完成。
+- [x] 浏览器验证有草稿进入教程不会改变 IndexedDB，退出后恢复，保留作品后才真正保存。
 
 ### Task 4: 响应式、安全与文档收尾
 
-- [ ] 验证 390px 手机、820px 平板、1440px 桌面目标定位和控件可用性。
-- [ ] 验证教程期间自动渲染、上传、触屏手势、导出与离线重载；检查无横向溢出和页面误缩放。
-- [ ] 运行 `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest -q tests/test_pyodide_prototype.py tests/test_online_log_admin.py` 及所有修改 JS 的 `node --check`。
-- [ ] 更新在线说明、安全边界和项目约定，清理临时测试工具，提交并推送开发分支。
+- [x] 验证 390px 手机、820px 平板、1440px 桌面目标定位和控件可用性。
+- [x] 验证教程期间自动渲染、上传、触屏手势、导出与离线重载；检查无横向溢出和页面误缩放。
+- [x] 运行 `PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe -m pytest -q tests/test_pyodide_prototype.py tests/test_online_log_admin.py` 及所有修改 JS 的 `node --check`。
+- [x] 更新在线说明、安全边界和项目约定，清理临时测试工具，提交并推送开发分支。
 
 ## 完成标准
 

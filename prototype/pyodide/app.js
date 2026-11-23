@@ -33,14 +33,6 @@ const helpModal = document.getElementById("help-modal");
 function showHelp() { if (!helpModal.open) helpModal.showModal(); }
 document.getElementById("c-btn-help").addEventListener("click", showHelp);
 document.getElementById("help-close").addEventListener("click", () => helpModal.close());
-helpModal.addEventListener("close", () => {
-  try { localStorage.setItem("bwpdiy-help-seen", "1"); } catch (error) {}
-});
-function showFirstHelp() {
-  try {
-    if (localStorage.getItem("bwpdiy-help-seen") !== "1") showHelp();
-  } catch (error) { showHelp(); }
-}
 const pending = new Map();
 
 function log(message, isError = false) {
@@ -204,7 +196,7 @@ function currentDraft() {
 }
 
 async function saveDraftNow() {
-  if (restoringDraft) return;
+  if (restoringDraft || tutorialMode) return;
   clearTimeout(draftTimer);
   draftTimer = null;
   try {
@@ -219,7 +211,7 @@ async function saveDraftNow() {
 }
 
 function scheduleDraftSave() {
-  if (restoringDraft) return;
+  if (restoringDraft || tutorialMode) return;
   draftStatus.textContent = "有尚未写入浏览器的草稿更改…";
   clearTimeout(draftTimer);
   draftTimer = setTimeout(saveDraftNow, 300);
@@ -690,7 +682,6 @@ async function setupResourceCache() {
 }
 
 async function start() {
-  showFirstHelp();
   setRendering(true);
   logElement.textContent = "";
   const cacheTask = setupResourceCache();
@@ -706,6 +697,7 @@ async function start() {
     log(draftStatus.textContent, true);
   }
   syncCardFrameButtons();
+  initializeTutorial();
   await cacheTask;
   callWorker("init").catch(error => log(error.message, true));
 }

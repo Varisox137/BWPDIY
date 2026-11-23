@@ -20,7 +20,7 @@ PROTOTYPE_DIR = ROOT / "prototype" / "pyodide"
 _ASSET_EXCLUDES = {"legacy", "psd_export", "ref"}
 _STATIC_NAMES = ("index.html", "style.css", "storage.js", "layout.js", "app.js",
                  "worker.js", "bridge.py", "sw.js", "log-admin.html",
-                 "log-admin.js", "log-admin.css")
+                 "log-admin.js", "log-admin.css", "tutorial.js", "tutorial.css")
 _STATIC_FILES = {"/": PROTOTYPE_DIR / "index.html"}
 _STATIC_FILES.update({f"/{name}": PROTOTYPE_DIR / name for name in _STATIC_NAMES})
 _STATIC_FILES["/log-admin"] = PROTOTYPE_DIR / "log-admin.html"

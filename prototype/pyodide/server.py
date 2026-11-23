@@ -94,6 +94,7 @@ class PrototypeServer(ThreadingHTTPServer):
 
 class PrototypeHandler(SimpleHTTPRequestHandler):
     timeout = 20
+    response_timeout = 120
     server_version = "BWPDIY"
     sys_version = ""
 
@@ -102,6 +103,7 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
         self.connection.settimeout(self.timeout)
 
     def _dispatch(self, send_body: bool):
+        self.connection.settimeout(self.response_timeout)
         if not self.server.rate_limiter.allow():
             self.send_response(429)
             self.send_header("Retry-After", "1")

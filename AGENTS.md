@@ -7,10 +7,10 @@
 - 分层方向：`render`（纯 PIL）← `store`（卡牌库与校验）← `web`（FastAPI 编辑器）。`render` 不得 import `store/web`；基础包只依赖 Pillow，PyYAML/FastAPI/Uvicorn 属 `web` 可选依赖。
 - 前端无构建：`editor.html` 只保留结构，`editor.css` 与 `editor-{core,cards,battle,mech,layout,main}.js` 按固定顺序以经典脚本加载。共享全局词法依赖不变，禁止擅自改为 ES Module 或引入框架；Node 测试按 HTML 顺序拼接真实脚本。
 - `legacy/` 只读封存；`library/` 是用户创作数据，gitignore，不提交。
-- `prototype/pyodide/` 是隔离的在线本地版实验：Pyodide + Pillow 在 Web Worker 内运行，静态服务器仅在固定根路径白名单提供文件和运行时包（排除 PSD），旧路径/目录/未知 API 均 404；运行时包进程内只构建一次，默认全局限流 120/分钟、突发 30、连接 8、超时 20s，安全边界见 `docs/online-security.md`。不得加入渲染/写盘 API 或暴露仓库其他目录；不参与 exe 打包。
+- `prototype/pyodide/` 是隔离的在线本地版实验：Pyodide + Pillow 在 Web Worker 内运行，静态服务器仅在固定根路径白名单提供文件和运行时包（排除 PSD），旧路径/目录/未知 API 均 404；运行时包进程内只构建一次，默认全局限流 120/分钟、突发 30、连接 8、请求头超时 20s/响应 120s，安全边界见 `docs/online-security.md`。不得加入渲染/写盘 API 或暴露仓库其他目录；不参与 exe 打包。
 - 原型草稿、卡图与全局布局只存浏览器 IndexedDB（`storage.js`；布局独立于草稿），程序与素材只存浏览器 Cache Storage（`sw.js`）；两者均不得落服务器。同源资源与固定版本 Pyodide CDN 均按版本化缓存优先；修改任何原型程序或运行时资源必须递增 `RESOURCE_CACHE`，清缓存不得清草稿或布局。
 - 原型界面沿用正式工具三主标签页、米白侧栏/深灰预览/金色选中态。`layout.js` 按类型×框品修改现有布局结构并独立保存；卡图鼠标/触屏预览最多一个在途渲染与最新待办，禁止回放轨迹。
-- 原型桌面保留三栏，平板预览置顶双栏、手机单栏；触屏单指移动/双指缩放旋转。低负载模式仅降低连续拖拽的大卡预览，松手与导出恢复完整质量；`localStorage` 只存该偏好。存储容量/持久保护用浏览器 Storage API 查询，持久化只能由用户点击请求，不得把配额或授权结果当作保证。
+- 原型桌面保留三栏，平板预览置顶双栏、手机单栏；触屏单指移动/双指缩放旋转。低负载模式仅降低连续拖拽的大卡预览，松手与导出恢复完整质量；`localStorage` 只存低负载与「使用说明已读」偏好。存储容量/持久保护用浏览器 Storage API 查询，持久化只能由用户点击请求，不得把配额或授权结果当作保证。
 - 资源命名与目录以 `docs/asset-mapping-v1.0.md` 和 `docs/terminology.md` 为准；改动资源引用须同步文档。`assets/legacy/`、`assets/psd_export/` 不进 exe。
 
 ## 启动、日志与更新

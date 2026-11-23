@@ -129,3 +129,12 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
 .power-option { display: flex; gap: 5px; align-items: flex-start; font-size: 11px; line-height: 1.5; color: #625b4d; }
 .power-option input { width: auto; min-height: 0; margin-top: 3px; }
 #persist-storage { font-size: 11px; }
+
+#c-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
+#help-modal { box-sizing: border-box; width: min(680px, calc(100% - 32px)); max-height: 85vh; border: 1px solid #8d8065; border-radius: 6px; padding: 16px 20px; background: #f3efe8; color: #332f28; }
+#help-modal::backdrop { background: rgb(0 0 0 / 55%); }
+.help-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.help-heading h2 { font-size: 20px; margin: 0; }
+#help-modal h3 { margin: 14px 0 4px; font-size: 14px; color: #61563f; }
+#help-modal p { margin: 4px 0; font-size: 13px; line-height: 1.65; }
+#help-modal code { background: #e4ddcf; padding: 1px 3px; }

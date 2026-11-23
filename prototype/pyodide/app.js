@@ -29,6 +29,18 @@ try { lowPowerPreference = localStorage.getItem("bwpdiy-low-power"); } catch (er
 lowPowerInput.checked = lowPowerPreference === null ?
   (matchMedia("(pointer: coarse)").matches || (navigator.deviceMemory && navigator.deviceMemory <= 4)) :
   lowPowerPreference === "1";
+const helpModal = document.getElementById("help-modal");
+function showHelp() { if (!helpModal.open) helpModal.showModal(); }
+document.getElementById("c-btn-help").addEventListener("click", showHelp);
+document.getElementById("help-close").addEventListener("click", () => helpModal.close());
+helpModal.addEventListener("close", () => {
+  try { localStorage.setItem("bwpdiy-help-seen", "1"); } catch (error) {}
+});
+function showFirstHelp() {
+  try {
+    if (localStorage.getItem("bwpdiy-help-seen") !== "1") showHelp();
+  } catch (error) { showHelp(); }
+}
 const pending = new Map();
 
 function log(message, isError = false) {
@@ -678,6 +690,7 @@ async function setupResourceCache() {
 }
 
 async function start() {
+  showFirstHelp();
   setRendering(true);
   logElement.textContent = "";
   const cacheTask = setupResourceCache();

@@ -36,7 +36,7 @@
     <details class="log-details"><summary>运行记录</summary><pre id="log"></pre></details>
   </aside>
   <div id="c-mid">
-    <div><button id="c-btn-refresh">强制刷新</button><button class="download-button" disabled>导出当前图片</button><span id="c-status"></span></div>
+    <div id="c-actions"><button id="c-btn-help">使用说明</button><button id="c-btn-refresh">强制刷新</button><button class="download-button" disabled>导出当前图片</button><span id="c-status"></span></div>
     <div id="c-frame-variants">框品
       <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="black">墨染</button>
       <button class="fv" data-fv="blue">琉璃</button><button class="fv" data-fv="red">百炼</button>
@@ -49,32 +49,32 @@
   <aside id="c-right"><div id="c-form">
     <section id="card-editor">
       <h3>卡牌内容</h3>
-      <label>类型 <select data-card="type"><option value="式神">式神</option><option value="战斗" selected>战斗</option><option value="法术">法术</option><option value="形态">形态</option><option value="幻境">幻境</option><option value="协战">协战</option></select></label>
-      <label>卡名 <input data-card="name" value="义道"></label>
+      <label>类型 <select data-card="type"><option value="式神" selected>式神</option><option value="战斗">战斗</option><option value="法术">法术</option><option value="形态">形态</option><option value="幻境">幻境</option><option value="协战">协战</option></select></label>
+      <label>卡名 <input data-card="name" placeholder="输入卡名"></label>
       <label>卡牌 ID <input data-card="id" placeholder="可留空"></label>
       <label>版本日期 <input data-card="version_date" inputmode="numeric" maxlength="8" placeholder="YYYYMMDD"></label>
       <label>等级 <select data-card="level"><option>0</option><option>1</option><option>2</option><option selected>3</option></select></label>
       <label>勾玉颜色 <select data-card="level_color"><option value="yellow">黄</option><option value="cyan">青</option><option value="purple">紫</option><option value="red">红</option><option value="blue">蓝</option><option value="brown">棕</option><option value="greyblue">灰蓝</option><option value="orange">橙</option></select></label>
       <label>框品 <select data-card="frame_variant"><option value="norm">常规</option><option value="black">墨染</option><option value="blue">琉璃</option><option value="red">百炼</option></select></label>
-      <label data-types="战斗,法术,形态,幻境,协战">稀有度 <select data-card="rarity"><option value="">无</option><option>N</option><option>R</option><option>SR</option><option selected>SSR</option></select></label>
-      <label data-types="战斗,法术,形态,幻境">所属式神 <input data-card="shikigami" value="铃鹿御前"></label>
-      <label data-types="协战">所属式神 1 <input data-card="shikigami1" value="山风"></label>
-      <label data-types="协战">所属式神 2 <input data-card="shikigami2" value="薰"></label>
+      <label data-types="战斗,法术,形态,幻境,协战">稀有度 <select data-card="rarity"><option value="">无</option><option>N</option><option selected>R</option><option>SR</option><option>SSR</option></select></label>
+      <label data-types="战斗,法术,形态,幻境">所属式神 <input data-card="shikigami" placeholder="可留空"></label>
+      <label data-types="协战">所属式神 1 <input data-card="shikigami1" placeholder="输入式神名"></label>
+      <label data-types="协战">所属式神 2 <input data-card="shikigami2" placeholder="输入式神名"></label>
       <label>子类型 <input data-card="special_type" placeholder="可留空"></label>
-      <label data-types="式神">派系 <select data-card="faction"><option value="">无</option><option>红莲</option><option>紫岩</option><option>青岚</option><option selected>苍叶</option></select></label>
+      <label data-types="式神">派系 <select data-card="faction"><option value="" selected>无</option><option>红莲</option><option>紫岩</option><option>青岚</option><option>苍叶</option></select></label>
       <label data-types="式神">派系样式 <select data-card="faction_style"><option>1</option><option selected>2</option><option>3</option></select></label>
-      <label data-types="式神,形态">力量 <input data-card="power" type="number" value="3"></label>
-      <label data-types="式神,形态">生命 <input data-card="health" type="number" value="4"></label>
-      <label data-types="战斗">力量修正 <input data-card="power+" type="number" value="-1"></label>
-      <label data-types="战斗">护甲/破甲修正 <input data-card="shield+" type="number" value="2"></label>
-      <label data-types="法术">永久力量 <input data-card="power+" type="number" value="1"></label>
-      <label data-types="法术">永久生命 <input data-card="health+" type="number" value="1"></label>
-      <label data-types="幻境">耐久 <input data-card="durability" type="number" value="5"></label>
-      <label class="check" data-types="法术"><input data-card="evolve" type="checkbox" checked> 觉醒</label>
+      <label data-types="式神,形态">力量 <input data-card="power" type="number" value="0"></label>
+      <label data-types="式神,形态">生命 <input data-card="health" type="number" value="0"></label>
+      <label data-types="战斗">力量修正 <input data-card="power+" type="number" value="0"></label>
+      <label data-types="战斗">护甲/破甲修正 <input data-card="shield+" type="number" value="0"></label>
+      <label data-types="法术">永久力量 <input data-card="power+" type="number" value="0"></label>
+      <label data-types="法术">永久生命 <input data-card="health+" type="number" value="0"></label>
+      <label data-types="幻境">耐久 <input data-card="durability" type="number" value="0"></label>
+      <label class="check" data-types="法术"><input data-card="evolve" type="checkbox"> 觉醒</label>
       <label class="check" data-types="协战"><input data-card="duo_frame" type="checkbox"> 双式神框</label>
       <label>描述排版 <select data-card="text_layout"><option value="smart">智能排版</option><option value="wrap">仅自动换行</option><option value="off">取消自动排版</option></select></label>
       <label>内嵌派系样式 <select data-card="inline_faction_style"><option>1</option><option>2</option><option>3</option></select></label>
-      <label>卡牌描述 <textarea data-card="description">贯通，连击。对有破甲的式神造成双倍伤害。</textarea></label>
+      <label>卡牌描述 <textarea data-card="description" placeholder="输入卡牌描述"></textarea></label>
       <h3>卡图参数</h3>
       <div class="number-grid"><label>偏移 X <input data-art="offset_x" type="number" value="0"></label><label>偏移 Y <input data-art="offset_y" type="number" value="0"></label><label>缩放 <input data-art="scale" type="number" min="0.01" step="0.01" value="1"></label><label>旋转角度 <input data-art="rotate" type="number" step="0.1" value="0"></label></div>
       <label>导出宽度 <input id="width" type="number" min="1" max="8192" placeholder="默认尺寸"></label>
@@ -83,14 +83,12 @@
     </section>
     <section id="mechanism-editor" hidden>
       <h3>机制内容</h3>
-      <label>机制名称 <input data-mech="name" value="灵咒"></label>
-      <label>框体 <select data-mech="frame"><option value="invocation">灵咒</option><option value="skill">关键字</option><option value="seal">加护/蚀印</option></select></label>
+      <label>机制名称 <input data-mech="name" placeholder="输入机制名称"></label>
+      <label>框体 <select data-mech="frame"><option value="invocation">灵咒</option><option value="skill" selected>关键字</option><option value="seal">加护/蚀印</option></select></label>
       <label>每行字数 <input data-mech="chars_per_line" type="number" min="1" value="12"></label>
       <label>角标 <select data-mech="badge"><option value="">无</option><option value="bless">加护</option><option value="eclipse">蚀印</option></select></label>
       <label>内嵌派系样式 <select data-mech="inline_faction_style"><option>1</option><option>2</option><option>3</option></select></label>
-      <label>机制描述 <textarea data-mech="text">[[唯一]]。
-己方回合开始时，获得1#ll和[[贯通]]。
-攻击后移除。</textarea></label>
+      <label>机制描述 <textarea data-mech="text" placeholder="输入机制描述"></textarea></label>
       <div class="btnrow render-actions"><button class="render-button" data-kind="mechanism" disabled>合成机制框</button></div>
     </section>
   </div></aside>
@@ -124,6 +122,20 @@
   </div>
   <aside id="l-props">加载布局后选择元素</aside>
 </div>
+
+<dialog id="help-modal" aria-labelledby="help-title">
+  <div class="help-heading"><h2 id="help-title">BWPDIY 使用说明</h2><button id="help-close">关闭</button></div>
+  <h3>基本流程</h3>
+  <p>在右栏编辑内容并选择本地卡图，初始化完成后自动显示预览；修改内容会重新合成。点击「导出当前图片」下载 PNG。所有合成均在当前浏览器完成，卡图和作品不会上传到服务器。</p>
+  <h3>描述排版与标记</h3>
+  <p>默认智能排版会自动换行、居中、避让角标并调整字号。描述中用 <code>[[关键字]]</code> 高亮；用 <code>#xx</code> 插入小图标：<code>#ll</code> 力量、<code>#sm</code> 生命、<code>#hj</code> 护甲、<code>#pj</code> 破甲、<code>#nl</code> 能量、<code>#nj</code> 耐久、<code>#zl</code> 战力、<code>#fl</code> 乏力，<code>#hl/#cy/#ql/#zy</code> 为四派系。</p>
+  <h3>卡图与触屏</h3>
+  <p>偏移 X/Y 正值使图像向右/向下移动。鼠标左键拖拽移动、滚轮缩放、右键加滚轮旋转；触屏单指移动，卡图上双指缩放/旋转，不改变页面整体比例。低负载模式只降低连续拖拽时的预览质量，导出仍为完整质量。</p>
+  <h3>机制与布局</h3>
+  <p>「机制」可制作灵咒、关键字和加护/蚀印描述框，框高随内容变化。「全局布局设置」按卡牌类型和框品调整元素；对局预览中的临时状态不会写入卡牌草稿。</p>
+  <h3>本地数据</h3>
+  <p>草稿、卡图和布局仅存当前浏览器。可导出/导入 JSON 草稿备份；「请求持久存储保护」只能降低浏览器自动清理概率，不能代替备份。清除浏览器数据、更换设备或域名前请先导出。</p>
+</dialog>
 
 <script src="storage.js"></script>
 <script src="layout.js"></script>

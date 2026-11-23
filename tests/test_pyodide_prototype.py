@@ -179,3 +179,42 @@ vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
         [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "worker.js")],
         capture_output=True, text=True, encoding="utf-8", timeout=10)
     assert result.returncode == 0, result.stderr
+
+
+def test_response_timeout_does_not_abort_large_download_at_header_limit():
+    from types import SimpleNamespace
+    handler = object.__new__(PrototypeHandler)
+    timeouts = []
+    handler.connection = SimpleNamespace(settimeout=timeouts.append)
+    handler.server = SimpleNamespace(rate_limiter=SimpleNamespace(allow=lambda: True))
+    handler.path = "/missing"
+    handler.send_error = lambda status: None
+    handler._dispatch(send_body=False)
+    assert timeouts == [PrototypeHandler.response_timeout]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
+def test_worker_retries_required_resource_downloads():
+    script = r"""
+const fs = require('fs');
+const vm = require('vm');
+let attempts = 0;
+const context = {
+  URL, performance, Uint8Array, setTimeout,
+  self: {postMessage: () => {}},
+  fetch: async () => {
+    attempts += 1;
+    return attempts < 3 ? {ok: false, status: 503} : {ok: true};
+  },
+};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+(async () => {
+  const response = await context.fetchRequired('runtime.zip');
+  if (!response.ok || attempts !== 3) throw new Error(`下载重试次数异常：${attempts}`);
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "worker.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert result.returncode == 0, result.stderr

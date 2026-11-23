@@ -12,6 +12,24 @@ function postStatus(message) {
   self.postMessage({type: "status", message});
 }
 
+async function fetchRequired(url, attempts = 3) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) {
+        postStatus(`${url} 下载失败，正在重试 ${attempt + 1}/${attempts}…`);
+        await new Promise(resolve => setTimeout(resolve, 750 * attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function initialize() {
   const started = performance.now();
   postStatus(`加载 Pyodide ${PYODIDE_VERSION}…`);
@@ -26,8 +44,7 @@ async function initialize() {
   await pyodide.loadPackage("Pillow");
 
   postStatus("下载并展开 BWPDIY 渲染核心与真实美术资源…");
-  const response = await fetch("runtime.zip");
-  if (!response.ok) throw new Error(`资源包下载失败：HTTP ${response.status}`);
+  const response = await fetchRequired("runtime.zip");
   const runtimeBytes = new Uint8Array(await response.arrayBuffer());
   pyodide.FS.mkdirTree("/work");
   pyodide.FS.writeFile("/tmp/bwpdiy-runtime.zip", runtimeBytes);
@@ -40,8 +57,7 @@ sys.path.insert(0, '/work')
 `);
   pyodide.FS.unlink("/tmp/bwpdiy-runtime.zip");
 
-  const bridgeResponse = await fetch("bridge.py");
-  if (!bridgeResponse.ok) throw new Error(`渲染桥接加载失败：HTTP ${bridgeResponse.status}`);
+  const bridgeResponse = await fetchRequired("bridge.py");
   await pyodide.runPythonAsync(await bridgeResponse.text());
   renderPython = pyodide.globals.get("browser_render");
   const environment = JSON.parse(pyodide.globals.get("environment_info")());

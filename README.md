@@ -40,6 +40,7 @@ Termux 可执行 `pkg install git python`，然后在干净的仓库副本中运
 - 设计文档：`docs/superpowers/specs/2026-09-14-bwpdiy-design.md`
 - 术语表：`docs/terminology.md`
 - 项目约定：`AGENTS.md`
+- 在线服务安全与部署边界：`docs/online-security.md`
 
 ## 进度
 

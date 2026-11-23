@@ -2,6 +2,8 @@
 
 const PYODIDE_VERSION = "0.28.3";
 const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
+const MAX_ARTWORK_BYTES = 64 * 1024 * 1024;
+const ARTWORK_PATH = /^artwork\.(?:png|jpe?g|webp)$/;
 let pyodide = null;
 let renderPython = null;
 let readyPromise = null;
@@ -73,6 +75,14 @@ self.onmessage = async event => {
       return;
     }
     if (message.type !== "render") return;
+    if (message.artwork) {
+      if (!ARTWORK_PATH.test(message.payload && message.payload.artwork_path)) {
+        throw new Error("卡图路径非法");
+      }
+      if (!message.artwork.byteLength || message.artwork.byteLength > MAX_ARTWORK_BYTES) {
+        throw new Error("卡图文件过大或为空");
+      }
+    }
     await ensureReady();
     if (message.artwork) {
       pyodide.FS.writeFile(`/work/user/${message.payload.artwork_path}`,

@@ -49,6 +49,23 @@ def build_runtime_zip() -> bytes:
     return buf.getvalue()
 
 
+RUNTIME_CHUNK_SIZE = 2 * 1024 * 1024
+
+
+def runtime_manifest() -> dict:
+    size = len(build_runtime_zip())
+    return {"size": size, "chunk_size": RUNTIME_CHUNK_SIZE,
+            "chunks": (size + RUNTIME_CHUNK_SIZE - 1) // RUNTIME_CHUNK_SIZE}
+
+
+def runtime_chunk(index: int) -> bytes:
+    data = build_runtime_zip()
+    if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < runtime_manifest()["chunks"]:
+        raise ValueError("运行时分包序号无效")
+    start = index * RUNTIME_CHUNK_SIZE
+    return data[start:start + RUNTIME_CHUNK_SIZE]
+
+
 class RequestRateLimiter:
     def __init__(self, rate: float, burst: int):
         if rate <= 0 or burst < 1:
@@ -185,10 +202,17 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
         if path == "/api/log-admin/logs" or path.startswith("/api/log-admin/logs/"):
             self._dispatch_log_admin(path, send_body)
             return
-        if path == "/runtime.zip":
-            data = build_runtime_zip()
+        if path == "/runtime.json":
+            self._send_json(runtime_manifest(), send_body)
+            return
+        if path.startswith("/runtime-chunks/"):
+            try:
+                data = runtime_chunk(int(path.removeprefix("/runtime-chunks/")))
+            except ValueError:
+                self.send_error(404)
+                return
             self.send_response(200)
-            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             if send_body:
@@ -225,7 +249,7 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
 
     def end_headers(self):
         if (self.path.startswith("/api/log-admin/") or self.path.startswith("/log-admin")
-                or self.path in {"/runtime.zip", "/log-admin.html"}):
+                or self.path.startswith("/runtime") or self.path == "/log-admin.html"):
             self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")

@@ -30,34 +30,31 @@ async function fetchRequired(url, attempts = 3) {
   throw lastError;
 }
 
-async function downloadRuntimeBytes(response) {
-  const total = Number(response.headers.get("Content-Length")) || 0;
-  if (!response.body || !response.body.getReader) {
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    postStatus(`核心运行时下载：${(bytes.length / 1048576).toFixed(2)} MiB（100%）`);
-    return bytes;
+async function downloadRuntime() {
+  const manifest = await (await fetchRequired("runtime.json")).json();
+  const total = manifest.size;
+  const chunkSize = manifest.chunk_size;
+  const count = manifest.chunks;
+  if (![total, chunkSize, count].every(Number.isSafeInteger) ||
+      total <= 0 || total > 256 * 1024 * 1024 || chunkSize <= 0 || count <= 0 ||
+      count !== Math.ceil(total / chunkSize)) {
+    throw new Error("运行时下载清单无效");
   }
-  const reader = response.body.getReader();
   const chunks = [];
   let received = 0;
-  let lastReport = 0;
-  while (true) {
-    const {done, value} = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.byteLength;
-    const now = performance.now();
-    if (now - lastReport >= 200 || !total || received >= total) {
-      const amount = (received / 1048576).toFixed(2);
-      const progress = total ? ` / ${(total / 1048576).toFixed(2)} MiB（${Math.min(100, Math.floor(received / total * 100))}%）` : " MiB";
-      postStatus(`核心运行时下载：${amount}${progress}`);
-      lastReport = now;
-    }
+  for (let index = 0; index < count; index += 1) {
+    const response = await fetchRequired(`runtime-chunks/${index}`);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const expected = Math.min(chunkSize, total - received);
+    if (bytes.byteLength !== expected) throw new Error(`运行时分包 ${index} 大小异常`);
+    chunks.push(bytes);
+    received += bytes.byteLength;
+    postStatus(`核心运行时下载：${(received / 1048576).toFixed(2)} / ${(total / 1048576).toFixed(2)} MiB（${Math.floor(received / total * 100)}%）`);
   }
-  const bytes = new Uint8Array(received);
+  const result = new Uint8Array(total);
   let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  return bytes;
+  for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; }
+  return result;
 }
 
 async function initialize() {
@@ -74,8 +71,7 @@ async function initialize() {
   await pyodide.loadPackage("Pillow");
 
   postStatus("下载并展开 BWPDIY 渲染核心与真实美术资源…");
-  const response = await fetchRequired("runtime.zip");
-  const runtimeBytes = await downloadRuntimeBytes(response);
+  const runtimeBytes = await downloadRuntime();
   postStatus("核心运行时下载完成，正在展开…");
   pyodide.FS.mkdirTree("/work");
   pyodide.FS.writeFile("/tmp/bwpdiy-runtime.zip", runtimeBytes);

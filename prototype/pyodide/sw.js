@@ -1,6 +1,6 @@
 "use strict";
 
-const RESOURCE_CACHE = "bwpdiy-online-resources-v2";
+const RESOURCE_CACHE = "bwpdiy-online-resources-v3";
 const PYODIDE_CACHE = "bwpdiy-pyodide-v0.28.3";
 const CURRENT_CACHES = [RESOURCE_CACHE, PYODIDE_CACHE];
 

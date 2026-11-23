@@ -46,19 +46,18 @@ def test_static_server_serves_root_without_redirect():
         thread.join(timeout=5)
 
 
-def test_static_server_only_exposes_prototype_directory():
+def test_static_server_only_exposes_prototype_root():
     handler = partial(PrototypeHandler, directory=str(PROTOTYPE_DIR))
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
-        connection.request("GET", "/README.md")
-        assert connection.getresponse().status == 404
-        connection.request("GET", "/prototype/pyodide/")
-        response = connection.getresponse()
-        assert response.status == 200
-        assert "在线本地版" in response.read().decode("utf-8")
+        for path in ("/README.md", "/prototype/pyodide/", "/prototype/pyodide/runtime.zip"):
+            connection.request("GET", path)
+            response = connection.getresponse()
+            assert response.status == 404
+            response.read()
         connection.close()
     finally:
         server.shutdown()

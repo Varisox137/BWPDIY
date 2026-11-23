@@ -39,7 +39,7 @@ def build_runtime_zip() -> bytes:
 class PrototypeHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = urlsplit(self.path).path
-        if path in {"/runtime.zip", "/prototype/pyodide/runtime.zip"}:
+        if path == "/runtime.zip":
             data = build_runtime_zip()
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
@@ -48,16 +48,7 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return
-        prefix = "/prototype/pyodide/"
-        if path == "/":
-            relative = "index.html"
-        elif path.startswith(prefix):
-            relative = path.removeprefix(prefix) or "index.html"
-        elif path.startswith("/"):
-            relative = path.removeprefix("/")
-        else:
-            self.send_error(404)
-            return
+        relative = "index.html" if path == "/" else path.removeprefix("/")
         self.path = "/" + relative
         super().do_GET()
 

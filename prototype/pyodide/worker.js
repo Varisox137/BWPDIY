@@ -30,6 +30,36 @@ async function fetchRequired(url, attempts = 3) {
   throw lastError;
 }
 
+async function downloadRuntimeBytes(response) {
+  const total = Number(response.headers.get("Content-Length")) || 0;
+  if (!response.body || !response.body.getReader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    postStatus(`核心运行时下载：${(bytes.length / 1048576).toFixed(2)} MiB（100%）`);
+    return bytes;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0;
+  let lastReport = 0;
+  while (true) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    const now = performance.now();
+    if (now - lastReport >= 200 || !total || received >= total) {
+      const amount = (received / 1048576).toFixed(2);
+      const progress = total ? ` / ${(total / 1048576).toFixed(2)} MiB（${Math.min(100, Math.floor(received / total * 100))}%）` : " MiB";
+      postStatus(`核心运行时下载：${amount}${progress}`);
+      lastReport = now;
+    }
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
+}
+
 async function initialize() {
   const started = performance.now();
   postStatus(`加载 Pyodide ${PYODIDE_VERSION}…`);
@@ -45,7 +75,8 @@ async function initialize() {
 
   postStatus("下载并展开 BWPDIY 渲染核心与真实美术资源…");
   const response = await fetchRequired("runtime.zip");
-  const runtimeBytes = new Uint8Array(await response.arrayBuffer());
+  const runtimeBytes = await downloadRuntimeBytes(response);
+  postStatus("核心运行时下载完成，正在展开…");
   pyodide.FS.mkdirTree("/work");
   pyodide.FS.writeFile("/tmp/bwpdiy-runtime.zip", runtimeBytes);
   pyodide.runPython(`

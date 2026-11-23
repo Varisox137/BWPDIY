@@ -3,22 +3,28 @@
 from __future__ import annotations
 
 import argparse
+import json
+import logging
+import sys
 from functools import lru_cache, partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
 from threading import BoundedSemaphore, Lock
 from time import monotonic
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[2]
 PROTOTYPE_DIR = ROOT / "prototype" / "pyodide"
 _ASSET_EXCLUDES = {"legacy", "psd_export", "ref"}
 _STATIC_NAMES = ("index.html", "style.css", "storage.js", "layout.js", "app.js",
-                 "worker.js", "bridge.py", "sw.js")
+                 "worker.js", "bridge.py", "sw.js", "log-admin.html",
+                 "log-admin.js", "log-admin.css")
 _STATIC_FILES = {"/": PROTOTYPE_DIR / "index.html"}
 _STATIC_FILES.update({f"/{name}": PROTOTYPE_DIR / name for name in _STATIC_NAMES})
+_STATIC_FILES["/log-admin"] = PROTOTYPE_DIR / "log-admin.html"
+_STATIC_FILES["/log-admin/"] = PROTOTYPE_DIR / "log-admin.html"
 
 
 def _runtime_files():
@@ -70,11 +76,12 @@ class PrototypeServer(ThreadingHTTPServer):
     block_on_close = False
 
     def __init__(self, server_address, handler, *, request_rate=2.0,
-                 request_burst=30, max_connections=8):
+                 request_burst=30, max_connections=8, log_admin=None):
         if max_connections < 1:
             raise ValueError("并发上限必须为正整数")
         self.rate_limiter = RequestRateLimiter(request_rate, request_burst)
         self.connection_slots = BoundedSemaphore(max_connections)
+        self.log_admin = log_admin
         super().__init__(server_address, handler)
 
     def process_request(self, request, client_address):
@@ -91,6 +98,17 @@ class PrototypeServer(ThreadingHTTPServer):
         finally:
             self.connection_slots.release()
 
+    def handle_error(self, request, client_address):
+        error = sys.exc_info()[1]
+        if isinstance(error, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            logging.getLogger("bwpdiy.online").info(
+                "客户端中断连接：%s", type(error).__name__)
+            return
+        if isinstance(error, TimeoutError):
+            logging.getLogger("bwpdiy.online").warning("连接处理超时")
+            return
+        super().handle_error(request, client_address)
+
 
 class PrototypeHandler(SimpleHTTPRequestHandler):
     timeout = 20
@@ -101,6 +119,54 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
     def setup(self):
         super().setup()
         self.connection.settimeout(self.timeout)
+
+    def _send_json(self, payload, send_body: bool):
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        if send_body:
+            self.wfile.write(data)
+
+    def _dispatch_log_admin(self, path: str, send_body: bool):
+        service = self.server.log_admin
+        if service is None:
+            self.send_error(404)
+            return
+        client = self.client_address[0] if self.client_address else "unknown"
+        if not service.authenticate(self.headers.get("Authorization"), client):
+            self.send_response(401)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if path == "/api/log-admin/logs":
+            self._send_json({"logs": service.list_logs()}, send_body)
+            return
+        prefix = "/api/log-admin/logs/"
+        parts = path.removeprefix(prefix).split("/")
+        if len(parts) != 2 or parts[1] not in {"preview", "download"}:
+            self.send_error(404)
+            return
+        name, action = unquote(parts[0]), parts[1]
+        try:
+            if action == "preview":
+                text, truncated = service.preview(name)
+                self._send_json({"text": text, "truncated": truncated}, send_body)
+                return
+            file = service.log_path(name)
+        except ValueError:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(file.stat().st_size))
+        self.send_header("Content-Disposition", f'attachment; filename="{file.name}"')
+        self.end_headers()
+        if send_body:
+            with file.open("rb") as source:
+                while chunk := source.read(64 * 1024):
+                    self.wfile.write(chunk)
 
     def _dispatch(self, send_body: bool):
         self.connection.settimeout(self.response_timeout)
@@ -115,12 +181,15 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
         except ValueError:
             self.send_error(400)
             return
+        self.request_path = path
+        if path == "/api/log-admin/logs" or path.startswith("/api/log-admin/logs/"):
+            self._dispatch_log_admin(path, send_body)
+            return
         if path == "/runtime.zip":
             data = build_runtime_zip()
             self.send_response(200)
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Length", str(len(data)))
-            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             if send_body:
                 self.wfile.write(data)
@@ -135,6 +204,19 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
         else:
             super().do_HEAD()
 
+    def log_request(self, code="-", size="-"):
+        try:
+            path = getattr(self, "request_path", urlsplit(self.path).path)
+        except ValueError:
+            path = "<无效地址>"
+        logging.getLogger("bwpdiy.online.access").info("%s %s %s", self.command, path, code)
+
+    def log_message(self, format, *args):
+        logging.getLogger("bwpdiy.online").info(format, *args)
+
+    def log_error(self, format, *args):
+        logging.getLogger("bwpdiy.online").warning(format, *args)
+
     def do_GET(self):
         self._dispatch(send_body=True)
 
@@ -142,6 +224,9 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
         self._dispatch(send_body=False)
 
     def end_headers(self):
+        if (self.path.startswith("/api/log-admin/") or self.path.startswith("/log-admin")
+                or self.path in {"/runtime.zip", "/log-admin.html"}):
+            self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
@@ -166,19 +251,34 @@ def main() -> None:
     args = parser.parse_args()
     if min(args.request_rate, args.request_burst, args.max_connections) < 1:
         parser.error("请求速率、突发与并发上限必须为正整数")
+    import sys
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from bwpdiy.runlog import setup_run_logging
+    from prototype.pyodide.log_admin import OnlineLogService, private_permissions
+
+    log_path = setup_run_logging()
+    private_permissions(log_path.parent, directory=True)
+    private_permissions(log_path)
+    log_admin = OnlineLogService(log_path.parent, log_path)
+    log_admin.start()
     build_runtime_zip()
+    logging.getLogger("bwpdiy.online").info("在线服务启动：port=%s", args.port)
     handler = partial(PrototypeHandler, directory=str(PROTOTYPE_DIR))
     server = PrototypeServer(
         ("127.0.0.1", args.port), handler,
         request_rate=args.request_rate / 60, request_burst=args.request_burst,
-        max_connections=args.max_connections)
+        max_connections=args.max_connections, log_admin=log_admin)
     print(f"BWPDIY Pyodide 原型：http://127.0.0.1:{args.port}/", flush=True)
+    print(f"日志运维：http://127.0.0.1:{args.port}/log-admin/", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
+        log_admin.close()
+        logging.getLogger("bwpdiy.online").info("在线服务停止")
 
 
 if __name__ == "__main__":

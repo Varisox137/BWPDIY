@@ -218,3 +218,58 @@ vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
         [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "worker.js")],
         capture_output=True, text=True, encoding="utf-8", timeout=10)
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
+def test_worker_reports_runtime_byte_progress():
+    script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const messages = [];
+let clock = 0;
+const chunks = [new Uint8Array([1, 2]), new Uint8Array([3, 4]), new Uint8Array([5, 6])];
+const response = {
+  headers: {get: () => '6'},
+  body: {getReader: () => ({
+    read: async () => chunks.length ? {done: false, value: chunks.shift()} : {done: true},
+  })},
+};
+const context = {
+  URL, Uint8Array, setTimeout,
+  performance: {now: () => { clock += 250; return clock; }},
+  self: {postMessage: message => messages.push(message)},
+};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+(async () => {
+  const bytes = await context.downloadRuntimeBytes(response);
+  if (bytes.length !== 6 || bytes[5] !== 6) throw new Error('下载字节拼接错误');
+  const status = messages.filter(item => item.type === 'status').map(item => item.message).join('\n');
+  for (const percent of ['33%', '66%', '100%']) {
+    if (!status.includes(percent)) throw new Error(`缺少下载进度 ${percent}: ${status}`);
+  }
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "worker.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
+def test_client_disconnect_is_logged_without_exception_stack(caplog):
+    caplog.set_level("INFO", logger="bwpdiy.online")
+
+    class DisconnectHandler:
+        def __init__(self, *args):
+            raise BrokenPipeError(32, "Broken pipe")
+
+    class Request:
+        def shutdown(self, how): pass
+        def close(self): pass
+
+    server = PrototypeServer(("127.0.0.1", 0), DisconnectHandler)
+    server.connection_slots.acquire()
+    server.process_request_thread(Request(), ("127.0.0.1", 0))
+    server.server_close()
+    assert "客户端中断连接：BrokenPipeError" in caplog.text
+    assert "Traceback" not in caplog.text

@@ -25,6 +25,7 @@ def test_log_service_auth_listing_preview_and_filename_boundary(tmp_path):
     service = OnlineLogService(tmp_path, current)
     try:
         assert len(service.token) == 16
+        assert service.rotate_seconds == 600
         assert service.authenticate(f"Bearer {service.token}", "local")
         assert not service.authenticate("Bearer wrong", "local")
         logs = service.list_logs()

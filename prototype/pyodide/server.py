@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+from ipaddress import ip_address
 import json
 import logging
+from math import ceil
 import sys
 from functools import lru_cache, partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -87,16 +89,66 @@ class RequestRateLimiter:
             return True
 
 
+class AbuseRequestLimiter:
+    def __init__(self, limit=8, window=10.0, cooldown=300.0,
+                 max_clients=1024, clock=monotonic):
+        if limit < 1 or window <= 0 or cooldown <= 0 or max_clients < 1:
+            raise ValueError("异常请求限制参数必须为正数")
+        self.limit = limit
+        self.window = window
+        self.cooldown = cooldown
+        self.max_clients = max_clients
+        self.clock = clock
+        self.states = {}
+        self.lock = Lock()
+
+    def _cleanup(self, now):
+        for client, state in list(self.states.items()):
+            if (state["blocked_until"] <= now
+                    and now - state["last"] >= self.window):
+                del self.states[client]
+
+    def allow(self, client):
+        with self.lock:
+            now = self.clock()
+            state = self.states.get(client)
+            if state is not None and state["blocked_until"] > now:
+                return ceil(state["blocked_until"] - now)
+            if state is not None and state["blocked_until"]:
+                del self.states[client]
+            self._cleanup(now)
+            if client not in self.states and len(self.states) >= self.max_clients:
+                return max(1, min(60, ceil(self.cooldown)))
+            state = self.states.setdefault(
+                client, {"events": [], "blocked_until": 0.0, "last": now})
+            state["events"] = [stamp for stamp in state["events"]
+                               if now - stamp < self.window]
+            state["events"].append(now)
+            state["last"] = now
+            if len(state["events"]) < self.limit:
+                return None
+            state["events"].clear()
+            state["blocked_until"] = now + self.cooldown
+            logging.getLogger("bwpdiy.online").warning(
+                "异常请求短时限制：source=%s；%ss内达到%s次；冷却%ss",
+                client, self.window, self.limit, self.cooldown)
+            return ceil(self.cooldown)
+
+
 class PrototypeServer(ThreadingHTTPServer):
     request_queue_size = 32
     daemon_threads = True
     block_on_close = False
 
     def __init__(self, server_address, handler, *, request_rate=2.0,
-                 request_burst=30, max_connections=8, log_admin=None):
+                 request_burst=30, max_connections=8, log_admin=None,
+                 abuse_limit=8, abuse_window=10.0, abuse_cooldown=300.0,
+                 client_ip_header=None):
         if max_connections < 1:
             raise ValueError("并发上限必须为正整数")
         self.rate_limiter = RequestRateLimiter(request_rate, request_burst)
+        self.abuse_limiter = AbuseRequestLimiter(abuse_limit, abuse_window, abuse_cooldown)
+        self.client_ip_header = client_ip_header
         self.connection_slots = BoundedSemaphore(max_connections)
         self.log_admin = log_admin
         super().__init__(server_address, handler)
@@ -185,20 +237,67 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
                 while chunk := source.read(64 * 1024):
                     self.wfile.write(chunk)
 
+    def _client_key(self):
+        header = self.server.client_ip_header
+        if header:
+            value = self.headers.get(header)
+            if value:
+                try:
+                    return str(ip_address(value.strip()))
+                except ValueError:
+                    pass
+        return self.client_address[0] if self.client_address else "unknown"
+
+    @staticmethod
+    def _known_route(path):
+        if path in _STATIC_FILES or path == "/runtime.json":
+            return True
+        if path == "/api/log-admin/logs" or path.startswith("/api/log-admin/logs/"):
+            return True
+        if not path.startswith("/runtime-chunks/"):
+            return False
+        try:
+            index = int(path.removeprefix("/runtime-chunks/"))
+        except ValueError:
+            return False
+        return 0 <= index < runtime_manifest()["chunks"]
+
+    def _send_empty(self, status, *, retry_after=None, allow=None):
+        self.send_response(status)
+        if retry_after is not None:
+            self.send_header("Retry-After", str(retry_after))
+        if allow is not None:
+            self.send_header("Allow", allow)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _dispatch_abuse(self, status):
+        retry_after = self.server.abuse_limiter.allow(self._client_key())
+        if retry_after is not None:
+            self._send_empty(429, retry_after=retry_after)
+        else:
+            self._send_empty(status, allow="GET, HEAD" if status == 405 else None)
+
     def _dispatch(self, send_body: bool):
         self.connection.settimeout(self.response_timeout)
-        if not self.server.rate_limiter.allow():
-            self.send_response(429)
-            self.send_header("Retry-After", "1")
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return
         try:
             path = urlsplit(self.path).path
         except ValueError:
-            self.send_error(400)
+            self.request_path = "<无效地址>"
+            self._dispatch_abuse(400)
             return
         self.request_path = path
+        known = self._known_route(path)
+        if self.command not in {"GET", "HEAD"}:
+            self.close_connection = True
+            self._dispatch_abuse(405 if known else 404)
+            return
+        if not known:
+            self._dispatch_abuse(404)
+            return
+        if not self.server.rate_limiter.allow():
+            self._send_empty(429, retry_after=1)
+            return
         if path == "/api/log-admin/logs" or path.startswith("/api/log-admin/logs/"):
             self._dispatch_log_admin(path, send_body)
             return
@@ -206,11 +305,7 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
             self._send_json(runtime_manifest(), send_body)
             return
         if path.startswith("/runtime-chunks/"):
-            try:
-                data = runtime_chunk(int(path.removeprefix("/runtime-chunks/")))
-            except ValueError:
-                self.send_error(404)
-                return
+            data = runtime_chunk(int(path.removeprefix("/runtime-chunks/")))
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Length", str(len(data)))
@@ -218,10 +313,7 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
             if send_body:
                 self.wfile.write(data)
             return
-        file = _STATIC_FILES.get(path)
-        if file is None:
-            self.send_error(404)
-            return
+        file = _STATIC_FILES[path]
         self.path = f"/{file.name}"
         if send_body:
             super().do_GET()
@@ -230,7 +322,7 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
 
     def log_request(self, code="-", size="-"):
         try:
-            path = getattr(self, "request_path", urlsplit(self.path).path)
+            path = getattr(self, "request_path", urlsplit(self.path).path) or "<空路径>"
         except ValueError:
             path = "<无效地址>"
         logging.getLogger("bwpdiy.online.access").info("%s %s %s", self.command, path, code)
@@ -246,6 +338,14 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
 
     def do_HEAD(self):
         self._dispatch(send_body=False)
+
+    def _do_unsupported(self):
+        self._dispatch(send_body=False)
+
+    def __getattr__(self, name):
+        if name.startswith("do_"):
+            return self._do_unsupported
+        raise AttributeError(name)
 
     def end_headers(self):
         if (self.path.startswith("/api/log-admin/") or self.path.startswith("/log-admin")
@@ -269,12 +369,18 @@ class PrototypeHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description="BWPDIY 浏览器渲染原型")
     parser.add_argument("--port", type=int, default=8640)
-    parser.add_argument("--request-rate", type=int, default=120, help="全服务每分钟请求数")
-    parser.add_argument("--request-burst", type=int, default=30, help="瞬时请求上限")
+    parser.add_argument("--request-rate", type=int, default=120, help="正常资源每分钟请求数")
+    parser.add_argument("--request-burst", type=int, default=30, help="正常资源瞬时请求上限")
     parser.add_argument("--max-connections", type=int, default=8, help="同时处理连接数")
+    parser.add_argument("--abuse-limit", type=int, default=8, help="时间窗内异常请求上限")
+    parser.add_argument("--abuse-window", type=float, default=10, help="异常请求统计秒数")
+    parser.add_argument("--abuse-cooldown", type=float, default=300, help="异常请求冷却秒数")
+    parser.add_argument("--client-ip-header", help="可信代理覆盖写入的来源IP请求头；默认忽略")
     args = parser.parse_args()
-    if min(args.request_rate, args.request_burst, args.max_connections) < 1:
-        parser.error("请求速率、突发与并发上限必须为正整数")
+    if min(args.request_rate, args.request_burst, args.max_connections, args.abuse_limit) < 1:
+        parser.error("请求速率、突发、并发与异常上限必须为正整数")
+    if min(args.abuse_window, args.abuse_cooldown) <= 0:
+        parser.error("异常请求时间窗与冷却时间必须为正数")
     import sys
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
@@ -292,7 +398,9 @@ def main() -> None:
     server = PrototypeServer(
         ("127.0.0.1", args.port), handler,
         request_rate=args.request_rate / 60, request_burst=args.request_burst,
-        max_connections=args.max_connections, log_admin=log_admin)
+        max_connections=args.max_connections, log_admin=log_admin,
+        abuse_limit=args.abuse_limit, abuse_window=args.abuse_window,
+        abuse_cooldown=args.abuse_cooldown, client_ip_header=args.client_ip_header)
     print(f"BWPDIY Pyodide 原型：http://127.0.0.1:{args.port}/", flush=True)
     print(f"日志运维：http://127.0.0.1:{args.port}/log-admin/", flush=True)
     try:

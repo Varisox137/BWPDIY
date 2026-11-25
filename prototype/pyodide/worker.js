@@ -12,6 +12,10 @@ function postStatus(message) {
   self.postMessage({type: "status", message});
 }
 
+function postProgress(message) {
+  self.postMessage({type: "progress", message});
+}
+
 async function fetchRequired(url, attempts = 3) {
   let lastError = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -44,12 +48,43 @@ async function downloadRuntime() {
   let received = 0;
   for (let index = 0; index < count; index += 1) {
     const response = await fetchRequired(`runtime-chunks/${index}`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
     const expected = Math.min(chunkSize, total - received);
-    if (bytes.byteLength !== expected) throw new Error(`运行时分包 ${index} 大小异常`);
+    let bytes;
+    let chunkReceived = 0;
+    let lastReported = -1;
+    let lastProgressAt = -Infinity;
+    const report = (force = false) => {
+      const now = performance.now();
+      if (lastReported === chunkReceived || (!force && now - lastProgressAt < 100)) return;
+      lastReported = chunkReceived;
+      lastProgressAt = now;
+      const overall = received + chunkReceived;
+      postProgress(`核心运行时下载：第 ${index + 1}/${count} 包 ${(chunkReceived / 1024).toFixed(1)} / ${(expected / 1024).toFixed(1)} KiB；总计 ${(overall / 1048576).toFixed(2)} / ${(total / 1048576).toFixed(2)} MiB（${Math.floor(overall / total * 100)}%）`);
+    };
+    if (response.body && typeof response.body.getReader === "function") {
+      bytes = new Uint8Array(expected);
+      const reader = response.body.getReader();
+      report(true);
+      while (true) {
+        const {done, value} = await reader.read();
+        if (done) break;
+        if (chunkReceived + value.byteLength > expected) {
+          throw new Error(`运行时分包 ${index} 大小异常`);
+        }
+        bytes.set(value, chunkReceived);
+        chunkReceived += value.byteLength;
+        report();
+      }
+      if (chunkReceived !== expected) throw new Error(`运行时分包 ${index} 大小异常`);
+      report(true);
+    } else {
+      bytes = new Uint8Array(await response.arrayBuffer());
+      chunkReceived = bytes.byteLength;
+      if (chunkReceived !== expected) throw new Error(`运行时分包 ${index} 大小异常`);
+      report(true);
+    }
     chunks.push(bytes);
     received += bytes.byteLength;
-    postStatus(`核心运行时下载：${(received / 1048576).toFixed(2)} / ${(total / 1048576).toFixed(2)} MiB（${Math.floor(received / total * 100)}%）`);
   }
   const result = new Uint8Array(total);
   let offset = 0;

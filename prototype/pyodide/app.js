@@ -101,6 +101,7 @@ function showNormalResult(message) {
 worker.onmessage = event => {
   const message = event.data;
   if (message.type === "status") { log(message.message); showPreviewStatus(message.message); return; }
+  if (message.type === "progress") { showPreviewStatus(message.message); return; }
   const request = pending.get(message.id);
   const isLayout = request && request.target && request.target.startsWith("layout-");
   if (message.type === "ready") {
@@ -340,10 +341,11 @@ function optionalCounter(value) {
 function cardPayload(values) {
   const type = values.type;
   const card = {type, name: values.name, id: values.id, version_date: values.version_date,
-    level: numberValue(values.level), level_color: values.level_color,
-    frame_variant: values.frame_variant, special_type: values.special_type,
-    description: values.description, text_layout: values.text_layout,
-    inline_faction_style: numberValue(values.inline_faction_style)};
+    level_color: values.level_color, frame_variant: values.frame_variant,
+    special_type: values.special_type, description: values.description,
+    text_layout: values.text_layout, inline_faction_style: numberValue(values.inline_faction_style)};
+  const level = numberValue(values.level);
+  if (level) card.level = level;
   if (type === "式神") {
     Object.assign(card, {faction: values.faction, faction_style: numberValue(values.faction_style),
       power: numberValue(values.power), health: numberValue(values.health)});

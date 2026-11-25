@@ -44,7 +44,7 @@ def valid_log_filename(name: str) -> bool:
 
 
 class OnlineLogService:
-    def __init__(self, log_dir: Path, current_log: Path, rotate_seconds: float = 1800.0):
+    def __init__(self, log_dir: Path, current_log: Path, rotate_seconds: float = 600.0):
         self.log_dir = log_dir
         self.current_log = current_log
         self.rotate_seconds = rotate_seconds

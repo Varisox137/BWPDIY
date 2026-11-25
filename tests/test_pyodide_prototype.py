@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from functools import partial
 from http.client import HTTPConnection
 from io import BytesIO
@@ -10,6 +11,22 @@ import pytest
 
 from prototype.pyodide.server import (
     PROTOTYPE_DIR, PrototypeHandler, PrototypeServer, build_runtime_zip)
+
+
+@contextmanager
+def serve_http(**options):
+    handler = partial(PrototypeHandler, directory=str(PROTOTYPE_DIR))
+    server = PrototypeServer(("127.0.0.1", 0), handler, **options)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+    try:
+        yield connection
+    finally:
+        connection.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def test_initial_form_is_neutral_and_tutorial_last_step_has_no_next():
@@ -126,7 +143,7 @@ def test_tutorial_assets_are_public_static_files():
 
 def test_static_server_only_exposes_prototype_root():
     handler = partial(PrototypeHandler, directory=str(PROTOTYPE_DIR))
-    server = PrototypeServer(("127.0.0.1", 0), handler)
+    server = PrototypeServer(("127.0.0.1", 0), handler, abuse_limit=100)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -166,6 +183,86 @@ def test_global_request_rate_limit():
         thread.join(timeout=5)
 
 
+def test_abuse_limit_is_independent_from_valid_resource_requests():
+    with serve_http(request_rate=1000, request_burst=1000, abuse_limit=3,
+                    abuse_window=60, abuse_cooldown=300) as connection:
+        statuses = []
+        for index in range(3):
+            connection.request("GET", f"/missing-{index}")
+            response = connection.getresponse()
+            statuses.append(response.status)
+            response.read()
+        assert statuses == [404, 404, 429]
+        assert response.getheader("Retry-After") is not None
+        connection.request("GET", "/")
+        response = connection.getresponse()
+        assert response.status == 200
+        response.read()
+
+
+def test_unsupported_methods_do_not_consume_valid_resource_quota():
+    with serve_http(request_rate=0.001, request_burst=1, abuse_limit=2,
+                    abuse_window=60, abuse_cooldown=300) as connection:
+        connection.request("POST", "/")
+        response = connection.getresponse()
+        assert response.status == 405
+        assert response.getheader("Allow") == "GET, HEAD"
+        response.read()
+        connection.request("GET", "/")
+        response = connection.getresponse()
+        assert response.status == 200
+        response.read()
+        connection.request("BREW", "/")
+        response = connection.getresponse()
+        assert response.status == 429
+        response.read()
+
+
+def test_forwarded_client_ip_is_used_only_when_explicitly_configured():
+    with serve_http(request_rate=1000, request_burst=1000, abuse_limit=2,
+                    abuse_window=60, abuse_cooldown=300,
+                    client_ip_header="X-Forwarded-For") as connection:
+        for client in ("198.51.100.1", "198.51.100.2"):
+            connection.request("GET", "/missing", headers={"X-Forwarded-For": client})
+            response = connection.getresponse()
+            assert response.status == 404
+            response.read()
+        connection.request("GET", "/missing", headers={"X-Forwarded-For": "198.51.100.1"})
+        response = connection.getresponse()
+        assert response.status == 429
+        response.read()
+
+
+def test_forwarded_client_ip_is_ignored_by_default():
+    with serve_http(request_rate=1000, request_burst=1000, abuse_limit=2,
+                    abuse_window=60, abuse_cooldown=300) as connection:
+        for client, expected in (("198.51.100.1", 404), ("198.51.100.2", 429)):
+            connection.request("GET", "/missing", headers={"X-Forwarded-For": client})
+            response = connection.getresponse()
+            assert response.status == expected
+            response.read()
+
+
+def test_abuse_limiter_expires_and_bounds_state():
+    from prototype.pyodide.server import AbuseRequestLimiter
+    now = [0.0]
+    limiter = AbuseRequestLimiter(limit=2, window=10, cooldown=300,
+                                  max_clients=2, clock=lambda: now[0])
+    assert limiter.allow("a") is None
+    assert limiter.allow("a") == 300
+    now[0] = 1
+    assert limiter.allow("a") == 299
+    now[0] = 301
+    assert limiter.allow("a") is None
+    now[0] = 302
+    assert limiter.allow("b") is None
+    now[0] = 303
+    assert limiter.allow("c") is not None
+    assert len(limiter.states) == 2
+    now[0] = 400
+    assert limiter.allow("c") is None
+
+
 @pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
 def test_same_origin_resources_use_versioned_cache():
     script = r"""
@@ -175,9 +272,14 @@ const listeners = {};
 const entries = new Map();
 let networkRequests = 0;
 const key = request => typeof request === 'string' ? request : request.url;
+let holdCache = false;
+let releaseCache = null;
 const cache = {
   match: async request => entries.get(key(request)),
-  put: async (request, response) => entries.set(key(request), response),
+  put: async (request, response) => {
+    if (holdCache) return new Promise(resolve => { releaseCache = resolve; });
+    entries.set(key(request), response);
+  },
 };
 const context = {
   URL,
@@ -194,12 +296,18 @@ const context = {
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
 (async () => {
-  async function dispatch(request) {
-    const event = {request, handled: false, respondWith(promise) {
+  function makeEvent(request) {
+    return {request, handled: false, pending: [], respondWith(promise) {
       this.handled = true; this.promise = promise;
-    }};
+    }, waitUntil(promise) { this.pending.push(promise); }};
+  }
+  async function dispatch(request) {
+    const event = makeEvent(request);
     listeners.fetch(event);
-    if (event.handled) await event.promise;
+    if (event.handled) {
+      await event.promise;
+      await Promise.all(event.pending);
+    }
     return event.handled;
   }
   for (const url of ['http://local/runtime-chunks/0', 'http://local/runtime-chunks/0?a=1',
@@ -210,6 +318,20 @@ vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
   if (await dispatch({method: 'GET', url: 'http://local/api/render'})) {
     throw new Error('Service Worker 不应拦截未知地址');
   }
+  holdCache = true;
+  const event = makeEvent({method: 'GET', url: 'http://local/runtime-chunks/1'});
+  listeners.fetch(event);
+  let timer;
+  try {
+    await Promise.race([event.promise, new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('响应被缓存完成阻塞')), 100);
+    })]);
+  } finally {
+    releaseCache();
+    clearTimeout(timer);
+  }
+  await event.promise;
+  await Promise.all(event.pending);
 })().catch(error => { console.error(error); process.exit(1); });
 """
     result = subprocess.run(
@@ -255,9 +377,13 @@ def test_response_timeout_does_not_abort_large_download_at_header_limit():
     handler = object.__new__(PrototypeHandler)
     timeouts = []
     handler.connection = SimpleNamespace(settimeout=timeouts.append)
-    handler.server = SimpleNamespace(rate_limiter=SimpleNamespace(allow=lambda: True))
+    handler.server = SimpleNamespace(
+        rate_limiter=SimpleNamespace(allow=lambda: True),
+        abuse_limiter=SimpleNamespace(allow=lambda client: None), client_ip_header=None)
+    handler.command = "GET"
+    handler.client_address = ("127.0.0.1", 0)
     handler.path = "/missing"
-    handler.send_error = lambda status: None
+    handler._send_empty = lambda status, **kwargs: None
     handler._dispatch(send_body=False)
     assert timeouts == [PrototypeHandler.response_timeout]
 
@@ -317,9 +443,51 @@ vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
   if (requested.join(',') !== 'runtime.json,runtime-chunks/0,runtime-chunks/1,runtime-chunks/2') {
     throw new Error(`分包顺序错误：${requested}`);
   }
-  const status = messages.filter(item => item.type === 'status').map(item => item.message).join('\n');
+  const status = messages.filter(item => item.type === 'progress').map(item => item.message).join('\n');
   for (const percent of ['33%', '66%', '100%']) {
     if (!status.includes(percent)) throw new Error(`缺少下载进度 ${percent}: ${status}`);
+  }
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "worker.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
+def test_worker_reports_streaming_progress_within_each_chunk():
+    script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const messages = [];
+let now = 0;
+const parts = [new Uint8Array(1024), new Uint8Array(2048), new Uint8Array(3072)];
+const context = {
+  URL, Uint8Array, setTimeout,
+  performance: {now: () => { now += 100; return now; }},
+  self: {postMessage: message => messages.push(message)},
+  fetch: async url => {
+    if (url === 'runtime.json') {
+      return {ok: true, json: async () => ({size: 6144, chunk_size: 6144, chunks: 1})};
+    }
+    let index = 0;
+    return {ok: true, body: {getReader: () => ({read: async () => index < parts.length
+      ? {done: false, value: parts[index++]} : {done: true}})},
+      arrayBuffer: async () => { throw new Error('流式下载不应回退'); }};
+  },
+};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+(async () => {
+  const bytes = await context.downloadRuntime();
+  if (bytes.length !== 6144) throw new Error('流式分包大小错误');
+  const progress = messages.filter(item => item.type === 'progress').map(item => item.message);
+  for (const text of ['第 1/1 包 1.0 / 6.0 KiB', '第 1/1 包 3.0 / 6.0 KiB',
+                      '第 1/1 包 6.0 / 6.0 KiB', '16%', '50%', '100%']) {
+    if (!progress.some(message => message.includes(text))) {
+      throw new Error(`缺少包内进度 ${text}: ${progress.join('\n')}`);
+    }
   }
 })().catch(error => { console.error(error); process.exit(1); });
 """

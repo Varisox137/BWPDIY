@@ -46,6 +46,7 @@
     </div>
     <div id="c-preview-body" class="preview-body">
       <div id="c-error"></div>
+      <div id="font-warning"></div>
       <img id="c-preview" alt="浏览器合成结果">
       <p class="result-meta">尚未渲染</p>
       <p class="mouse-help">左键/单指拖拽移动 · 滚轮/双指缩放 · 右键 + 滚轮/双指转动旋转</p>
@@ -145,7 +146,7 @@
   <h3>基本流程</h3>
   <p>在右栏编辑内容并选择本地卡图，初始化完成后自动显示预览；修改内容会重新合成。点击「导出当前图片」下载 PNG。QQ/微信等内置浏览器会打开长按保存界面，默认透明，也可切换白底。所有合成均在当前浏览器完成，卡图和作品不会上传到服务器。</p>
   <h3>描述排版与标记</h3>
-  <p>默认智能排版会自动换行、居中、避让角标并调整字号。描述下方的「快捷输入」可在光标处插入高亮、换行与小图标。手写语法为 <code>[[关键字]]</code> 高亮、<code>#xx</code> 小图标：<code>#ll</code> 力量、<code>#sm</code> 生命、<code>#hj</code> 护甲、<code>#pj</code> 破甲、<code>#nl</code> 能量、<code>#nj</code> 耐久、<code>#zl</code> 战力、<code>#fl</code> 乏力，<code>#hl/#cy/#ql/#zy</code> 为四派系。</p>
+  <p>默认智能排版会自动换行、居中、避让角标并调整字号。描述下方的「快捷输入」可在光标处插入高亮、换行与小图标。手写语法为 <code>[[关键字]]</code> 高亮、<code>#xx</code> 小图标：<code>#ll</code> 力量、<code>#sm</code> 生命、<code>#hj</code> 护甲、<code>#pj</code> 破甲、<code>#nl</code> 能量、<code>#nj</code> 耐久、<code>#zl</code> 战力、<code>#fl</code> 乏力，<code>#hl/#cy/#ql/#zy</code> 为四派系。在线版使用常用字符子集，缺字会在预览上方提示；桌面版保留完整字体。</p>
   <h3>卡图与触屏</h3>
   <p>偏移 X/Y 正值使图像向右/向下移动。鼠标左键拖拽移动、滚轮缩放、右键加滚轮旋转；触屏单指移动，卡图上双指缩放/旋转，不改变页面整体比例。低负载模式只降低连续拖拽时的预览质量，导出仍为完整质量。</p>
   <h3>机制与布局</h3>

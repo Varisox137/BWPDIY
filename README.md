@@ -25,6 +25,8 @@ PYTHONIOENCODING=utf-8 ./.venv/Scripts/python.exe scripts/build_exe.py   # 产�
 python prototype/pyodide/server.py   # http://127.0.0.1:8640/
 ```
 
+在线运行时约 9.3 MiB，使用预生成 TTF 常用字符子集并在缺字时提示；桌面版完整字体不变。正式字体变更后，维护者运行 `uv run scripts/build_online_fonts.py` 重建字体包与字符清单，脚本会逐字验证多尺寸渲染一致，Termux 服务无需安装 fontTools。
+
 Termux 可执行 `pkg install git python`，然后在干净的仓库副本中运行
 `./scripts/termux_server.sh`。脚本会先以 `git pull --ff-only` 更新再启动，并记录到
 `logs/bwpdiy-launcher-*.log`；拒绝覆盖本地改动。可用 `BWPDIY_PORT`、`BWPDIY_BRANCH`、

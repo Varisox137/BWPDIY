@@ -23,6 +23,7 @@ let battleKind = "entity";
 let renderActive = false;
 let queuedRender = null;
 let normalPreviewTimer = null;
+let fontCoverage = null;
 const lowPowerInput = document.getElementById("low-power");
 let lowPowerPreference = null;
 try { lowPowerPreference = localStorage.getItem("bwpdiy-low-power"); } catch (error) {}
@@ -82,7 +83,25 @@ function showPreviewStatus(message, isError = false) {
   }
 }
 
+function updateFontWarning() {
+  const element = document.getElementById("font-warning");
+  if (!fontCoverage) { element.textContent = ""; return; }
+  const mechanism = !document.getElementById("mechanism-editor").hidden;
+  const nameText = mechanism ? document.querySelector('[data-mech="name"]').value :
+    ["name", "shikigami", "shikigami1", "shikigami2", "special_type"]
+      .map(key => document.querySelector(`[data-card="${key}"]`).value).join("");
+  const description = mechanism ? document.querySelector('[data-mech="text"]').value :
+    document.querySelector('[data-card="description"]').value;
+  const missing = [...new Set([
+    ...BWPDiyUI.missingCharacters(nameText, fontCoverage.name),
+    ...BWPDiyUI.missingCharacters(description, fontCoverage.desc),
+  ])].slice(0, 12);
+  element.textContent = missing.length ?
+    `在线精简字体不含「${missing.join("")}」，这些字符可能显示为空框；桌面完整字体不受影响。` : "";
+}
+
 function showNormalResult(message) {
+  updateFontWarning();
   currentPng = new Blob([message.png], {type: "image/png"});
   if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
   currentBlobUrl = URL.createObjectURL(currentPng);
@@ -105,6 +124,9 @@ worker.onmessage = event => {
   const request = pending.get(message.id);
   const isLayout = request && request.target && request.target.startsWith("layout-");
   if (message.type === "ready") {
+    fontCoverage = Object.fromEntries(Object.entries(message.info.environment.font_coverage || {})
+      .map(([kind, characters]) => [kind, new Set(characters)]));
+    updateFontWarning();
     document.body.dataset.ready = "true";
     setRendering(false);
     log(`初始化 ${message.info.startup_ms} ms；资源包 ${(message.info.runtime_bytes / 1048576).toFixed(1)} MiB`);
@@ -262,6 +284,7 @@ function showTab(tab) {
   document.getElementById("tab-card").classList.toggle("active", !mechanism);
   document.getElementById("tab-mechanism").classList.toggle("active", mechanism);
   document.getElementById("c-frame-variants").hidden = mechanism;
+  updateFontWarning();
 }
 
 function showMainTab(tab) {
@@ -476,6 +499,7 @@ function initializeSyntaxTools() {
 }
 
 function scheduleControlPreview(element, delay = null) {
+  updateFontWarning();
   const wait = delay ?? (element.matches("[data-art], [data-portrait]") ? 100 :
     element.matches("[data-state]") ? 150 : 250);
   if (element.matches("[data-art]")) scheduleNormalPreview(currentRenderKind, wait);

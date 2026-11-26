@@ -9,7 +9,7 @@ import PIL
 
 from bwpdiy import __version__
 from bwpdiy.render import render_card, render_entity
-from bwpdiy.render.assets import get_library
+from bwpdiy.render.assets import FONT_FILES, get_library
 from bwpdiy.render.duo import render_portrait
 from bwpdiy.render.layout import get_type_layout, load_layouts, merge_card_layout
 from bwpdiy.render.mech import render_mechanism
@@ -24,11 +24,15 @@ last_render_error = ""
 
 
 def environment_info():
+    coverage_path = Path("/work/font-coverage.json")
+    coverage = json.loads(coverage_path.read_text(encoding="utf-8")) if coverage_path.exists() else {}
     return json.dumps({
         "python": sys.version.split()[0],
         "pillow": PIL.__version__,
         "bwpdiy": __version__,
         "fonts": [path.name for path in (ASSETS / "fonts").iterdir()],
+        "font_coverage": ({kind: coverage[filename] for kind, filename in FONT_FILES.items()}
+                          if coverage else {}),
     }, ensure_ascii=False)
 
 

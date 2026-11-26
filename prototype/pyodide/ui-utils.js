@@ -25,7 +25,20 @@ const BWPDiyUI = (() => {
       .test(String(userAgent || ""));
   }
 
-  return Object.freeze({insertText, pngFilename, isEmbeddedBrowser});
+  function missingCharacters(value, coverage) {
+    if (!coverage) return [];
+    const supported = typeof coverage === "string" ? new Set(coverage) : coverage;
+    const missing = [];
+    for (const character of String(value ?? "")) {
+      if (!/\s/.test(character) && !supported.has(character) && !missing.includes(character)) {
+        missing.push(character);
+        if (missing.length === 12) break;
+      }
+    }
+    return missing;
+  }
+
+  return Object.freeze({insertText, pngFilename, isEmbeddedBrowser, missingCharacters});
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = BWPDiyUI;

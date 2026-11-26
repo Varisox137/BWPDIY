@@ -19,6 +19,7 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
 .fv.active { background: #d9b96a; }
 #c-status, #b-status, #l-status { color: #ffd77a; margin-left: 8px; }
 #c-error, #b-error { color: #ff9a9a; font-size: 12px; max-width: 512px; white-space: pre-line; }
+#font-warning { color: #ffd77a; font-size: 12px; max-width: 512px; }
 .result-meta { color: #ffd77a; font-size: 12px; }
 .mouse-help { color: #bbb; font-size: 11px; }
 .item { padding: 3px 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 4px; font-size: 13px; }

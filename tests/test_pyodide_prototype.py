@@ -94,6 +94,8 @@ equal(ui.insertText('abcd', 99, 99, 'x'), {value: 'abcdx', cursor: 5}, '越界�
 equal(ui.insertText('abcd', -2, 99, 'x'), {value: 'x', cursor: 1}, '异常选区');
 equal(ui.pngFilename('  山风/测试:*?  '), '山风_测试___.png', '安全文件名');
 equal(ui.pngFilename('   '), 'BWPDIY.png', '空文件名');
+equal(ui.missingCharacters('山 风𪚥𪚥', new Set('山风')), ['𪚥'], '缺字去重');
+equal(ui.missingCharacters('山风', '山风'), [], '字符清单');
 for (const ua of [
   'Mozilla/5.0 MicroMessenger/8.0.50',
   'Mozilla/5.0 MQQBrowser/14.0',
@@ -142,6 +144,36 @@ def test_runtime_zip_contains_renderer_and_real_assets():
     assert not any(name.startswith("assets/ref/") for name in names)
     assert not any(name.endswith(".psd") for name in names)
     assert not any("__pycache__" in name or name.endswith(".pyc") for name in names)
+
+
+def test_online_font_archive_reduces_runtime_without_changing_font_paths():
+    import json
+    from PIL import ImageFont
+
+    root = PROTOTYPE_DIR.parents[1]
+    data = build_runtime_zip()
+    runtime = ZipFile(BytesIO(data))
+    with ZipFile(PROTOTYPE_DIR / "runtime-fonts.zip") as fonts:
+        assert set(fonts.namelist()) == {"方正北魏楷书.ttf", "田氏颜体大字库2.0.ttf"}
+        coverage = json.loads(runtime.read("font-coverage.json"))
+        assert set(coverage) == set(fonts.namelist())
+        for name in fonts.namelist():
+            assert set("山风贯通，觉醒≥1。他们來對時開軍") <= set(coverage[name])
+            packed = fonts.read(name)
+            assert runtime.read(f"assets/fonts/{name}") == packed
+            original_path = root / "assets" / "fonts" / name
+            assert len(packed) < original_path.stat().st_size
+            for size in (12, 24, 48):
+                original = ImageFont.truetype(str(original_path), size)
+                reduced = ImageFont.truetype(BytesIO(packed), size)
+                for text in ("山风贯通，觉醒≥1。", "他们來對時開軍"):
+                    original_mask, original_offset = original.getmask2(text)
+                    reduced_mask, reduced_offset = reduced.getmask2(text)
+                    assert original.getbbox(text) == reduced.getbbox(text)
+                    assert original.getlength(text) == reduced.getlength(text)
+                    assert original_offset == reduced_offset
+                    assert bytes(original_mask) == bytes(reduced_mask)
+    assert len(data) < 12 * 1024 * 1024
 
 
 def test_static_server_serves_root_without_redirect():

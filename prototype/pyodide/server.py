@@ -43,11 +43,30 @@ def _runtime_files():
 
 
 @lru_cache(maxsize=1)
+def _online_fonts():
+    expected = {path.name for path in (ROOT / "assets" / "fonts").glob("*.ttf")}
+    with ZipFile(PROTOTYPE_DIR / "runtime-fonts.zip") as archive:
+        if set(archive.namelist()) != expected:
+            raise RuntimeError("在线字体包与正式字体不一致，请运行 scripts/build_online_fonts.py")
+        fonts = {f"assets/fonts/{name}": archive.read(name) for name in expected}
+    coverage = json.loads((PROTOTYPE_DIR / "runtime-fonts.json").read_text(encoding="utf-8"))
+    if set(coverage) != expected or not all(isinstance(value, str) for value in coverage.values()):
+        raise RuntimeError("在线字体字符清单无效，请运行 scripts/build_online_fonts.py")
+    return fonts, coverage
+
+
+@lru_cache(maxsize=1)
 def build_runtime_zip() -> bytes:
+    fonts, coverage = _online_fonts()
     buf = BytesIO()
     with ZipFile(buf, "w", compression=ZIP_DEFLATED, compresslevel=6) as archive:
         for path, name in _runtime_files():
-            archive.write(path, name)
+            if name in fonts:
+                archive.writestr(name, fonts[name])
+            else:
+                archive.write(path, name)
+        archive.writestr("font-coverage.json", json.dumps(
+            coverage, ensure_ascii=False, sort_keys=True).encode("utf-8"))
     return buf.getvalue()
 
 

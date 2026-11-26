@@ -28,7 +28,7 @@ const TUTORIAL_STEPS = [
   },
   {
     selector: '[data-card="description"]', title: "标记关键字",
-    text: "范例中的「不屈」已用双方括号标为 [[不屈]]，预览会显示异色。也可输入 #ll 插入力量小图标。",
+    text: "范例中的「不屈」已用双方括号标为 [[不屈]]。描述下方的「快捷输入」可在光标处插入高亮、换行和力量等小图标。",
   },
   {
     selector: "#c-actions .download-button", title: "导出你的成品",

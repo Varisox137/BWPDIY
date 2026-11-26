@@ -1,10 +1,10 @@
 "use strict";
 
-const RESOURCE_CACHE = "bwpdiy-online-resources-v12";
+const RESOURCE_CACHE = "bwpdiy-online-resources-v13";
 const PYODIDE_CACHE = "bwpdiy-pyodide-v0.28.3";
 const CURRENT_CACHES = [RESOURCE_CACHE, PYODIDE_CACHE];
 const STATIC_PATHS = new Set(["/", "/index.html", "/style.css", "/storage.js",
-  "/layout.js", "/app.js", "/worker.js", "/bridge.py", "/sw.js", "/runtime.json",
+  "/layout.js", "/app.js", "/ui-utils.js", "/worker.js", "/bridge.py", "/sw.js", "/runtime.json",
   "/tutorial.js", "/tutorial.css"]);
 
 self.addEventListener("install", event => event.waitUntil(self.skipWaiting()));

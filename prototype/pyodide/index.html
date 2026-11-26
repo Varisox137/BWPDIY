@@ -39,15 +39,17 @@
     </details>
   </aside>
   <div id="c-mid">
-    <div id="c-actions"><button id="c-btn-help">使用说明</button><button id="c-btn-refresh">强制刷新</button><button class="download-button primary-action" disabled>导出当前图片</button><span id="c-status"></span></div>
+    <div id="c-actions"><button id="c-btn-help">使用说明</button><button id="c-btn-refresh">强制刷新</button><button class="preview-toggle" data-preview="c-mid" aria-expanded="true" aria-controls="c-preview-body">收起预览</button><button class="download-button primary-action" disabled>导出当前图片</button><span id="c-status"></span></div>
     <div id="c-frame-variants">框品
       <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="black">墨染</button>
       <button class="fv" data-fv="blue">琉璃</button><button class="fv" data-fv="red">百炼</button>
     </div>
-    <div id="c-error"></div>
-    <img id="c-preview" alt="浏览器合成结果">
-    <p class="result-meta">尚未渲染</p>
-    <p class="mouse-help">左键/单指拖拽移动 · 滚轮/双指缩放 · 右键 + 滚轮/双指转动旋转</p>
+    <div id="c-preview-body" class="preview-body">
+      <div id="c-error"></div>
+      <img id="c-preview" alt="浏览器合成结果">
+      <p class="result-meta">尚未渲染</p>
+      <p class="mouse-help">左键/单指拖拽移动 · 滚轮/双指缩放 · 右键 + 滚轮/双指转动旋转</p>
+    </div>
   </div>
   <aside id="c-right"><div id="c-form">
     <section id="card-editor">
@@ -102,7 +104,7 @@
 
 <div id="tab-battle" class="tabpage">
   <aside id="b-left"><h4>预览样式</h4><div id="b-styles"><button class="battle-style active" data-kind="entity">式神小卡</button><button class="battle-style" data-kind="card">完整大卡</button><button class="battle-style" data-kind="portrait">式神头像</button></div></aside>
-  <div id="b-mid"><div><button id="b-btn-refresh">强制刷新</button><button class="download-button" disabled>导出</button><span id="b-status"></span></div><div id="b-error"></div><img id="b-preview" alt="对局预览"><p class="result-meta">尚未渲染</p><p class="mouse-help">左键/单指拖拽移动 · 滚轮/双指缩放 · 右键 + 滚轮/双指转动旋转</p></div>
+  <div id="b-mid"><div><button id="b-btn-refresh">强制刷新</button><button class="preview-toggle" data-preview="b-mid" aria-expanded="true" aria-controls="b-preview-body">收起预览</button><button class="download-button" disabled>导出</button><span id="b-status"></span></div><div id="b-preview-body" class="preview-body"><div id="b-error"></div><img id="b-preview" alt="对局预览"><p class="result-meta">尚未渲染</p><p class="mouse-help">左键/单指拖拽移动 · 滚轮/双指缩放 · 右键 + 滚轮/双指转动旋转</p></div></div>
   <aside id="b-right"><div id="b-form">
     <h3>临时对局状态</h3>
     <label>等级 <select data-state="level"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
@@ -129,13 +131,21 @@
   <aside id="l-props">加载布局后选择元素</aside>
 </div>
 
+<dialog id="export-modal" aria-labelledby="export-title">
+  <h2 id="export-title">保存 PNG 图片</h2>
+  <p>当前浏览器可能不支持直接下载。请长按下方图片并选择“保存图片”；如果透明区域在相册中显示为黑色，可先切换为白底。</p>
+  <img id="export-image" alt="待保存的卡牌图片">
+  <div class="btnrow"><button id="export-bg-toggle">切换为白底</button><button id="export-copy-link">复制页面链接</button><button id="export-download" class="primary-action">仍尝试下载</button><button id="export-close">关闭</button></div>
+  <div id="export-status" role="status"></div>
+</dialog>
+
 <dialog id="help-modal" aria-labelledby="help-title">
   <div class="help-heading"><h2 id="help-title">BWPDIY 使用说明</h2><button id="help-close">关闭</button></div>
   <button id="help-start-tutorial" class="primary-action">开始互动教程</button>
   <h3>基本流程</h3>
-  <p>在右栏编辑内容并选择本地卡图，初始化完成后自动显示预览；修改内容会重新合成。点击「导出当前图片」下载 PNG。所有合成均在当前浏览器完成，卡图和作品不会上传到服务器。</p>
+  <p>在右栏编辑内容并选择本地卡图，初始化完成后自动显示预览；修改内容会重新合成。点击「导出当前图片」下载 PNG。QQ/微信等内置浏览器会打开长按保存界面，默认透明，也可切换白底。所有合成均在当前浏览器完成，卡图和作品不会上传到服务器。</p>
   <h3>描述排版与标记</h3>
-  <p>默认智能排版会自动换行、居中、避让角标并调整字号。描述中用 <code>[[关键字]]</code> 高亮；用 <code>#xx</code> 插入小图标：<code>#ll</code> 力量、<code>#sm</code> 生命、<code>#hj</code> 护甲、<code>#pj</code> 破甲、<code>#nl</code> 能量、<code>#nj</code> 耐久、<code>#zl</code> 战力、<code>#fl</code> 乏力，<code>#hl/#cy/#ql/#zy</code> 为四派系。</p>
+  <p>默认智能排版会自动换行、居中、避让角标并调整字号。描述下方的「快捷输入」可在光标处插入高亮、换行与小图标。手写语法为 <code>[[关键字]]</code> 高亮、<code>#xx</code> 小图标：<code>#ll</code> 力量、<code>#sm</code> 生命、<code>#hj</code> 护甲、<code>#pj</code> 破甲、<code>#nl</code> 能量、<code>#nj</code> 耐久、<code>#zl</code> 战力、<code>#fl</code> 乏力，<code>#hl/#cy/#ql/#zy</code> 为四派系。</p>
   <h3>卡图与触屏</h3>
   <p>偏移 X/Y 正值使图像向右/向下移动。鼠标左键拖拽移动、滚轮缩放、右键加滚轮旋转；触屏单指移动，卡图上双指缩放/旋转，不改变页面整体比例。低负载模式只降低连续拖拽时的预览质量，导出仍为完整质量。</p>
   <h3>机制与布局</h3>
@@ -159,6 +169,7 @@
 
 <script src="storage.js"></script>
 <script src="layout.js"></script>
+<script src="ui-utils.js"></script>
 <script src="tutorial.js"></script>
 <script src="app.js"></script>
 </body>

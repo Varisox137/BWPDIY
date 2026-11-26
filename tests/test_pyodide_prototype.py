@@ -78,6 +78,55 @@ def test_initial_form_is_neutral_and_tutorial_last_step_has_no_next():
     assert "tutorialNext.hidden = tutorialStep === TUTORIAL_STEPS.length - 1;" in tutorial
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
+def test_online_editor_text_and_export_helpers():
+    script = r"""
+const ui = require(process.argv[1]);
+function equal(actual, expected, label) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${label}: ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`);
+  }
+}
+equal(ui.insertText('abcdef', 2, 4, '[[贯通]]'),
+      {value: 'ab[[贯通]]ef', cursor: 8}, '替换选区');
+equal(ui.insertText('ab', 1, 1, '#ll'), {value: 'a#llb', cursor: 4}, '光标插入');
+equal(ui.insertText('abcd', 99, 99, 'x'), {value: 'abcdx', cursor: 5}, '越界光标');
+equal(ui.insertText('abcd', -2, 99, 'x'), {value: 'x', cursor: 1}, '异常选区');
+equal(ui.pngFilename('  山风/测试:*?  '), '山风_测试___.png', '安全文件名');
+equal(ui.pngFilename('   '), 'BWPDIY.png', '空文件名');
+for (const ua of [
+  'Mozilla/5.0 MicroMessenger/8.0.50',
+  'Mozilla/5.0 MQQBrowser/14.0',
+  'Mozilla/5.0 QQ/9.1.0',
+  'Mozilla/5.0 Quark/7.0',
+]) {
+  if (!ui.isEmbeddedBrowser(ua)) throw new Error(`未识别内置浏览器：${ua}`);
+}
+for (const ua of [
+  'Mozilla/5.0 Chrome/130.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (iPhone) Version/17.0 Mobile/15E148 Safari/604.1',
+  '',
+]) {
+  if (ui.isEmbeddedBrowser(ua)) throw new Error(`误识别普通浏览器：${ua}`);
+}
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "ui-utils.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
+def test_online_mobile_preview_and_save_dialog_structure():
+    html = (PROTOTYPE_DIR / "index.html").read_text(encoding="utf-8")
+    for element_id in ("c-preview-body", "b-preview-body", "export-modal",
+                       "export-image", "export-bg-toggle", "export-download"):
+        assert f'id="{element_id}"' in html
+    assert html.count('class="preview-toggle"') == 2
+    assert '<script src="ui-utils.js"></script>' in html
+    sw = (PROTOTYPE_DIR / "sw.js").read_text(encoding="utf-8")
+    assert '"/ui-utils.js"' in sw
+
+
 def test_runtime_zip_contains_renderer_and_real_assets():
     data = build_runtime_zip()
     assert build_runtime_zip() is data
@@ -129,7 +178,7 @@ def test_tutorial_assets_are_public_static_files():
     thread.start()
     try:
         connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
-        for path in ("/tutorial.js", "/tutorial.css"):
+        for path in ("/tutorial.js", "/tutorial.css", "/ui-utils.js"):
             connection.request("GET", path)
             response = connection.getresponse()
             assert response.status == 200

@@ -438,14 +438,78 @@ document.querySelector('[data-card="type"]').addEventListener("change", event =>
 document.querySelector('[data-mech="frame"]').addEventListener("change", updateTypeFields);
 document.querySelector('[data-card="evolve"]').addEventListener("change", updateTypeFields);
 
+const SYNTAX_INSERTS = [
+  ["关键字", "[[关键字]]"], ["换行", "\n"], ["力量", "#ll"], ["生命", "#sm"],
+  ["护甲", "#hj"], ["破甲", "#pj"], ["能量", "#nl"], ["耐久", "#nj"],
+  ["战力", "#zl"], ["乏力", "#fl"], ["红莲", "#hl"], ["苍叶", "#cy"],
+  ["青岚", "#ql"], ["紫岩", "#zy"],
+];
+
+function initializeSyntaxTools() {
+  for (const textarea of document.querySelectorAll('[data-card="description"], [data-mech="text"]')) {
+    const details = document.createElement("details");
+    details.className = "syntax-helper";
+    const summary = document.createElement("summary");
+    summary.textContent = "快捷输入：高亮 / 小图标 / 换行";
+    const tools = document.createElement("div");
+    tools.className = "syntax-tools";
+    for (const [label, insertion] of SYNTAX_INSERTS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.title = `插入 ${insertion === "\n" ? "换行" : insertion}`;
+      button.addEventListener("pointerdown", event => event.preventDefault());
+      button.addEventListener("click", () => {
+        const result = BWPDiyUI.insertText(
+          textarea.value, textarea.selectionStart, textarea.selectionEnd, insertion);
+        textarea.focus();
+        textarea.value = result.value;
+        textarea.setSelectionRange(result.cursor, result.cursor);
+        textarea.dispatchEvent(new Event("input", {bubbles: true}));
+        textarea.dispatchEvent(new Event("change", {bubbles: true}));
+      });
+      tools.appendChild(button);
+    }
+    details.append(summary, tools);
+    textarea.closest("label").insertAdjacentElement("afterend", details);
+  }
+}
+
+function scheduleControlPreview(element, delay = null) {
+  const wait = delay ?? (element.matches("[data-art], [data-portrait]") ? 100 :
+    element.matches("[data-state]") ? 150 : 250);
+  if (element.matches("[data-art]")) scheduleNormalPreview(currentRenderKind, wait);
+  else if (element.matches("[data-portrait]")) {
+    if (currentRenderKind === "portrait") scheduleNormalPreview("portrait", wait);
+  } else if (element.matches("[data-state]")) {
+    if (activeMainTab === "battle") scheduleNormalPreview(battleKind, wait);
+  } else scheduleNormalPreview(element.matches("[data-mech]") ? "mechanism" : currentRenderKind, wait);
+}
+
+initializeSyntaxTools();
+const composingControls = new WeakSet();
 for (const element of document.querySelectorAll("[data-card], [data-art], [data-portrait], [data-state], [data-mech], #width")) {
-  element.addEventListener("input", scheduleDraftSave);
-  element.addEventListener("change", () => {
+  element.addEventListener("compositionstart", () => {
+    composingControls.add(element);
+    clearTimeout(normalPreviewTimer);
+    clearTimeout(draftTimer);
+  });
+  element.addEventListener("compositionend", () => {
+    composingControls.delete(element);
     scheduleDraftSave();
-    if (element.matches("[data-art]")) scheduleNormalPreview(currentRenderKind, 100);
-    else if (element.matches("[data-portrait]")) { if (currentRenderKind === "portrait") scheduleNormalPreview("portrait", 100); }
-    else if (element.matches("[data-state]")) { if (activeMainTab === "battle") scheduleNormalPreview(battleKind, 150); }
-    else scheduleNormalPreview(element.matches("[data-mech]") ? "mechanism" : currentRenderKind);
+    scheduleControlPreview(element, 0);
+  });
+  element.addEventListener("input", event => {
+    if (event.isComposing || composingControls.has(element)) return;
+    scheduleDraftSave();
+    if (element.matches('textarea, input:not([type="number"]):not([type="checkbox"]):not([type="file"])')) {
+      scheduleControlPreview(element);
+    }
+  });
+  element.addEventListener("change", event => {
+    if (event.isComposing || composingControls.has(element)) return;
+    scheduleDraftSave();
+    scheduleControlPreview(element);
   });
 }
 
@@ -482,20 +546,134 @@ document.getElementById("artwork").addEventListener("change", async event => {
   scheduleNormalPreview(currentRenderKind, 0);
 });
 
+for (const button of document.querySelectorAll(".preview-toggle")) {
+  button.addEventListener("click", () => {
+    const panel = document.getElementById(button.dataset.preview);
+    const collapsed = panel.classList.toggle("preview-collapsed");
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.textContent = collapsed ? "展开预览" : "收起预览";
+  });
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
+  document.body.appendChild(anchor);
   anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
+
+const exportModal = document.getElementById("export-modal");
+const exportImage = document.getElementById("export-image");
+const exportBackgroundButton = document.getElementById("export-bg-toggle");
+const exportStatus = document.getElementById("export-status");
+let exportOriginal = null;
+let exportBlob = null;
+let exportUrl = "";
+let exportFilename = "BWPDIY.png";
+let exportWhite = false;
+let exportOperation = 0;
+
+function currentExportFilename() {
+  const mechanismVisible = !document.getElementById("mechanism-editor").hidden;
+  const name = mechanismVisible ? document.querySelector('[data-mech="name"]').value :
+    document.querySelector('[data-card="name"]').value;
+  return BWPDiyUI.pngFilename(name);
+}
+
+function replaceExportImage(blob) {
+  if (exportUrl) URL.revokeObjectURL(exportUrl);
+  exportBlob = blob;
+  exportUrl = URL.createObjectURL(blob);
+  exportImage.src = exportUrl;
+}
+
+function openExportDialog() {
+  if (exportModal.open) return;
+  exportOperation += 1;
+  exportOriginal = currentPng;
+  exportFilename = currentExportFilename();
+  exportWhite = false;
+  exportBackgroundButton.disabled = false;
+  exportBackgroundButton.textContent = "切换为白底";
+  exportStatus.textContent = "默认保留透明背景";
+  replaceExportImage(exportOriginal);
+  exportModal.showModal();
+}
+
+async function whiteBackgroundPng(blob) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0);
+    if (canvas.toBlob) {
+      return await new Promise((resolve, reject) => {
+        canvas.toBlob(result => result ? resolve(result) : reject(new Error("浏览器未能生成白底 PNG")), "image/png");
+      });
+    }
+    const encoded = canvas.toDataURL("image/png").split(",")[1];
+    return new Blob([base64ToBuffer(encoded)], {type: "image/png"});
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+exportBackgroundButton.addEventListener("click", async () => {
+  if (!exportOriginal) return;
+  const operation = ++exportOperation;
+  const white = !exportWhite;
+  exportBackgroundButton.disabled = true;
+  try {
+    const blob = white ? await whiteBackgroundPng(exportOriginal) : exportOriginal;
+    if (operation !== exportOperation) return;
+    exportWhite = white;
+    replaceExportImage(blob);
+    exportBackgroundButton.textContent = white ? "恢复透明底" : "切换为白底";
+    exportStatus.textContent = white ? "已生成白底 PNG；原图未修改" : "已恢复透明 PNG";
+  } catch (error) {
+    exportStatus.textContent = `背景切换失败：${error.message}`;
+  } finally {
+    exportBackgroundButton.disabled = false;
+  }
+});
+document.getElementById("export-download").addEventListener("click", () => {
+  if (exportBlob) downloadBlob(exportBlob, exportFilename);
+});
+document.getElementById("export-copy-link").addEventListener("click", async () => {
+  try {
+    if (!navigator.clipboard || !window.isSecureContext) throw new Error("当前浏览器不允许自动复制");
+    await navigator.clipboard.writeText(location.href);
+    exportStatus.textContent = "页面链接已复制，可粘贴到系统浏览器打开";
+  } catch (error) {
+    exportStatus.textContent = `${error.message}；请手动复制地址栏链接`;
+  }
+});
+document.getElementById("export-close").addEventListener("click", () => exportModal.close());
+exportModal.addEventListener("close", () => {
+  if (exportModal.open) return;
+  exportOperation += 1;
+  exportOriginal = null;
+  exportBlob = null;
+  if (exportUrl) URL.revokeObjectURL(exportUrl);
+  exportUrl = "";
+  exportImage.removeAttribute("src");
+});
 
 for (const button of downloadButtons) button.addEventListener("click", () => {
   if (!currentPng) return;
-  const mechanismVisible = !document.getElementById("mechanism-editor").hidden;
-  const name = mechanismVisible ? document.querySelector('[data-mech="name"]').value : document.querySelector('[data-card="name"]').value;
-  downloadBlob(currentPng, `${(name.trim() || "BWPDIY").replace(/[<>:"/\\|?*]/g, "_")}.png`);
+  if (BWPDiyUI.isEmbeddedBrowser(navigator.userAgent)) openExportDialog();
+  else downloadBlob(currentPng, currentExportFilename());
 });
 
 function bufferToBase64(buffer) {

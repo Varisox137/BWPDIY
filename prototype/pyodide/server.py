@@ -20,7 +20,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 ROOT = Path(__file__).resolve().parents[2]
 PROTOTYPE_DIR = ROOT / "prototype" / "pyodide"
 _ASSET_EXCLUDES = {"legacy", "psd_export", "ref"}
-_STATIC_NAMES = ("index.html", "style.css", "storage.js", "layout.js", "app.js",
+_STATIC_NAMES = ("index.html", "style.css", "storage.js", "layout.js", "app.js", "ui-utils.js",
                  "worker.js", "bridge.py", "sw.js", "log-admin.html",
                  "log-admin.js", "log-admin.css", "tutorial.js", "tutorial.css")
 _STATIC_FILES = {"/": PROTOTYPE_DIR / "index.html"}

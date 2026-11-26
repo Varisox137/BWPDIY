@@ -143,3 +143,24 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
 .data-settings summary, .advanced-section summary { cursor: pointer; color: #61563f; font-size: 13px; font-weight: bold; }
 .advanced-section { margin-bottom: 12px; }
 #help-start-tutorial { margin-top: 12px; }
+.preview-body { width: 100%; display: flex; flex-direction: column; align-items: center; }
+.preview-toggle { display: none; }
+.syntax-helper { margin: 4px 0 12px; color: #61563f; font-size: 12px; }
+.syntax-helper summary { cursor: pointer; user-select: none; }
+.syntax-tools { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.syntax-tools button { min-height: 30px; padding: 3px 7px; font-size: 12px; }
+.syntax-tools code { font-family: inherit; color: #6b5a33; }
+#export-modal { box-sizing: border-box; width: min(440px, calc(100% - 24px)); max-height: 92vh; border: 1px solid #8d8065; border-radius: 6px; padding: 16px; background: #f3efe8; color: #332f28; }
+#export-modal::backdrop { background: rgb(0 0 0 / 65%); }
+#export-modal h2 { font-size: 18px; margin: 0 0 8px; }
+#export-modal p { font-size: 13px; line-height: 1.6; }
+#export-image { display: block; max-width: 100%; max-height: 55vh; margin: 10px auto; background: #ddd; }
+#export-status { min-height: 20px; color: #61563f; font-size: 12px; }
+#export-modal .btnrow { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 760px) {
+  .preview-toggle { display: inline-block; }
+  #c-mid.preview-collapsed, #b-mid.preview-collapsed { min-height: 0; }
+  .preview-collapsed .preview-body { display: none; }
+  .syntax-tools { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px; }
+  .syntax-tools button { flex: 0 0 auto; min-height: 38px; }
+}

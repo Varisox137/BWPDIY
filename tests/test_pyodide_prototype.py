@@ -390,6 +390,73 @@ vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
+def test_ui_cache_upgrade_preserves_runtime_downloads():
+    script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const listeners = {};
+const stores = new Map();
+const store = name => {
+  if (!stores.has(name)) stores.set(name, new Map());
+  return stores.get(name);
+};
+const cache = name => ({
+  match: async request => store(name).get(request),
+  put: async (request, response) => store(name).set(request, response),
+});
+const context = {
+  URL,
+  self: {
+    location: {origin: 'http://local'},
+    clients: {claim: async () => {}},
+    addEventListener: (type, listener) => { listeners[type] = listener; },
+  },
+  caches: {
+    open: async name => cache(name),
+    keys: async () => [...stores.keys()],
+    delete: async name => stores.delete(name),
+  },
+  fetch: async () => ({ok: true, clone() { return this; }}),
+};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
+(async () => {
+  const resourceCache = vm.runInContext('RESOURCE_CACHE', context);
+  const runtimeCache = vm.runInContext('RUNTIME_CACHE', context);
+  if (resourceCache === runtimeCache) throw new Error('界面与运行时仍共用缓存');
+  async function dispatch(path) {
+    const event = {request: {method: 'GET', url: 'http://local' + path}, pending: [],
+      respondWith(promise) { this.promise = promise; },
+      waitUntil(promise) { this.pending.push(promise); }};
+    listeners.fetch(event);
+    if (!event.promise) throw new Error(`未处理资源 ${path}`);
+    await event.promise;
+    await Promise.all(event.pending);
+  }
+  await dispatch('/app.js');
+  await dispatch('/runtime.json');
+  await dispatch('/runtime-chunks/0');
+  if (!store(resourceCache).has('/app.js')) throw new Error('界面文件未进入界面缓存');
+  for (const path of ['/runtime.json', '/runtime-chunks/0']) {
+    if (!store(runtimeCache).has(path) || store(resourceCache).has(path)) {
+      throw new Error(`运行时缓存分类错误：${path}`);
+    }
+  }
+  stores.set('bwpdiy-online-resources-v13', new Map());
+  const pending = [];
+  listeners.activate({waitUntil: promise => pending.push(promise)});
+  await Promise.all(pending);
+  if (!stores.has(runtimeCache)) throw new Error('界面升级删除了运行时缓存');
+  if (stores.has('bwpdiy-online-resources-v13')) throw new Error('旧界面缓存未清理');
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "sw.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
 def test_worker_rejects_unsafe_artwork_before_runtime_initialization():
     script = r"""
 const fs = require('fs');

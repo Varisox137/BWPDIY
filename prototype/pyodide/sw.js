@@ -1,10 +1,11 @@
 "use strict";
 
-const RESOURCE_CACHE = "bwpdiy-online-resources-v13";
+const RESOURCE_CACHE = "bwpdiy-online-resources-v14";
+const RUNTIME_CACHE = "bwpdiy-online-runtime-v1";
 const PYODIDE_CACHE = "bwpdiy-pyodide-v0.28.3";
-const CURRENT_CACHES = [RESOURCE_CACHE, PYODIDE_CACHE];
+const CURRENT_CACHES = [RESOURCE_CACHE, RUNTIME_CACHE, PYODIDE_CACHE];
 const STATIC_PATHS = new Set(["/", "/index.html", "/style.css", "/storage.js",
-  "/layout.js", "/app.js", "/ui-utils.js", "/worker.js", "/bridge.py", "/sw.js", "/runtime.json",
+  "/layout.js", "/app.js", "/ui-utils.js", "/worker.js", "/bridge.py", "/sw.js",
   "/tutorial.js", "/tutorial.css"]);
 
 self.addEventListener("install", event => event.waitUntil(self.skipWaiting()));
@@ -30,11 +31,16 @@ self.addEventListener("fetch", event => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin === self.location.origin &&
-      (STATIC_PATHS.has(url.pathname) || /^\/runtime-chunks\/\d+$/.test(url.pathname))) {
+  if (url.origin !== self.location.origin) {
+    if (url.origin === "https://cdn.jsdelivr.net" &&
+        url.pathname.startsWith("/pyodide/v0.28.3/")) {
+      event.respondWith(cacheFirst(event, PYODIDE_CACHE));
+    }
+    return;
+  }
+  if (STATIC_PATHS.has(url.pathname)) {
     event.respondWith(cacheFirst(event, RESOURCE_CACHE, url.pathname));
-  } else if (url.origin === "https://cdn.jsdelivr.net" &&
-             url.pathname.startsWith("/pyodide/v0.28.3/")) {
-    event.respondWith(cacheFirst(event, PYODIDE_CACHE));
+  } else if (url.pathname === "/runtime.json" || /^\/runtime-chunks\/\d+$/.test(url.pathname)) {
+    event.respondWith(cacheFirst(event, RUNTIME_CACHE, url.pathname));
   }
 });

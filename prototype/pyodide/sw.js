@@ -1,10 +1,10 @@
 "use strict";
 
-const RESOURCE_CACHE = "bwpdiy-online-resources-v18";
+const RESOURCE_CACHE = "bwpdiy-online-resources-v20";
 const RUNTIME_CACHE = "bwpdiy-online-runtime-v2";
 const PYODIDE_CACHE = "bwpdiy-pyodide-v0.28.3";
 const CURRENT_CACHES = [RESOURCE_CACHE, RUNTIME_CACHE, PYODIDE_CACHE];
-const STATIC_PATHS = new Set(["/", "/index.html", "/style.css", "/storage.js",
+const STATIC_PATHS = new Set(["/", "/index.html", "/style.css", "/storage.js", "/library.js",
   "/layout.js", "/app.js", "/ui-utils.js", "/mobile.js", "/worker.js", "/bridge.py", "/sw.js",
   "/tutorial.js", "/tutorial.css"]);
 
@@ -22,7 +22,7 @@ async function cacheFirst(event, cacheName, cacheKey = event.request) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
-  const response = await fetch(event.request);
+  const response = await fetch(event.request, {cache: "reload"});
   if (response.ok) event.waitUntil(cache.put(cacheKey, response.clone()));
   return response;
 }

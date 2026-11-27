@@ -183,6 +183,159 @@ if (!collapsed || !exitedFullscreen) {
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
+def test_online_library_backup_roundtrip_and_validation():
+    script = r"""
+const library = require(process.argv[1]);
+function equal(actual, expected, label) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${label}: ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`);
+  }
+}
+equal(library.workTitle({state: {tab: 'card', card: {name: ' 山风 '}}}), '山风', '卡牌标题');
+equal(library.workTitle({state: {tab: 'mechanism', mechanism: {name: ''}}}), '未命名机制', '机制空标题');
+const blank = library.blankDraft({tab: 'card', card: {name: '旧卡'}}, 'mechanism');
+equal(blank.state.tab, 'mechanism', '新机制标签');
+equal(blank.state.card.name, '旧卡', '空白表单模板不被深拷贝修改');
+equal(blank.artwork, null, '新作品不带旧卡图');
+const source = {schema: 2, current_id: 'old', layouts: {schema: 1, layouts: {}}, works: [{
+  schema: 1, id: 'old', project: '项目', saved_at: '2026-11-26T00:00:00Z',
+  state: {tab: 'card', card: {name: '测试'}},
+  artwork: {name: 'a.png', path: 'artwork.png', bytes: new Uint8Array([1, 2, 3]).buffer},
+}]};
+const encoded = library.encodeBackup(source);
+if (typeof encoded.works[0].artwork.bytes !== 'string') throw new Error('备份卡图未编码');
+const decoded = library.decodeBackup(encoded);
+equal([...new Uint8Array(decoded.works[0].artwork.bytes)], [1, 2, 3], '卡图字节往返');
+equal(decoded.works[0].state.card.name, '测试', '作品内容往返');
+if (!decoded.applyLayouts) throw new Error('完整卡库应允许恢复全局布局');
+const single = library.decodeBackup({schema: 1, state: {tab: 'card'}, artwork: null});
+if (single.applyLayouts || single.works.length !== 1) throw new Error('单作品备份不应覆盖全局布局');
+for (const invalid of [null, {schema: 2, works: []}, {schema: 2, works: [{}]},
+                       {schema: 1, state: null}, {schema: 3, works: []}]) {
+  let rejected = false;
+  try { library.decodeBackup(invalid); } catch (error) { rejected = true; }
+  if (!rejected) throw new Error(`未拒绝异常备份 ${JSON.stringify(invalid)}`);
+}
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "library.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
+def test_online_library_and_mobile_navigation_structure():
+    html = (PROTOTYPE_DIR / "index.html").read_text(encoding="utf-8")
+    for element_id in ("work-list", "new-card-work", "new-mechanism-work", "delete-work",
+                       "project-name", "export-library", "mobile-workspace-nav"):
+        assert f'id="{element_id}"' in html
+    for target in ("library", "editor", "mechanism", "more"):
+        assert f'data-mobile-target="{target}"' in html
+    assert '<script src="library.js"></script>' in html
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
+def test_mobile_navigation_switches_instead_of_converting_work_type():
+    script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const context = {console, structuredClone, btoa, atob, Uint8Array, ArrayBuffer, Date, Math, JSON, Object, String, Array,
+  tutorialMode: false};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8') + '\nthis.selectKind = selectEditorKind;', context);
+const navigation = {hidden: true};
+context.document = {body: {dataset: {}}, querySelectorAll: () => [],
+  getElementById: () => navigation};
+context.matchMedia = () => ({matches: false});
+context.activeMainTab = 'cards';
+context.showMobileWorkspace('editor');
+if (navigation.hidden) throw new Error('首次制作页未显示手机底部导航');
+let tab = 'mechanism';
+const calls = [];
+context.readUiState = () => ({tab});
+context.showMobileWorkspace = target => calls.push(['show', target]);
+context.switchWork = async id => { calls.push(['switch', id]); tab = 'card'; };
+context.createWork = async kind => { calls.push(['create', kind]); };
+vm.runInContext("libraryIndex = {works: [{id: 'card-1', kind: 'card'}, {id: 'mech-1', kind: 'mechanism'}]};", context);
+(async () => {
+  await context.selectKind('card');
+  if (JSON.stringify(calls) !== JSON.stringify([['switch', 'card-1']])) {
+    throw new Error(`机制被原地转换或选择错误：${JSON.stringify(calls)}`);
+  }
+  calls.length = 0;
+  await context.selectKind('card');
+  if (JSON.stringify(calls) !== JSON.stringify([['show', 'editor']])) {
+    throw new Error(`同类型不应重复切换：${JSON.stringify(calls)}`);
+  }
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "library.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
+def test_online_library_storage_transactions():
+    script = r"""
+const values = new Map();
+function finish(tx) {
+  if (tx.pending || tx.done) return;
+  tx.done = true;
+  if (tx.oncomplete) tx.oncomplete();
+}
+function request(tx, action) {
+  const result = {};
+  tx.pending += 1;
+  queueMicrotask(() => {
+    try { result.result = action(); if (result.onsuccess) result.onsuccess(); }
+    catch (error) { result.error = error; if (result.onerror) result.onerror(); }
+    tx.pending -= 1;
+    queueMicrotask(() => finish(tx));
+  });
+  return result;
+}
+const database = {transaction: () => {
+  const tx = {pending: 0, done: false};
+  tx.objectStore = () => ({
+    get: key => request(tx, () => values.get(key)),
+    put: (value, key) => request(tx, () => { values.set(key, value); }),
+    delete: key => request(tx, () => { values.delete(key); }),
+    getAllKeys: () => request(tx, () => [...values.keys()]),
+  });
+  return tx;
+}};
+global.indexedDB = {open: () => {
+  const result = {};
+  queueMicrotask(() => { result.result = database; result.onsuccess(); });
+  return result;
+}};
+const store = require(process.argv[1]);
+const draft = name => ({schema: 1, state: {tab: 'card', card: {name}}, artwork: null});
+const meta = name => ({title: name, project: '项目', kind: 'card', saved_at: 'now'});
+(async () => {
+  await store.saveWork('a', draft('甲'), meta('甲'));
+  await store.saveWork('b', draft('乙'), meta('乙'));
+  const index = await store.listWorks();
+  if (index.current_id !== 'b' || index.works.length !== 2) throw new Error('作品索引保存失败');
+  if ((await store.loadWork('a')).state.card.name !== '甲') throw new Error('作品读取失败');
+  await store.setCurrentWork('a');
+  if ((await store.listWorks()).current_id !== 'a') throw new Error('当前作品切换失败');
+  await store.deleteWork('a');
+  if (await store.loadWork('a')) throw new Error('作品未删除');
+  if ((await store.listWorks()).current_id !== 'b') throw new Error('删除后未回退到已有作品');
+  await store.saveLayout({schema: 1, layouts: {}});
+  await store.clearWorks();
+  if ((await store.listWorks()).works.length || await store.loadWork('b')) throw new Error('卡库未清空');
+  if (!(await store.loadLayout())) throw new Error('清空卡库误删全局布局');
+})().catch(error => { console.error(error); process.exit(1); });
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "storage.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert result.returncode == 0, result.stderr
+
+
 def test_runtime_zip_contains_renderer_and_real_assets():
     data = build_runtime_zip()
     assert build_runtime_zip() is data
@@ -264,7 +417,7 @@ def test_tutorial_assets_are_public_static_files():
     thread.start()
     try:
         connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
-        for path in ("/tutorial.js", "/tutorial.css", "/ui-utils.js", "/mobile.js"):
+        for path in ("/tutorial.js", "/tutorial.css", "/ui-utils.js", "/mobile.js", "/library.js"):
             connection.request("GET", path)
             response = connection.getresponse()
             assert response.status == 200
@@ -423,8 +576,9 @@ const context = {
     addEventListener: (type, listener) => { listeners[type] = listener; },
   },
   caches: {open: async () => cache},
-  fetch: async () => {
+  fetch: async (url, options) => {
     networkRequests += 1;
+    if (!options || options.cache !== 'reload') throw new Error('缓存 miss 未绕过旧 HTTP 缓存');
     return {ok: true, clone() { return this; }};
   },
 };

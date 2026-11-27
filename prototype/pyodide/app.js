@@ -16,6 +16,7 @@ let currentBlobUrl = "";
 let currentPng = null;
 let renderCount = 0;
 let draftTimer = null;
+let saveQueue = Promise.resolve();
 let restoringDraft = false;
 let currentRenderKind = "card";
 let activeMainTab = "cards";
@@ -69,7 +70,8 @@ function setRendering(rendering) {
 function callWorker(type, payload = null, artwork = null) {
   const id = ++requestSequence;
   return new Promise((resolve, reject) => {
-    pending.set(id, {resolve, reject, target: payload && payload.target, seq: payload && payload.layout_seq});
+    pending.set(id, {resolve, reject, target: payload && payload.target, seq: payload && payload.layout_seq,
+      work: type === "render" ? currentWorkId : ""});
     const message = {type, id, payload};
     if (artwork) {
       const copy = artwork.slice(0);
@@ -143,13 +145,14 @@ worker.onmessage = event => {
       }
     }).catch(error => showPreviewStatus(`布局初始化失败：${error.message}`, true));
   }
+  const staleWork = request && request.work && request.work !== currentWorkId;
   if (message.type === "result") {
     if (isLayout) handleLayoutRender(message, request.target, request.seq);
-    else showNormalResult(message);
+    else if (!staleWork) showNormalResult(message);
   }
   if (message.type === "error") {
     if (isLayout) handleLayoutError(message, request.seq);
-    else {
+    else if (!staleWork) {
       log(`失败：${message.message}`, true);
       if (message.detail) log(message.detail, true);
       document.body.dataset.error = message.message;
@@ -227,20 +230,25 @@ async function saveDraftNow() {
   if (restoringDraft || tutorialMode) return;
   clearTimeout(draftTimer);
   draftTimer = null;
+  const draft = currentDraft();
+  const operation = saveQueue.then(() => persistCurrentWork(draft));
+  saveQueue = operation.catch(() => {});
   try {
-    await draftStore.save(currentDraft());
-    draftStatus.textContent = `草稿已保存到当前浏览器：${new Date().toLocaleTimeString()}`;
-    document.body.dataset.draftSaved = "true";
+    await operation;
+    if (libraryAvailable) {
+      draftStatus.textContent = `作品已保存到当前浏览器：${new Date().toLocaleTimeString()}`;
+      document.body.dataset.draftSaved = "true";
+    }
     updateStorageStatus();
   } catch (error) {
-    draftStatus.textContent = `草稿保存失败：${error.message}`;
+    draftStatus.textContent = `作品保存失败：${error.message}`;
     log(draftStatus.textContent, true);
   }
 }
 
 function scheduleDraftSave() {
   if (restoringDraft || tutorialMode) return;
-  draftStatus.textContent = "有尚未写入浏览器的草稿更改…";
+  draftStatus.textContent = "有尚未写入浏览器的作品更改…";
   clearTimeout(draftTimer);
   draftTimer = setTimeout(saveDraftNow, 300);
 }
@@ -272,7 +280,7 @@ async function restoreDraft(draft) {
   } finally {
     restoringDraft = false;
   }
-  draftStatus.textContent = draft.saved_at ? `已恢复浏览器草稿：${new Date(draft.saved_at).toLocaleString()}` : "已恢复浏览器草稿";
+  draftStatus.textContent = draft.saved_at ? `已恢复浏览器作品：${new Date(draft.saved_at).toLocaleString()}` : "已恢复浏览器作品";
   document.body.dataset.draftRestored = "true";
   return true;
 }
@@ -294,6 +302,7 @@ function showTab(tab) {
 
 function showMainTab(tab) {
   activeMainTab = tab;
+  updateMobileWorkspace(tab);
   document.querySelectorAll(".navtab").forEach(button => button.classList.toggle("active", button.dataset.tab === tab));
   document.querySelectorAll(".tabpage").forEach(page => page.classList.toggle("active", page.id === `tab-${tab}`));
   if (tab === "layout") {
@@ -450,12 +459,8 @@ function scheduleNormalPreview(kind = currentRenderKind, delay = 250, interactiv
 for (const button of renderButtons) button.addEventListener("click", () => render(button.dataset.kind, true));
 document.getElementById("c-btn-refresh").addEventListener("click", () => render(currentRenderKind, true));
 document.getElementById("b-btn-refresh").addEventListener("click", () => render(battleKind, true));
-document.getElementById("tab-card").addEventListener("click", () => {
-  showTab("card");
-  if (currentRenderKind === "mechanism") currentRenderKind = "card";
-  scheduleDraftSave();
-});
-document.getElementById("tab-mechanism").addEventListener("click", () => { showTab("mechanism"); currentRenderKind = "mechanism"; scheduleDraftSave(); });
+document.getElementById("tab-card").addEventListener("click", () => selectEditorKind("card"));
+document.getElementById("tab-mechanism").addEventListener("click", () => selectEditorKind("mechanism"));
 
 document.querySelector('[data-card="type"]').addEventListener("change", event => {
   resetCardForm(event.target.value);
@@ -698,7 +703,8 @@ async function whiteBackgroundPng(blob) {
       });
     }
     const encoded = canvas.toDataURL("image/png").split(",")[1];
-    return new Blob([base64ToBuffer(encoded)], {type: "image/png"});
+    const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
+    return new Blob([bytes], {type: "image/png"});
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -762,53 +768,21 @@ for (const button of downloadButtons) button.addEventListener("click", () => {
   else attemptPngDownload(currentPng, currentExportFilename());
 });
 
-function bufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 32768) binary += String.fromCharCode(...bytes.subarray(index, index + 32768));
-  return btoa(binary);
-}
-function base64ToBuffer(value) {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes.buffer;
-}
-
-document.getElementById("export-draft").addEventListener("click", () => {
-  const draft = currentDraft();
-  if (draft.artwork) draft.artwork = {...draft.artwork, bytes: bufferToBase64(draft.artwork.bytes)};
-  downloadBlob(new Blob([JSON.stringify(draft, null, 2)], {type: "application/json"}),
-               `bwpdiy-draft-${new Date().toISOString().slice(0, 10)}.json`);
-});
-
+document.getElementById("export-draft").addEventListener("click", exportCurrentWork);
+document.getElementById("export-library").addEventListener("click", exportFullLibrary);
 document.getElementById("import-draft").addEventListener("click", () => document.getElementById("draft-file").click());
 document.getElementById("draft-file").addEventListener("change", async event => {
   const file = event.target.files[0];
-  if (!file) return;
-  try {
-    if (file.size > 100 * 1024 * 1024) throw new Error("草稿备份超过 100 MiB");
-    const draft = JSON.parse(await file.text());
-    if (draft.schema !== 1 || !draft.state) throw new Error("不是受支持的 BWPDIY 草稿备份");
-    if (draft.artwork && typeof draft.artwork.bytes === "string") draft.artwork.bytes = base64ToBuffer(draft.artwork.bytes);
-    await restoreDraft(draft);
-    await saveDraftNow();
-    log("草稿备份已导入当前浏览器");
-  } catch (error) { log(`导入失败：${error.message}`, true); }
-  finally { event.target.value = ""; }
+  if (file) await importBackupFile(file);
+  event.target.value = "";
 });
 
-document.getElementById("clear-draft").addEventListener("click", async () => {
-  if (!confirm("仅删除当前浏览器中的草稿和卡图，并恢复初始表单；全局布局与资源缓存不受影响。是否继续？")) return;
-  clearTimeout(draftTimer);
-  await draftStore.clear();
-  location.reload();
-});
+document.getElementById("clear-draft").addEventListener("click", clearLocalLibrary);
 document.getElementById("clear-cache").addEventListener("click", async () => {
-  if (!confirm("仅清除浏览器中的程序和素材缓存；草稿、卡图与布局不受影响。下次联网打开时会重新下载。是否继续？")) return;
+  if (!confirm("仅清除浏览器中的程序和素材缓存；作品、卡图与布局不受影响。下次联网打开时会重新下载。是否继续？")) return;
   const keys = await caches.keys();
   await Promise.all(keys.filter(key => key.startsWith("bwpdiy-")).map(key => caches.delete(key)));
-  cacheStatus.textContent = "资源缓存已清除；草稿与布局未改动";
+  cacheStatus.textContent = "资源缓存已清除；作品与布局未改动";
   log(cacheStatus.textContent);
 });
 
@@ -913,7 +887,7 @@ async function updateStorageStatus() {
   const element = document.getElementById("storage-status");
   const button = document.getElementById("persist-storage");
   if (!navigator.storage || !navigator.storage.estimate) {
-    element.textContent = "当前浏览器不提供存储容量查询；请定期导出草稿备份";
+    element.textContent = "当前浏览器不提供存储容量查询；请定期导出作品备份";
     button.disabled = true;
     return;
   }
@@ -937,7 +911,7 @@ document.getElementById("persist-storage").addEventListener("click", async () =>
   button.disabled = true;
   try {
     const granted = await navigator.storage.persist();
-    log(granted ? "浏览器已允许持久存储保护" : "浏览器暂未授予持久存储保护；请保留导出的草稿备份", !granted);
+    log(granted ? "浏览器已允许持久存储保护" : "浏览器暂未授予持久存储保护；请保留导出的作品备份", !granted);
   } catch (error) {
     log(`持久存储请求失败：${error.message}`, true);
   } finally {
@@ -966,16 +940,7 @@ async function start() {
   logElement.textContent = "";
   const cacheTask = setupResourceCache();
   updateStorageStatus();
-  try {
-    const draft = await draftStore.load();
-    if (!await restoreDraft(draft)) {
-      updateTypeFields();
-      draftStatus.textContent = "暂无草稿；编辑后自动保存到当前浏览器";
-    }
-  } catch (error) {
-    draftStatus.textContent = `草稿读取失败：${error.message}`;
-    log(draftStatus.textContent, true);
-  }
+  await initializeLibrary();
   syncCardFrameButtons();
   initializeTutorial();
   await cacheTask;

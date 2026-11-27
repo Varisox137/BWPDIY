@@ -1196,19 +1196,19 @@ function buildForm() {
   }
   if (t === '式神') {
     if (!inTutorial) {
-      if (extOptions.marker) factionRow(advanced);  // 扩展功能：派系 + 派系样式并排
-      else selRowC(advanced, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
-      if (extOptions.marker) levelRow(advanced);  // 扩展功能：式神等级
+      if (extOptions.marker) factionRow(div);  // 扩展功能：派系 + 派系样式并排
+      else selRowC(div, '派系', FACTIONS, formData.faction ?? '红莲', v => setField('faction', v));
+      if (extOptions.marker) levelRow(div);  // 扩展功能：式神等级
     }
     if (formData.shikigami) {
       infoRow(div, '所属式神', formData.shikigami);  // 衍生物式神
-      if (!inTutorial) textRow(advanced, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
+      if (!inTutorial) textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
     }
   } else {
     if (!inTutorial) {
-      if (extOptions.marker) levelRow(advanced);  // 扩展功能：等级（含 0=无）
-      else selRowC(advanced, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
-      selRowC(advanced, '稀有度', rarityOptions(), formData.rarity ?? '无',
+      if (extOptions.marker) levelRow(div);  // 扩展功能：等级（含 0=无）
+      else selRowC(div, '等级', ['1', '2', '3'], String(formData.level ?? 1), v => setField('level', parseInt(v, 10)));
+      selRowC(div, '稀有度', rarityOptions(), formData.rarity ?? '无',
         v => { if (v === '无') delete formData.rarity; else formData.rarity = v; afterEdit(); });
     }
     if (EVOLVE_TYPES.has(t)) {
@@ -1229,7 +1229,7 @@ function buildForm() {
     } else {
       shikigamiRow(div, '所属式神', 'shikigami');
     }
-    if (!inTutorial) textRow(advanced, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
+    if (!inTutorial) textRow(div, '子类型', formData.special_type ?? '', v => setOptText('special_type', v));
   }
   // stat 数值按矩阵（法术仅觉醒；式神/形态/幻境强制非负，滚轮微调同布局页交互）
   if (t !== '法术' || !!formData.evolve) {

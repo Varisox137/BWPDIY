@@ -137,6 +137,11 @@ def test_online_mobile_preview_and_save_dialog_structure():
     assert html.count('class="preview-toggle"') == 2
     assert 'id="fine-adjustment"' in html
     assert '<script src="ui-utils.js"></script>' in html
+    css = (PROTOTYPE_DIR / "style.css").read_text(encoding="utf-8")
+    assert ".mobile-only { display: inline-flex; align-items: center; justify-content: center; }" in css
+    advanced_at = html.index('<details class="advanced-section">')
+    for field in ("level", "rarity", "special_type", "faction"):
+        assert 0 <= html.index(f'data-card="{field}"') < advanced_at
     sw = (PROTOTYPE_DIR / "sw.js").read_text(encoding="utf-8")
     assert '"/ui-utils.js"' in sw
 

@@ -587,6 +587,16 @@ console.log('OK');
     _run_node(tmp_path, driver)
 
 
+def test_common_card_fields_stay_outside_advanced_details():
+    """等级/稀有度/子类型/派系不应随高级区一起折叠。"""
+    script = _script()
+    for snippet in (
+        "levelRow(div)", "selRowC(div, '等级'", "selRowC(div, '稀有度'",
+        "textRow(div, '子类型'", "factionRow(div)", "selRowC(div, '派系'",
+    ):
+        assert snippet in script
+
+
 @pytest.mark.skipif(NODE is None, reason="node 不可用")
 def test_inline_faction_controls_follow_marker_for_card_and_mechanism(tmp_path):
     script = _script()

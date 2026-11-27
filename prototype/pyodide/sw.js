@@ -1,7 +1,7 @@
 "use strict";
 
-const RESOURCE_CACHE = "bwpdiy-online-resources-v20";
-const RUNTIME_CACHE = "bwpdiy-online-runtime-v2";
+const RESOURCE_CACHE = "bwpdiy-online-resources-v21";
+const RUNTIME_CACHE = "bwpdiy-online-runtime-v3";
 const PYODIDE_CACHE = "bwpdiy-pyodide-v0.28.3";
 const CURRENT_CACHES = [RESOURCE_CACHE, RUNTIME_CACHE, PYODIDE_CACHE];
 const STATIC_PATHS = new Set(["/", "/index.html", "/style.css", "/storage.js", "/library.js",

@@ -1,8 +1,8 @@
 """文本层：矩形文本区排版（自动换行、逐行居中、字号递减适配、掩膜墨迹避让、关键字异色、内嵌图标）。
 
-v1.8.3 卡牌可选 smart/wrap/off：smart 独立开头纯关键字短句并比较条件类候选断行；
-同字号且不增加行数时，先避免闭标点作行首、开标点/符号留行尾，再避免高亮跨行、图标作行首；
-最终字号/行数确定后，smart 缩窄临时文本区均衡行长，不增加断行罚项或修改布局；
+卡牌可选 smart/wrap/off：smart 独立开头纯关键字短句并比较条件类候选断行；
+全局先选最少行数，再选该行数字号带内的最大字号（n 行下限=max(全局下限, 最大字号-2n)）；
+同字号/行数再比较语义与断行美观，最终缩窄临时文本区均衡行长，不增加断行罚项或修改布局；
 wrap 仅自动换行与字号适配；off 仅显式分行、固定最大字号。通用文本与机制缺省 wrap。
 描述行间空白随实际字号取字高的 1/3；换行与水平居中按整行文字掩膜的最紧边界测宽，
 段内 advance/字距保持不变。
@@ -302,6 +302,7 @@ TEXT_LAYOUT_MODES = ("smart", "wrap", "off")
 _LEADING_KEYWORDS = frozenset({
     "贯通", "连击", "吸血", "暴击", "不屈", "远程", "直击", "先攻",
     "追猎", "必杀", "屏障", "帷幕", "迅捷", "昂扬", "瞬发", "唯一",
+    "弹回", "疾速", "替身", "坚毅",
     "不消耗鬼火", "气绝时可用", "仅气绝时可用",
 })
 _CONDITION_LABELS = ("条件：", "增强：", "响应：", "觉醒：")
@@ -501,7 +502,7 @@ def _layout_at_size(items: list[tuple[str, str, bool]], font: ImageFont.FreeType
 
 def _candidate_score(lines, font, region, lib, icon_variant, inline_faction_style,
                      semantic_breaks, keyword_first, candidate_index):
-    """同字号/锚点下：语义断行完整、少行、断行美观优先，再比较行宽均衡。"""
+    """同字号/锚点下：少行、语义断行完整、断行美观优先，再比较行宽均衡。"""
     scored = lines[1:] if keyword_first and len(lines) > 1 else lines
     all_items = [item for line, _, _ in scored for item in line]
     icon_scale = region.get("icon_scale", 1.0)
@@ -511,13 +512,19 @@ def _candidate_score(lines, font, region, lib, icon_variant, inline_faction_styl
     mean = sum(widths) / len(widths) if widths else 0.0
     imbalance = sum((width - mean) ** 2 for width in widths)
     penalties = _break_penalties([line for line, _, _ in lines])
-    return -semantic_breaks, len(lines), *penalties, imbalance, candidate_index
+    return len(lines), -semantic_breaks, *penalties, imbalance, candidate_index
+
+
+def _line_font_range(region: dict, line_count: int) -> tuple[int, int]:
+    """smart 的 n 行字号带：每多一行允许再降 2px，但不越过全局下限。"""
+    max_size, min_size = region["font_range"]
+    return max_size, max(min_size, max_size - 2 * line_count)
 
 
 def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
          row_runs: dict | None, icon_variant: str | None = None,
          inline_faction_style: int = 1, text_layout: str = "wrap"):
-    """最大字号优先；同字号先比语义候选。短文本孤行可缩小至多 2px 来减少行数。"""
+    """smart 行数优先、字号其次；各自行数只在对应字号带内比较。wrap 保持最大字号优先。"""
     candidates = (_smart_candidates(items) if text_layout == "smart"
                   else [(items, 0, False, 0)])
     max_size, min_size = region["font_range"]
@@ -542,22 +549,6 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
                 return font, min(choices, key=lambda choice: choice[0])[1]
         return None
 
-    def has_short_last_line(font, lines):
-        if not 2 <= len(lines) <= 3:
-            return False
-        line, _, cy = lines[-1]
-        icon_w = _icon_widths(line, font, lib, icon_variant,
-                              region.get("icon_scale", 1.0), inline_faction_style)
-        cx = region["center"][0]
-        span = (cx - region["width"] / 2, cx + region["width"] / 2)
-        if row_runs:
-            span = clamp_span_by_mask(
-                span, cy, _line_height(font, region.get("_line_gap")) / 2,
-                row_runs, region.get("obstacle_gap", 4))
-        available = span[1] - span[0] if span is not None else 0
-        return (available > 0 and _line_width(line, font, icon_w)
-                < _AUTO_BREAK_MIN_FILL * available)
-
     def balanced(fitted):
         """smart 最终字号不变，缩窄临时文本区至行数即将增加的上一档，均衡各行长度。"""
         font, lines = fitted
@@ -581,17 +572,24 @@ def _fit(items: list[tuple[str, str, bool]], region: dict, lib: AssetLibrary,
             return final
         return best
 
+    if text_layout == "smart":
+        best_by_line_count = {}
+        for size in range(max_size, min_size - 1, -1):
+            fitted = best_at_size(size)
+            if fitted is None:
+                continue
+            line_count = len(fitted[1])
+            _, allowed_min = _line_font_range(region, line_count)
+            if size >= allowed_min and line_count not in best_by_line_count:
+                best_by_line_count[line_count] = fitted
+        if not best_by_line_count:
+            return None
+        return balanced(best_by_line_count[min(best_by_line_count)])
+
     for size in range(max_size, min_size - 1, -1):
         fitted = best_at_size(size)
-        if fitted is None:
-            continue
-        font, lines = fitted
-        if text_layout == "smart" and has_short_last_line(font, lines):
-            for smaller in range(size - 1, max(min_size, size - 2) - 1, -1):
-                compact = best_at_size(smaller)
-                if compact is not None and len(compact[1]) < len(lines):
-                    return balanced(compact)
-        return balanced(fitted)
+        if fitted is not None:
+            return fitted
     return None
 
 

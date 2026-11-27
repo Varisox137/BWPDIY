@@ -173,7 +173,7 @@ body.preview-modal-open { overflow: hidden; }
 .preview-fullscreen #c-preview, .preview-fullscreen #b-preview { max-width: 96vw; max-height: calc(100dvh - 145px); }
 .preview-fullscreen .mouse-help, .preview-fullscreen .result-meta { margin: 4px 0; }
 @media (max-width: 760px) {
-  .mobile-only { display: inline-flex; }
+  .mobile-only { display: inline-flex; align-items: center; justify-content: center; }
   .preview-toggle { display: inline-block; }
   #c-mid.preview-collapsed, #b-mid.preview-collapsed { min-height: 0; }
   .preview-collapsed .preview-body { display: none; }

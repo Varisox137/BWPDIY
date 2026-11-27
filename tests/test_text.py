@@ -611,6 +611,9 @@ def test_icon_scale_field(assets_dir):
 @pytest.mark.parametrize("prefix, visible", [
     ("贯通，连击。", "贯通，连击"),
     ("[[瞬发]]，不消耗鬼火。", "瞬发，不消耗鬼火"),
+    ("弹回，疾速。", "弹回，疾速"),
+    ("替身，坚毅。", "替身，坚毅"),
+    ("屏障，帷幕，昂扬。", "屏障，帷幕，昂扬"),
 ])
 def test_smart_layout_separates_pure_keyword_sentence(assets_dir, prefix, visible):
     """缺少首行识别会保留句号并与后续效果混排，破坏卡牌能力分区。"""
@@ -648,8 +651,8 @@ def test_smart_layout_prefers_balanced_conditional_break(assets_dir):
 
 
 @pytest.mark.parametrize("label", ["条件：", "增强：", "响应：", "觉醒："])
-def test_smart_layout_prefers_semantic_break_over_fewer_lines_at_same_size(assets_dir, label):
-    """同字号下语义标签应另起一行，即使比普通换行多一行。"""
+def test_smart_layout_prioritizes_fewer_lines_over_semantic_break(assets_dir, label):
+    """同字号时先减少行数；语义标签不再为多一行而强制另起。"""
     lib = AssetLibrary(assets_dir)
     region = rect_region(0, 0, 260, 300, font_range=[24, 24])
     text = f"造成2点伤害。[[{label[:-1]}]]：本回合你使用过法术牌。"
@@ -657,9 +660,9 @@ def test_smart_layout_prefers_semantic_break_over_fewer_lines_at_same_size(asset
     wrap = fit_in_region(text, region, lib, text_layout="wrap")
     assert smart is not None and wrap is not None
     assert smart[0].size == wrap[0].size == 24
-    assert len(smart[1]) > len(wrap[1])
-    assert smart[1][0][0] == "造成2点伤害。"
-    assert smart[1][1][0].startswith(label)
+    assert len(smart[1]) == len(wrap[1]) == 2
+    assert smart[1][0][0] == f"造成2点伤害。{label}"
+    assert smart[1][1][0] == "本回合你使用过法术牌。"
 
 
 def test_smart_balancing_does_not_force_conditional_break(assets_dir):
@@ -673,6 +676,16 @@ def test_smart_balancing_does_not_force_conditional_break(assets_dir):
     wrap = fit_in_region(text, region, lib, text_layout="wrap")
     assert [line[0] for line in smart[1]] == ["甲。条件：", "造成伤害"]
     assert [line[0] for line in wrap[1]] == ["甲。条件：造成伤", "害"]
+
+
+def test_smart_line_count_font_ranges_limit_shrinking():
+    """行数优先不等于任意缩小：每种行数只允许自己的字号带。"""
+    from bwpdiy.render.text import _line_font_range
+    region = {"font_range": [24, 12]}
+    assert _line_font_range(region, 1) == (24, 22)
+    assert _line_font_range(region, 2) == (24, 20)
+    assert _line_font_range(region, 3) == (24, 18)
+    assert _line_font_range(region, 20) == (24, 12)
 
 
 def test_short_text_slightly_shrinks_to_remove_orphan_last_line(assets_dir):
@@ -739,12 +752,12 @@ def test_line_gap_scales_with_font_size(assets_dir, size):
     assert lines[1][2] - lines[0][2] == pytest.approx(glyph_height * 4 / 3)
 
 
-def test_smart_layout_breaks_after_wrapped_prefix_without_extra_line(assets_dir):
-    """多行前缀不套用单行前缀的 35% 门槛，同字号同行数时在增强前断行。"""
+def test_smart_layout_line_count_priority_can_move_wrapped_semantic_break(assets_dir):
+    """少行候选确定后，多行前缀可跨过增强标签，不再强制沿用旧语义断点。"""
     lib = AssetLibrary(assets_dir)
     region = rect_region(0, 0, 170, 300, font_range=[24, 24])
     fitted = fit_in_region("造成很很点伤害。[[增强]]：本回合你使用过法术牌。",
                            region, lib, text_layout="smart")
     assert fitted is not None
     assert [line[0] for line in fitted[1]] == [
-        "造成很很点伤", "害。", "增强：本回合你", "使用过法术牌。"]
+        "造成很很点", "伤害。增强：", "本回合你使", "用过法术牌。"]

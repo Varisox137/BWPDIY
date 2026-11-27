@@ -158,10 +158,27 @@ body { margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-di
 #export-image { display: block; max-width: 100%; max-height: 55vh; margin: 10px auto; background: #ddd; }
 #export-status { min-height: 20px; color: #61563f; font-size: 12px; }
 #export-modal .btnrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.mobile-only { display: none; }
+.fine-control { align-items: center; gap: 3px; color: #d9b96a; font-size: 12px; white-space: nowrap; }
+.fine-control input { min-height: 0; margin: 0; }
+.precision-label { position: relative; }
+.precision-stepper { display: inline-flex; gap: 2px; margin-left: 3px; vertical-align: middle; }
+.precision-button { width: 25px; min-width: 25px; height: 25px; min-height: 25px !important; padding: 0; box-sizing: border-box; touch-action: manipulation; user-select: none; }
+#c-form .precision-label input[type="number"] { width: 55px; }
+.preview-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; }
+body[data-gesture-locked="true"] #c-preview, body[data-gesture-locked="true"] #b-preview { cursor: default; touch-action: pan-x pan-y; }
+body.preview-modal-open { overflow: hidden; }
+#c-mid.preview-fullscreen, #b-mid.preview-fullscreen { position: fixed; inset: 0; z-index: 70; width: 100%; height: 100vh; height: 100dvh; min-height: 0; padding: 12px 8px; box-sizing: border-box; overflow: auto; background: #3a3a3a; }
+.preview-fullscreen .preview-body { flex: 1; min-height: 0; justify-content: center; }
+.preview-fullscreen #c-preview, .preview-fullscreen #b-preview { max-width: 96vw; max-height: calc(100dvh - 145px); }
+.preview-fullscreen .mouse-help, .preview-fullscreen .result-meta { margin: 4px 0; }
 @media (max-width: 760px) {
+  .mobile-only { display: inline-flex; }
   .preview-toggle { display: inline-block; }
   #c-mid.preview-collapsed, #b-mid.preview-collapsed { min-height: 0; }
   .preview-collapsed .preview-body { display: none; }
   .syntax-tools { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px; }
   .syntax-tools button { flex: 0 0 auto; min-height: 38px; }
+  #c-form .precision-label input[type="number"] { width: calc(100% - 62px); }
+  .precision-button { width: 28px; min-width: 28px; height: 38px; }
 }

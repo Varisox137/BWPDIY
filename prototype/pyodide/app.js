@@ -35,10 +35,15 @@ function showHelp() { if (!helpModal.open) helpModal.showModal(); }
 document.getElementById("c-btn-help").addEventListener("click", showHelp);
 document.getElementById("help-close").addEventListener("click", () => helpModal.close());
 const pending = new Map();
+const recentLogs = [];
+let exportStage = "尚未导出";
 
 function log(message, isError = false) {
+  const text = String(message);
+  recentLogs.push(`${new Date().toISOString()} ${isError ? "ERROR" : "INFO"} ${text}`);
+  if (recentLogs.length > 100) recentLogs.shift();
   const line = document.createElement("span");
-  line.textContent = `${new Date().toLocaleTimeString()}  ${message}\n`;
+  line.textContent = `${new Date().toLocaleTimeString()}  ${text}\n`;
   if (isError) line.className = "error";
   logElement.appendChild(line);
   logElement.scrollTop = logElement.scrollHeight;
@@ -594,6 +599,50 @@ const exportModal = document.getElementById("export-modal");
 const exportImage = document.getElementById("export-image");
 const exportBackgroundButton = document.getElementById("export-bg-toggle");
 const exportStatus = document.getElementById("export-status");
+
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand && document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("当前浏览器不允许自动复制");
+}
+
+function diagnosticsReport() {
+  return [
+    "BWPDIY 在线本地版诊断（不含卡名、描述和卡图数据）",
+    `时间：${new Date().toISOString()}`,
+    `页面：${location.href}`,
+    `浏览器：${navigator.userAgent}`,
+    `在线：${navigator.onLine}；初始化：${document.body.dataset.ready}；渲染次数：${renderCount}`,
+    `导出阶段：${exportStage}；当前 PNG：${currentPng ? currentPng.size : 0} 字节`,
+    `存储：${document.getElementById("storage-status").textContent}`,
+    "近期运行记录：",
+    ...recentLogs.slice(-60),
+  ].join("\n");
+}
+
+async function copyDiagnostics(statusElement) {
+  try {
+    await copyText(diagnosticsReport());
+    log("诊断信息已复制");
+    if (statusElement) statusElement.textContent = "诊断信息已复制，可粘贴后反馈";
+  } catch (error) {
+    log(`复制诊断信息失败：${error.message}`, true);
+    if (statusElement) statusElement.textContent = `${error.message}；请截图运行记录`;
+  }
+}
+document.getElementById("copy-diagnostics").addEventListener("click", () => copyDiagnostics(null));
+document.getElementById("export-diagnostics").addEventListener("click", () => copyDiagnostics(exportStatus));
+
 let exportOriginal = null;
 let exportBlob = null;
 let exportUrl = "";
@@ -617,6 +666,7 @@ function replaceExportImage(blob) {
 
 function openExportDialog() {
   if (exportModal.open) return;
+  exportStage = "打开长按保存窗口";
   exportOperation += 1;
   exportOriginal = currentPng;
   exportFilename = currentExportFilename();
@@ -626,6 +676,7 @@ function openExportDialog() {
   exportStatus.textContent = "默认保留透明背景";
   replaceExportImage(exportOriginal);
   exportModal.showModal();
+  log(`导出：${exportStage}，PNG ${exportOriginal.size} 字节`);
 }
 
 async function whiteBackgroundPng(blob) {
@@ -671,13 +722,24 @@ exportBackgroundButton.addEventListener("click", async () => {
     exportBackgroundButton.disabled = false;
   }
 });
+function attemptPngDownload(blob, filename) {
+  exportStage = "调用浏览器下载";
+  try {
+    downloadBlob(blob, filename);
+    log(`已调用浏览器下载：${currentRenderKind}，PNG ${blob.size} 字节`);
+  } catch (error) {
+    exportStage = "浏览器下载调用失败";
+    log(`${exportStage}：${error.message}`, true);
+    exportStatus.textContent = "直接下载失败，请长按图片保存或复制诊断信息";
+    openExportDialog();
+  }
+}
 document.getElementById("export-download").addEventListener("click", () => {
-  if (exportBlob) downloadBlob(exportBlob, exportFilename);
+  if (exportBlob) attemptPngDownload(exportBlob, exportFilename);
 });
 document.getElementById("export-copy-link").addEventListener("click", async () => {
   try {
-    if (!navigator.clipboard || !window.isSecureContext) throw new Error("当前浏览器不允许自动复制");
-    await navigator.clipboard.writeText(location.href);
+    await copyText(location.href);
     exportStatus.textContent = "页面链接已复制，可粘贴到系统浏览器打开";
   } catch (error) {
     exportStatus.textContent = `${error.message}；请手动复制地址栏链接`;
@@ -697,7 +759,7 @@ exportModal.addEventListener("close", () => {
 for (const button of downloadButtons) button.addEventListener("click", () => {
   if (!currentPng) return;
   if (BWPDiyUI.isEmbeddedBrowser(navigator.userAgent)) openExportDialog();
-  else downloadBlob(currentPng, currentExportFilename());
+  else attemptPngDownload(currentPng, currentExportFilename());
 });
 
 function bufferToBase64(buffer) {
@@ -773,6 +835,7 @@ function bindArtMouse(image) {
     return rect.width > 0 && image.naturalWidth > 0 ? image.naturalWidth / rect.width : 1;
   };
   image.addEventListener("pointerdown", event => {
+    if (BWPDiyMobile.gesturesLocked()) return;
     if (event.button === 2) { rightButtonDown = true; return; }
     if (event.button !== 0 || !currentPng || currentRenderKind === "mechanism") return;
     event.preventDefault();
@@ -791,7 +854,7 @@ function bindArtMouse(image) {
     if (event.button === 2) rightButtonDown = false;
   });
   image.addEventListener("pointermove", event => {
-    if (!pointers.has(event.pointerId)) return;
+    if (BWPDiyMobile.gesturesLocked() || !pointers.has(event.pointerId)) return;
     pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
     if (gesture && pointers.size >= 2) {
       const current = metrics();
@@ -820,7 +883,7 @@ function bindArtMouse(image) {
   image.addEventListener("pointerup", finish);
   image.addEventListener("pointercancel", finish);
   image.addEventListener("wheel", event => {
-    if (!currentPng || currentRenderKind === "mechanism") return;
+    if (BWPDiyMobile.gesturesLocked() || !currentPng || currentRenderKind === "mechanism") return;
     event.preventDefault();
     if ((event.buttons & 2) || rightButtonDown) set("rotate", Math.round(get("rotate")) + (event.deltaY < 0 ? 3 : -3));
     else set("scale", Math.round(Math.max(0.01, get("scale") * (event.deltaY < 0 ? 1.05 : 1 / 1.05)) * 1000) / 1000);
@@ -828,6 +891,7 @@ function bindArtMouse(image) {
   }, {passive: false});
   image.addEventListener("contextmenu", event => event.preventDefault());
 }
+BWPDiyMobile.initialize();
 bindArtMouse(document.getElementById("c-preview"));
 bindArtMouse(document.getElementById("b-preview"));
 

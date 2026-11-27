@@ -35,11 +35,11 @@
       <div class="btnrow"><button id="persist-storage">请求持久存储保护</button></div>
       <label class="power-option"><input id="low-power" type="checkbox"> 低负载预览（触屏拖拽时使用较小预览，松手恢复完整质量）</label>
       <p class="note">草稿和卡图位于 IndexedDB；程序和素材位于 Cache Storage。服务器不保存任何作品。</p>
-      <details class="log-details"><summary>运行记录</summary><pre id="log"></pre></details>
+      <details class="log-details"><summary>运行记录</summary><div class="btnrow"><button id="copy-diagnostics">复制诊断信息</button></div><pre id="log"></pre></details>
     </details>
   </aside>
   <div id="c-mid">
-    <div id="c-actions"><button id="c-btn-help">使用说明</button><button id="c-btn-refresh">强制刷新</button><button class="preview-toggle" data-preview="c-mid" aria-expanded="true" aria-controls="c-preview-body">收起预览</button><button class="download-button primary-action" disabled>导出当前图片</button><span id="c-status"></span></div>
+    <div id="c-actions"><button id="c-btn-help">使用说明</button><button id="c-btn-refresh">强制刷新</button><button class="preview-toggle" data-preview="c-mid" aria-expanded="true" aria-controls="c-preview-body">收起预览</button><button id="c-fullscreen" class="preview-fullscreen-button mobile-only" data-preview="c-mid" aria-pressed="false">全屏预览</button><button id="gesture-lock" class="mobile-only" aria-pressed="false">锁定卡图手势</button><label class="fine-control mobile-only"><input id="fine-adjustment" type="checkbox"> 精细调整</label><button class="download-button primary-action" disabled>导出当前图片</button><span id="c-status"></span></div>
     <div id="c-frame-variants">框品
       <button class="fv active" data-fv="norm">常规</button><button class="fv" data-fv="black">墨染</button>
       <button class="fv" data-fv="blue">琉璃</button><button class="fv" data-fv="red">百炼</button>
@@ -105,7 +105,7 @@
 
 <div id="tab-battle" class="tabpage">
   <aside id="b-left"><h4>预览样式</h4><div id="b-styles"><button class="battle-style active" data-kind="entity">式神小卡</button><button class="battle-style" data-kind="card">完整大卡</button><button class="battle-style" data-kind="portrait">式神头像</button></div></aside>
-  <div id="b-mid"><div><button id="b-btn-refresh">强制刷新</button><button class="preview-toggle" data-preview="b-mid" aria-expanded="true" aria-controls="b-preview-body">收起预览</button><button class="download-button" disabled>导出</button><span id="b-status"></span></div><div id="b-preview-body" class="preview-body"><div id="b-error"></div><img id="b-preview" alt="对局预览"><p class="result-meta">尚未渲染</p><p class="mouse-help">左键/单指拖拽移动 · 滚轮/双指缩放 · 右键 + 滚轮/双指转动旋转</p></div></div>
+  <div id="b-mid"><div class="preview-actions"><button id="b-btn-refresh">强制刷新</button><button class="preview-toggle" data-preview="b-mid" aria-expanded="true" aria-controls="b-preview-body">收起预览</button><button id="b-fullscreen" class="preview-fullscreen-button mobile-only" data-preview="b-mid" aria-pressed="false">全屏预览</button><button class="download-button" disabled>导出</button><span id="b-status"></span></div><div id="b-preview-body" class="preview-body"><div id="b-error"></div><img id="b-preview" alt="对局预览"><p class="result-meta">尚未渲染</p><p class="mouse-help">左键/单指拖拽移动 · 滚轮/双指缩放 · 右键 + 滚轮/双指转动旋转</p></div></div>
   <aside id="b-right"><div id="b-form">
     <h3>临时对局状态</h3>
     <label>等级 <select data-state="level"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
@@ -136,7 +136,7 @@
   <h2 id="export-title">保存 PNG 图片</h2>
   <p>当前浏览器可能不支持直接下载。请长按下方图片并选择“保存图片”；如果透明区域在相册中显示为黑色，可先切换为白底。</p>
   <img id="export-image" alt="待保存的卡牌图片">
-  <div class="btnrow"><button id="export-bg-toggle">切换为白底</button><button id="export-copy-link">复制页面链接</button><button id="export-download" class="primary-action">仍尝试下载</button><button id="export-close">关闭</button></div>
+  <div class="btnrow"><button id="export-bg-toggle">切换为白底</button><button id="export-copy-link">复制页面链接</button><button id="export-download" class="primary-action">仍尝试下载</button><button id="export-diagnostics">复制诊断信息</button><button id="export-close">关闭</button></div>
   <div id="export-status" role="status"></div>
 </dialog>
 
@@ -148,7 +148,7 @@
   <h3>描述排版与标记</h3>
   <p>默认智能排版会自动换行、居中、避让角标并调整字号。描述下方的「快捷输入」可在光标处插入高亮、换行与小图标。手写语法为 <code>[[关键字]]</code> 高亮、<code>#xx</code> 小图标：<code>#ll</code> 力量、<code>#sm</code> 生命、<code>#hj</code> 护甲、<code>#pj</code> 破甲、<code>#nl</code> 能量、<code>#nj</code> 耐久、<code>#zl</code> 战力、<code>#fl</code> 乏力，<code>#hl/#cy/#ql/#zy</code> 为四派系。在线版使用常用字符子集，缺字会在预览上方提示；桌面版保留完整字体。</p>
   <h3>卡图与触屏</h3>
-  <p>偏移 X/Y 正值使图像向右/向下移动。鼠标左键拖拽移动、滚轮缩放、右键加滚轮旋转；触屏单指移动，卡图上双指缩放/旋转，不改变页面整体比例。低负载模式只降低连续拖拽时的预览质量，导出仍为完整质量。</p>
+  <p>偏移 X/Y 正值使图像向右/向下移动。鼠标左键拖拽移动、滚轮缩放、右键加滚轮旋转；触屏单指移动，卡图上双指缩放/旋转，不改变页面整体比例。手机可锁定手势、全屏预览，或用数值旁的 ± 按钮精调（长按连续调整，勾选「精细调整」减小步长）。低负载模式只降低连续拖拽时的预览质量，导出仍为完整质量。</p>
   <h3>机制与布局</h3>
   <p>「机制」可制作灵咒、关键字和加护/蚀印描述框，框高随内容变化。「高级布局」按卡牌类型和框品调整元素；对局预览中的临时状态不会写入卡牌草稿。</p>
   <h3>本地数据</h3>
@@ -171,6 +171,7 @@
 <script src="storage.js"></script>
 <script src="layout.js"></script>
 <script src="ui-utils.js"></script>
+<script src="mobile.js"></script>
 <script src="tutorial.js"></script>
 <script src="app.js"></script>
 </body>

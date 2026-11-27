@@ -96,6 +96,15 @@ equal(ui.pngFilename('  山风/测试:*?  '), '山风_测试___.png', '安全文
 equal(ui.pngFilename('   '), 'BWPDIY.png', '空文件名');
 equal(ui.missingCharacters('山 风𪚥𪚥', new Set('山风')), ['𪚥'], '缺字去重');
 equal(ui.missingCharacters('山风', '山风'), [], '字符清单');
+equal(ui.precisionStep('offset_x', false), 5, '普通偏移步长');
+equal(ui.precisionStep('offset_y', true), 1, '精细偏移步长');
+equal(ui.precisionStep('scale', false), 0.05, '普通缩放步长');
+equal(ui.precisionStep('scale', true), 0.01, '精细缩放步长');
+equal(ui.precisionStep('rotate', true), 0.1, '精细旋转步长');
+equal(ui.stepNumeric('1.05', 'scale', 1, true), 1.06, '缩放精调避免浮点误差');
+equal(ui.stepNumeric('0.01', 'scale', -1, true), 0.01, '缩放不得小于下限');
+equal(ui.stepNumeric('-2', 'offset_x', 1, false), 3, '偏移精调');
+equal(ui.stepNumeric('0', 'rotate', -1, true), -0.1, '旋转精调');
 for (const ua of [
   'Mozilla/5.0 MicroMessenger/8.0.50',
   'Mozilla/5.0 MQQBrowser/14.0',
@@ -121,12 +130,57 @@ for (const ua of [
 def test_online_mobile_preview_and_save_dialog_structure():
     html = (PROTOTYPE_DIR / "index.html").read_text(encoding="utf-8")
     for element_id in ("c-preview-body", "b-preview-body", "export-modal",
-                       "export-image", "export-bg-toggle", "export-download"):
+                       "export-image", "export-bg-toggle", "export-download",
+                       "c-fullscreen", "b-fullscreen", "gesture-lock",
+                       "copy-diagnostics", "export-diagnostics"):
         assert f'id="{element_id}"' in html
     assert html.count('class="preview-toggle"') == 2
+    assert 'id="fine-adjustment"' in html
     assert '<script src="ui-utils.js"></script>' in html
     sw = (PROTOTYPE_DIR / "sw.js").read_text(encoding="utf-8")
     assert '"/ui-utils.js"' in sw
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node 不可用")
+def test_mobile_keyboard_uses_current_focus_after_focusout_race():
+    script = r"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync(process.argv[1], 'utf8');
+const start = source.indexOf('  function initializeKeyboardAvoidance()');
+const end = source.indexOf('\n  function initialize()', start);
+if (start < 0 || end < 0) throw new Error('找不到软键盘避让函数');
+const viewportListeners = {};
+const documentListeners = {};
+const input = {matches: () => true, scrollIntoView: () => {}};
+const panel = {classList: {contains: () => false}};
+const viewport = {height: 844, addEventListener: (type, listener) => { viewportListeners[type] = listener; }};
+let collapsed = false;
+let exitedFullscreen = false;
+const context = {
+  window: {visualViewport: viewport},
+  document: {activeElement: input, querySelector: () => panel,
+    addEventListener: (type, listener) => { documentListeners[type] = listener; }},
+  matchMedia: () => ({matches: true}),
+  setTimeout: () => {},
+  exitFullscreen: () => { exitedFullscreen = true; },
+  setPreviewCollapsed: () => { collapsed = true; },
+};
+vm.createContext(context);
+vm.runInContext(source.slice(start, end) + '\nthis.initializeKeyboard = initializeKeyboardAvoidance;', context);
+context.initializeKeyboard();
+documentListeners.focusin({target: input});
+documentListeners.focusout();
+viewport.height = 400;
+viewportListeners.resize();
+if (!collapsed || !exitedFullscreen) {
+  throw new Error(`真实焦点仍在输入框时未避让：collapsed=${collapsed}, fullscreenExit=${exitedFullscreen}`);
+}
+"""
+    result = subprocess.run(
+        [shutil.which("node"), "-e", script, str(PROTOTYPE_DIR / "mobile.js")],
+        capture_output=True, text=True, encoding="utf-8", timeout=10)
+    assert result.returncode == 0, result.stderr
 
 
 def test_runtime_zip_contains_renderer_and_real_assets():
@@ -210,7 +264,7 @@ def test_tutorial_assets_are_public_static_files():
     thread.start()
     try:
         connection = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
-        for path in ("/tutorial.js", "/tutorial.css", "/ui-utils.js"):
+        for path in ("/tutorial.js", "/tutorial.css", "/ui-utils.js", "/mobile.js"):
             connection.request("GET", path)
             response = connection.getresponse()
             assert response.status == 200

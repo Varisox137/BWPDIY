@@ -38,7 +38,22 @@ const BWPDiyUI = (() => {
     return missing;
   }
 
-  return Object.freeze({insertText, pngFilename, isEmbeddedBrowser, missingCharacters});
+  function precisionStep(key, fine) {
+    if (key === "scale") return fine ? 0.01 : 0.05;
+    if (key === "rotate") return fine ? 0.1 : 1;
+    return fine ? 1 : 5;
+  }
+
+  function stepNumeric(value, key, direction, fine) {
+    const current = Number.isFinite(Number(value)) ? Number(value) : (key === "scale" ? 1 : 0);
+    const step = precisionStep(key, fine) * (Number(direction) < 0 ? -1 : 1);
+    const digits = key === "scale" ? 3 : key === "rotate" ? 1 : 0;
+    const result = Number((current + step).toFixed(digits));
+    return key === "scale" ? Math.max(0.01, result) : result;
+  }
+
+  return Object.freeze({insertText, pngFilename, isEmbeddedBrowser, missingCharacters,
+    precisionStep, stepNumeric});
 })();
 
 if (typeof module !== "undefined" && module.exports) module.exports = BWPDiyUI;
